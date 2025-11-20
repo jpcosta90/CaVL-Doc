@@ -147,18 +147,13 @@ python scripts/run_evaluation.py \
 
 | Method | EER (%) | Model/Adapter | Metric | Link Figura |
 |:---|---:|:---|:---|:---|
-| LA-CDIP_InternVL3-2B_Full_Head_2000-d3b0af_euclidean | 2.31 | LA-CDIP_InternVL3-2B_RL_Full_Head_2000_20251108-194952 | euclidean | [Link](results/plots/LA-CDIP_LA-CDIP_InternVL3-2B_Full_Head_2000-d3b0af_euclidean.png) |
-| LA-CDIP_InternVL3-2B_Full_Head_8000-aafe46_euclidean | 2.51 | LA-CDIP_InternVL3-2B_RL_Full_Head_8000_20251111-005720 | euclidean | [Link](results/plots/LA-CDIP_LA-CDIP_InternVL3-2B_Full_Head_8000-aafe46_euclidean.png) |
-| InternVL3-2B_prompt-d3b0af_euclidean | 2.99 | InternVL3-2B | euclidean | [Link](results/plots/LA-CDIP_InternVL3-2B_prompt-d3b0af_euclidean.png) |
-| pixel_euclidean_baseline | 9.07 | N/A | euclidean | [Link](results/plots/LA-CDIP_pixel_euclidean_baseline.png) |
+
 
 ### RVL-CDIP Results
 
 | Method | EER (%) | Model/Adapter | Metric | Link Figura |
 |:---|---:|:---|:---|:---|
-| InternVL3-2B_prompt-d3b0af_euclidean | 30.45 | InternVL3-2B | euclidean | [Link](results/plots/RVL-CDIP_InternVL3-2B_prompt-d3b0af_euclidean.png) |
-| pixel_cosine_baseline | 36.3 | N/A | cosine | [Link](results/plots/RVL-CDIP_pixel_cosine_baseline.png) |
-| pixel_euclidean_baseline | 44.8 | N/A | euclidean | [Link](results/plots/RVL-CDIP_pixel_euclidean_baseline.png) |
+
 
 ---
 
