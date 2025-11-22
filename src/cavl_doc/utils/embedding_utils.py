@@ -1,3 +1,4 @@
+# src/utils/embedding_utils.py
 import torch
 
 def prepare_inputs_for_multimodal_embedding(model, tokenizer, pixel_values, question, num_patches=None):

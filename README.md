@@ -145,7 +145,7 @@ python scripts/run_evaluation.py \
 
 | Method                |   EER (%) | Model/Adapter   | Metric   | Link Figura                                             |
 |:----------------------|----------:|:----------------|:---------|:--------------------------------------------------------|
-| pixel_cosine_baseline |      9.07 | N/A             | cosine   | [Link](results/plots/LA-CDIP_pixel_cosine_baseline.png) |
+| pixel_cosine_baseline |      9.07 | Baseline        | cosine   | [Link](results/plots/LA-CDIP_pixel_cosine_baseline.png) |
 
 ### RVL-CDIP Results
 

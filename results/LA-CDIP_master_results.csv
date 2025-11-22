@@ -1,2 +1,2 @@
 method_name,eer,model,arch,params,metric,dataset,partition,timestamp
-pixel_cosine_baseline,0.09071975634881535,N/A,Baseline,0.1,cosine,LA-CDIP,validation_pairs.csv,2025-11-21 00:02:26
+pixel_cosine_baseline,0.09071975634881535,Baseline,Baseline,0.1,cosine,LA-CDIP,validation_pairs.csv,2025-11-21 00:02:26

@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 
-
 def plot_density(results_df, eer_score, eer_threshold, method_name, dataset_name, metric_type, output_dir='results/plots'):
     """Gera um gráfico de densidade com título e nome de arquivo descritivos."""
     os.makedirs(output_dir, exist_ok=True)
@@ -12,8 +11,11 @@ def plot_density(results_df, eer_score, eer_threshold, method_name, dataset_name
     plot_path = os.path.join(output_dir, plot_filename)
     
     plt.figure(figsize=(12, 7))
-    sns.kdeplot(data=results_df[results_df['is_equal'] == 1], x='metric_score', label='Pares Iguais (is_equal=1)', fill=True, color='blue', cut=0)
-    sns.kdeplot(data=results_df[results_df['is_equal'] == 0], x='metric_score', label='Pares Diferentes (is_equal=0)', fill=True, color='red', cut=0)
+    # Proteção: só plota se houver dados para ambas as classes
+    if not results_df[results_df['is_equal'] == 1].empty:
+        sns.kdeplot(data=results_df[results_df['is_equal'] == 1], x='metric_score', label='Pares Iguais (is_equal=1)', fill=True, color='blue', cut=0)
+    if not results_df[results_df['is_equal'] == 0].empty:
+        sns.kdeplot(data=results_df[results_df['is_equal'] == 0], x='metric_score', label='Pares Diferentes (is_equal=0)', fill=True, color='red', cut=0)
     
     plt.axvline(x=eer_threshold, color='black', linestyle='--', label=f'EER Threshold ≈ {eer_threshold:.3f}\n(EER ≈ {eer_score:.3f})')
     
@@ -28,17 +30,13 @@ def plot_density(results_df, eer_score, eer_threshold, method_name, dataset_name
     plt.savefig(plot_path)
     plt.close()
 
-
 def generate_performance_plot(la_cdip_results_path: str, output_dir: str = 'results/plots'):
     """
-    Gera o gráfico 'Performance vs. Parameters' usando a lógica de posicionamento manual
-    de rótulos para modelos conhecidos e uma posição padrão para os novos.
-    
-    O Eixo Y é limitado automaticamente até o valor do 'pixel_cosine_baseline' + 1%.
+    Gera o gráfico 'Performance vs. Parameters' limitando o Eixo Y ao valor do baseline.
     """
     print("\n--- Gerando gráfico de Performance vs. Parâmetros para LA-CDIP ---")
     
-    # --- 1. DADOS ESTÁTICOS (do seu código original) ---
+    # --- 1. DADOS ESTÁTICOS ---
     static_models = [
         ("AlexNet", "AlexNet", 57, 17.33),
         ("VGG-11", "VGG", 129, 14.24),
@@ -67,18 +65,21 @@ def generate_performance_plot(la_cdip_results_path: str, output_dir: str = 'resu
     ]
     paper_df = pd.DataFrame(static_models, columns=['method_name', 'arch', 'params', 'eer'])
 
-    # --- 2. DADOS DINÂMICOS (dos seus novos experimentos) ---
+    # --- 2. DADOS DINÂMICOS ---
     try:
         dynamic_df = pd.read_csv(la_cdip_results_path)
-        # Converte para porcentagem se estiver em escala 0-1
-        if not dynamic_df.empty and dynamic_df['eer'].max() <= 1.0:
-            dynamic_df['eer'] = dynamic_df['eer'] * 100
+        # Converte para % se necessário
+        if not dynamic_df.empty and 'eer' in dynamic_df.columns:
+            if dynamic_df['eer'].max() <= 1.0:
+                dynamic_df['eer'] = dynamic_df['eer'] * 100
     except FileNotFoundError:
+        print(f"   -> Aviso: Arquivo CSV {la_cdip_results_path} não encontrado. Usando apenas dados estáticos.")
         dynamic_df = pd.DataFrame(columns=paper_df.columns)
 
+    # Concatena, garantindo que colunas existam
     all_models_df = pd.concat([paper_df, dynamic_df], ignore_index=True)
 
-    # --- 3. LÓGICA DE PLOTAGEM ---
+    # --- 3. PLOTAGEM ---
     architecture_colors = {
         "VGG": "green", "ResNet": "purple", "MobileNet": "orange", "EfficientNet": "cyan",
         "ViT": "brown", "LLM": "red", "Fine-Tuned LLM": "magenta", "Baseline": "grey",
@@ -89,9 +90,13 @@ def generate_performance_plot(la_cdip_results_path: str, output_dir: str = 'resu
     legend_handles = {}
 
     for _, row in all_models_df.iterrows():
-        name, arch, params, eer = row['method_name'], row['arch'], row['params'], row['eer']
+        # Usa .get para evitar erro se a coluna não existir no CSV dinâmico (params muitas vezes é NaN)
+        name = row.get('method_name', 'Unknown')
+        arch = row.get('arch', 'Unknown')
+        params = row.get('params', float('nan'))
+        eer = row.get('eer', float('nan'))
         
-        # Proteção contra NaN
+        # Ignora pontos sem parâmetros definidos (o baseline cai aqui, pois não tem 'params' no CSV)
         if pd.isna(params) or pd.isna(eer):
             continue
 
@@ -101,28 +106,20 @@ def generate_performance_plot(la_cdip_results_path: str, output_dir: str = 'resu
         if arch not in legend_handles:
             legend_handles[arch] = scatter
 
-        # Lógica de posicionamento manual
-        if name == "MobileNetV3-L":
-            xytext_offset = (-82, 0)
-        elif name == "EfficientNet-2":
-            xytext_offset = (-76, 0)
-        elif name == "ResNet-34":
-            xytext_offset = (5, 0)
-        elif name == "InternVL3 8B":
-            xytext_offset = (-50, 6)
-        elif name == "InternVL3 14B":
-            xytext_offset = (-10, -12)
-        elif params is not None and params > 1000:
-            xytext_offset = (-10, 7)
-        else:
-            xytext_offset = (5, 0)
+        # Posicionamento Manual
+        xytext_offset = (5, 0)
+        if name == "MobileNetV3-L": xytext_offset = (-82, 0)
+        elif name == "EfficientNet-2": xytext_offset = (-76, 0)
+        elif name == "ResNet-34": xytext_offset = (5, 0)
+        elif name == "InternVL3 8B": xytext_offset = (-50, 6)
+        elif name == "InternVL3 14B": xytext_offset = (-10, -12)
+        elif params is not None and params > 1000: xytext_offset = (-10, 7)
         
         ax.annotate(name, (params, eer), fontsize=8, xytext=xytext_offset, textcoords="offset points")
     
-    # --- 4. CONFIGURAÇÃO DE EIXOS E TÍTULOS ---
+    # --- 4. CONFIGURAÇÃO VISUAL ---
     ax.axhline(y=4.70, color="#666666", linestyle="--", linewidth=1, label="GPT-4o Mini (ref.)")
     ax.axhline(y=2.75, color="black", linestyle="--", linewidth=1.2, label="GPT-4o (ref.)")
-    
     ax.set_xscale("log")
     ax.set_xlabel("Parameters (Millions) - Log Scale", fontsize=12)
     ax.set_ylabel("Performance (Lower EER is better)", fontsize=12)
@@ -130,37 +127,42 @@ def generate_performance_plot(la_cdip_results_path: str, output_dir: str = 'resu
     ax.set_xlim(left=0.05, right=5e4)
     ax.grid(True, which="major", ls="--", linewidth=0.5)
 
-    # --- 5. AJUSTE DINÂMICO DO EIXO Y (Alteração solicitada) ---
-    # Procura o baseline no DataFrame combinado
-    baseline_row = all_models_df[all_models_df['method_name'] == 'pixel_cosine_baseline']
-
+    # --- 5. AJUSTE DINÂMICO DO EIXO Y (CORRIGIDO) ---
+    # Normaliza a coluna method_name para string e remove espaços
+    all_models_df['method_name'] = all_models_df['method_name'].astype(str).str.strip()
+    
+    # Tenta achar o baseline
+    baseline_row = all_models_df[all_models_df['method_name'].str.contains('baseline', case=False, na=False)]
+    
     if not baseline_row.empty:
-        # Pega o valor do EER
+        # Pega o primeiro baseline encontrado
         baseline_val = baseline_row.iloc[0]['eer']
-        # Define o limite superior como Baseline + 1.0 (assumindo escala %)
-        y_limit = baseline_val + 1.0
+        found_name = baseline_row.iloc[0]['method_name']
         
-        # Define os limites: 0 até Baseline + 1%
+        y_limit = baseline_val + 1.0
         ax.set_ylim(0, y_limit)
-        print(f"   -> Eixo Y limitado em {y_limit:.2f}% (Baseline {baseline_val:.2f}% + 1%)")
+        print(f"   -> Eixo Y limitado em {y_limit:.2f}% (Baseado em '{found_name}': {baseline_val:.2f}% + 1%)")
     else:
-        print("   -> Aviso: 'pixel_cosine_baseline' não encontrado. Eixo Y automático.")
+        print("   -> Aviso: Nenhum baseline encontrado. Eixo Y automático.")
+        # Se quiser debug: print(all_models_df['method_name'].unique())
 
     # --- 6. LEGENDA E SALVAMENTO ---
     main_handles = list(legend_handles.values())
     main_labels = list(legend_handles.keys())
     ref_handles, ref_labels = ax.get_legend_handles_labels()
-    # Filtra apenas labels de referência que contêm 'ref'
     ref_handles = [h for h, l in zip(ref_handles, ref_labels) if 'ref' in l]
     ref_labels = [l for l in ref_labels if 'ref' in l]
     
-    ax.legend(main_handles + ref_handles, main_labels + ref_labels, loc='upper right', fontsize=10)
+    # MUDANÇA AQUI: bbox_to_anchor move a legenda para fora
+    ax.legend(main_handles + ref_handles, main_labels + ref_labels, 
+              loc='upper left', bbox_to_anchor=(1.05, 1), fontsize=10, borderaxespad=0.)
 
     plt.figtext(0.99, 0.01, 'Baseline vision model results sourced from ICDARWML 2025 paper.', 
                 horizontalalignment='right', fontsize=7, color='gray')
     
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "LA-CDIP_performance_vs_parameters.png")
+    # bbox_inches='tight' é essencial aqui para incluir a legenda externa no arquivo salvo
     plt.savefig(output_path, bbox_inches="tight")
-    print(f"   -> Gráfico de performance salvo com sucesso em '{output_path}'")
+    print(f"   -> Gráfico salvo em '{output_path}'")
     plt.close()

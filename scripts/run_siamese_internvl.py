@@ -29,10 +29,8 @@ python scripts/run_siamese_internvl.py \
 
 If you want to load the model in 4-bit quantized mode, pass --load-in-4bit.
 """
-
 import os
 import warnings
-
 # --- INÍCIO DO BLOCO "SILENCIADOR NUCLEAR" ---
 # Intercepta e mata warnings específicos que ignoram filtros padrão
 def _custom_warn(message, category=None, stacklevel=1, source=None):
@@ -52,20 +50,9 @@ def _custom_warn(message, category=None, stacklevel=1, source=None):
 _original_warn = warnings.warn
 warnings.warn = _custom_warn
 # --- FIM DO BLOCO ---
+
 # avoid tokenizers parallelism fork warnings
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-
-# Direciona arquivos temporários do multiprocessing para partição maior
-# Criar manualmente: mkdir -p /mnt/large/tmp
-# os.environ.setdefault('TMPDIR', '/mnt/large')
-
-# Evita erro de file descriptor no DataLoader
-# try:
-#     import torch.multiprocessing as mp
-#     mp.set_sharing_strategy('file_system')
-# except Exception:
-#     pass
-
 
 import argparse
 import json
@@ -76,15 +63,13 @@ from pathlib import Path
 import torch
 
 # Project imports (adjust if your modules have different names)
-from src.data_loaders.documentpairs import DocumentPairDataset
-from src.models.lvlm_handler import load_model, warm_up_model
-from src.utils.helpers import setup_experiment_dir
-
+from cavl_doc.data_loaders.documentpairs import DocumentPairDataset
+from cavl_doc.models.lvlm_handler import load_model, warm_up_model
+from cavl_doc.utils.helpers import setup_experiment_dir
+from cavl_doc.models.heads import ProjectionHead
+from cavl_doc.models.professor import ProfessorNetwork
 # Trainer
-try:
-    from src.finetuning.rl_siamese_trainer import run_rl_siamese_loop
-except Exception as e:
-    raise ImportError("Could not import run_rl_siamese_loop from src.finetuning.rl_siamese_trainer: " + str(e))
+from cavl_doc.finetuning.rl_siamese_trainer import run_rl_siamese_loop
 
 
 def prepare_experiment(args):
@@ -137,23 +122,13 @@ def main(args):
     warm_up_model(backbone, processor)
     print("Backbone loaded and warmed up (frozen).")
 
-    # --- 2) instantiate student head (ProjectionHead) and professor ---
-    # We expect the trainer to accept the student head object shape info.
-    try:
-        from src.models.heads import ProjectionHead
-    except Exception:
-        raise ImportError("ProjectionHead not found in src.models.heads. Please implement or import it.")
 
     # default hidden dims — match your trainer expectation or pass via args if different
     LLM_HIDDEN_DIM = 1536
     student_head = ProjectionHead(input_dim=LLM_HIDDEN_DIM, output_dim=args.projection_output_dim).to(device)
     student_head.train()
     print("Student (ProjectionHead) ready.")
-
-    try:
-        from src.models.professor import ProfessorNetwork
-    except Exception:
-        raise ImportError("ProfessorNetwork not found in src.models.professor. Please implement or import it.")
+    
     professor_model = ProfessorNetwork(input_dim=1).to(device)
     professor_model.train()
     print("Professor network ready.")
@@ -204,7 +179,7 @@ def parse_args():
     p.add_argument("--projection-output-dim", type=int, default=512)
 
     # keep ONLY THIS ONE
-    p.add_argument("--max-num-image-tokens", dest="max_num_image_tokens", type=int, default=12)
+    p.add_argument("--max-num-image-tokens", dest="max_num_image_tokens", type=int, default=4)
 
     p.add_argument("--training-sample-size", dest="training_sample_size", type=int, default=0)
     p.add_argument("--epochs", type=int, default=5)
@@ -231,9 +206,6 @@ def parse_args():
     p.add_argument("--lr-reduce-factor", type=float, default=0.5)
 
     p.add_argument("--seed", type=int, default=42)
-
-    return p.parse_args()
-
 
     return p.parse_args()
 

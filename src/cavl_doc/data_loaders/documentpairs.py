@@ -3,7 +3,7 @@ import pandas as pd
 from PIL import Image
 import torch
 from torch.utils.data import Dataset
-from src.utils.image_processing import build_transform, dynamic_preprocess
+from cavl_doc.utils.image_processing import build_transform, dynamic_preprocess
 
 class DocumentPairDataset(Dataset):
     def __init__(self, csv_path, base_dir, input_size=448, max_num=12, device="cuda"):
