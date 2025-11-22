@@ -1,2 +1,3 @@
 method_name,eer,model,arch,params,metric,dataset,partition,timestamp
-pixel_cosine_baseline,0.363,N/A,Baseline,0.1,cosine,RVL-CDIP,validation_pairs.csv,2025-11-21 00:03:23
+pixel_cosine_baseline,0.363,,Baseline,0.1,cosine,RVL-CDIP,validation_pairs.csv,2025-11-21 00:03:23
+InternVL3-2B_699f24_euclidean,0.347,InternVL3-2B,LLM Base,1278.539264,euclidean,RVL-CDIP,validation_pairs.csv,2025-11-22 15:29:52

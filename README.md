@@ -44,6 +44,7 @@ The project is structured as a reusable Python package (`cavl_doc`).
     │   ├── modules/          # Building blocks (Heads, Poolers, Losses)
     │   ├── trainers/         # Training loops
     │   ├── data/             # Dataset classes
+    │   ├── evaluation/       # Metrics and Baselines
     │   └── utils/            # Helpers and visualization
 ```
 
@@ -106,6 +107,41 @@ python scripts/run_siamese_eval.py \
     --plot
 ```
 * **Output:** Generates density plots in `results/plots` and a results CSV.
+
+### 3. Running an Evaluation (`run_evaluation.py`)
+
+This script is your primary tool. It runs a single, well-defined experiment and logs the result to a master CSV file. It automatically handles naming and metadata.
+
+#### **Example 3.1: Running a Baseline (Pixel Comparison)**
+
+To run the `pixel_euclidean` baseline on the LA-CDIP validation set:
+
+```bash
+python scripts/run_evaluation.py \
+    --evaluation-method "pixel_euclidean" \
+    --pairs-csv "data/LA-CDIP/validation_pairs.csv" \
+    --base-image-dir "path/to/your/images/" \
+    --plot
+```
+* `--evaluation-method`: Specifies which method to run. Options are `pixel_cosine` and `pixel_euclidean` for baselines.
+
+#### **Example 3.2: Evaluating the Embedding Method (Base Prompt)**
+
+To evaluate the default `InternVL3-2B` model with a base prompt on the RVL-CDIP validation set:
+
+```bash
+python scripts/run_evaluation.py \
+    --evaluation-method "embedding" \
+    --model-name "InternVL3-2B" \
+    --prompt "<image> describe this document" \
+    --pairs-csv "data/RVL-CDIP/validation_pairs.csv" \
+    --base-image-dir "path/to/your/images/" \
+    --metric "cosine" \
+    --plot
+```
+* `--evaluation-method`: Must be `"embedding"` to use an LVLM.
+* `--prompt`: The text prompt is now required.
+* The script will automatically generate a unique `method_name` for the results table based on the model, prompt hash, and metric.
 
 ### 3. Updating Results (`update_readme.py`)
 

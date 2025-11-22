@@ -1,6 +1,8 @@
 import sys
 import os
 from datetime import datetime
+from peft import PeftModel
+import torch
 
 class SuppressSpecificOutput:
     """
@@ -45,3 +47,14 @@ def setup_experiment_dir(base_output_path: str, experiment_name: str) -> str:
     full_output_dir = os.path.join(base_output_path, experiment_name)
     os.makedirs(full_output_dir, exist_ok=True)
     return full_output_dir
+
+# ==========================================================
+# 2. FUNÇÕES AUXILIARES
+# ==========================================================
+def count_total_parameters(model) -> float:
+    # ... (A sua função count_total_parameters não muda) ...
+    if isinstance(model, PeftModel):
+        return sum(p.numel() for p in model.parameters()) / 1_000_000
+    elif isinstance(model, torch.nn.Module):
+        return sum(p.numel() for p in model.parameters()) / 1_000_000
+    return 0.0

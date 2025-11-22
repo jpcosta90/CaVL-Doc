@@ -15,25 +15,14 @@ from peft import PeftModel
 # ==========================================================
 # 1. IMPORTAÇÕES
 # ==========================================================
-from src.models.lvlm_handler import load_model, warm_up_model
-from src.data_loaders.documentpairs import DocumentPairDataset
-from src.metrics.evaluation import run_meanpooling_embedding_comparison
-from src.metrics.baseline_metrics import run_pixel_comparison
-from src.utils.tracker import ExperimentTracker
-from src.utils.visualization import plot_density
+from cavl_doc.models.backbone_loader import load_model, warm_up_model
+from cavl_doc.data.dataset import DocumentPairDataset
+from cavl_doc.evaluation.baselines import run_meanpooling_embedding_comparison, run_pixel_comparison
+from cavl_doc.utils.tracking import ExperimentTracker
+from cavl_doc.utils.visualization import plot_density
+from cavl_doc.utils.helpers import count_total_parameters
 
 import logging
-
-# ==========================================================
-# 2. FUNÇÕES AUXILIARES
-# ==========================================================
-def count_total_parameters(model) -> float:
-    # ... (A sua função count_total_parameters não muda) ...
-    if isinstance(model, PeftModel):
-        return sum(p.numel() for p in model.parameters()) / 1_000_000
-    elif isinstance(model, torch.nn.Module):
-        return sum(p.numel() for p in model.parameters()) / 1_000_000
-    return 0.0
 
 # ==========================================================
 # 3. FUNÇÃO PRINCIPAL

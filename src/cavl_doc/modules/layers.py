@@ -1,4 +1,4 @@
-# Possivelmente em src/models/misc.py ou similar
+# Possivelmente em src/modules/layers.py
 import torch
 import torch.nn as nn
 

@@ -6,7 +6,7 @@ import os
 from transformers import AutoModelForCausalLM, AutoProcessor, AutoTokenizer, BitsAndBytesConfig
 import torch.nn as nn
 from peft import PeftModel
-from cavl_doc.utils.misc import NewConnector # Ou onde quer que NewConnector esteja definida
+from cavl_doc.modules.layers import NewConnector # Ou onde quer que NewConnector esteja definida
 from cavl_doc.modules.heads import mpProjectionHead
 import glob
 
@@ -196,7 +196,7 @@ def load_model(
 
             LLM_INPUT_DIM = 1536 
 
-            projection_head_loaded = ProjectionHead(input_dim=LLM_INPUT_DIM, output_dim=projection_output_dim)
+            projection_head_loaded = mpProjectionHead(input_dim=LLM_INPUT_DIM, output_dim=projection_output_dim)
             projection_head_loaded.load_state_dict(checkpoint)
             
             projection_head_loaded = projection_head_loaded.to(final_model.device).to(model_dtype).eval()
