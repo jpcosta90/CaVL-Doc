@@ -7,7 +7,7 @@ from transformers import AutoModelForCausalLM, AutoProcessor, AutoTokenizer, Bit
 import torch.nn as nn
 from peft import PeftModel
 from cavl_doc.modules.layers import NewConnector # Ou onde quer que NewConnector esteja definida
-from cavl_doc.modules.heads import mpProjectionHead
+from cavl_doc.modules.heads import MPProjectionHead
 import glob
 
 import logging
@@ -174,7 +174,7 @@ def load_model(
                 new_connector_loaded = new_connector_loaded.to(final_model.device).to(model_dtype).eval()
                 print("    -> Camada NewConnector (Antiga) carregada com sucesso.")
             if 'projection_head_state_dict' in checkpoint:
-                projection_head_loaded = mpProjectionHead(input_dim=LLM_INPUT_DIM, output_dim=projection_output_dim)
+                projection_head_loaded = MPProjectionHead(input_dim=LLM_INPUT_DIM, output_dim=projection_output_dim)
                 projection_head_loaded.load_state_dict(checkpoint['projection_head_state_dict'])
                 projection_head_loaded = projection_head_loaded.to(final_model.device).to(model_dtype).eval()
                 print("    -> Camada ProjectionHead (Antiga) carregada com sucesso.")

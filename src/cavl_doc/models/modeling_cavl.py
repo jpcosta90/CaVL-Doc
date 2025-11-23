@@ -44,7 +44,7 @@ class CaVLModel(PreTrainedModel):
             self.hidden_dim = config.hidden_dim
             # Configs não usadas na inferência direta
             self.encode_fn = None 
-            self.tokenizer = None # Assume que o usuário tokenizou antes ou usará processor
+            self.tokenizer = None 
             
         else:
             # MODO 2: Inicialização Manual (Seu Treino Atual)
@@ -117,7 +117,7 @@ class CaVLModel(PreTrainedModel):
     def trainable_summary(self):
         tot = sum(p.numel() for p in self.parameters())
         tr = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        print(f"Trainable: {tr:,} / {tot:,} ({100*tr/tot:.2f}%)")
+        print(f"Total params: {tot:,} | Trainable: {tr:,} ({100*tr/tot:.2f}%)")
         return tot, tr
 
     # --- Forward Logic (Híbrida) ---
@@ -150,17 +150,52 @@ class CaVLModel(PreTrainedModel):
         if self.encode_fn is not None and images is not None:
             tokens, mask = self._extract_tokens_via_encode_fn(images.to(device), device=device, **(encode_kwargs or {}))
         else:
-            # Modo HF Padrão (espera input_ids processados ou implementa lógica interna no futuro)
+            # Modo HF Padrão
             tokens, mask = self._extract_tokens_via_hidden_states(input_ids=input_ids, attention_mask=attention_mask, device=device, **(encode_kwargs or {}))
         
         pooled = self.pool(tokens, mask=mask)
         return self.head(pooled)
 
+    # --- Métodos de Salvar/Carregar customizados (compatíveis com HF) ---
+    def save_pretrained(self, save_directory, **kwargs):
+        """Salva config e apenas os pesos do CaVL (Head/Pool + Backbone Adaptado)."""
+        import os
+        os.makedirs(save_directory, exist_ok=True)
+        
+        # 1. Salva a config (JSON)
+        self.config.save_pretrained(save_directory)
+        
+        # 2. Salva os pesos (State Dict Filtrado)
+        state_dict = {}
+        for n, p in self.named_parameters():
+            if "head." in n or "pool." in n or p.requires_grad:
+                state_dict[n] = p.cpu()
+        
+        torch.save(state_dict, os.path.join(save_directory, "pytorch_model.bin"))
+        
+        if self.tokenizer:
+            self.tokenizer.save_pretrained(save_directory)
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, *model_args, **kwargs):
+        """Carrega modelo a partir de pasta salva."""
+        config = CaVLConfig.from_pretrained(pretrained_model_name_or_path)
+        model = cls(config, *model_args, **kwargs)
+        
+        weights_path = os.path.join(pretrained_model_name_or_path, "pytorch_model.bin")
+        if os.path.exists(weights_path):
+            state_dict = torch.load(weights_path, map_location="cpu")
+            keys = model.load_state_dict(state_dict, strict=False)
+            print(f"CaVL Model carregado de {pretrained_model_name_or_path}")
+        
+        return model
+
 # ----------------------
-# Factory (MANTIDA IGUAL AO QUE VOCÊ USA)
+# Factory (Compatível com Treino Atual)
 # ----------------------
 def build_cavl_model(
         backbone: Any,
+        tokenizer: Any = None,  # Aceita mas não usa na classe (compatibilidade)
         cut_layer: int = 27,
         encode_fn: Optional[Callable] = None,
         hidden_dim: int = 1536,
@@ -169,13 +204,10 @@ def build_cavl_model(
         num_pool_heads: int = 8,
         pool_dim: Optional[int] = None,
         set_trainable: bool = True,
-        tokenizer: Any = None, # Aceita para não quebrar, passa para o modelo
         **kwargs 
 ) -> CaVLModel:
     if pool_dim is not None: hidden_dim = pool_dim
 
-    # A chamada permanece idêntica, passando os argumentos explicitamente.
-    # O CaVLModel vai cair no "MODO 2" do __init__ e funcionar como antes.
     model = CaVLModel(
         backbone_or_config=backbone, # Passamos o backbone no 1º argumento
         cut_layer=cut_layer,
