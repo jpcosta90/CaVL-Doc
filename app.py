@@ -83,8 +83,8 @@ with tab_new:
         st.subheader("Arquitetura Modular")
         # Aqui definimos as opções que criamos nos Registries
         pooler_type = st.selectbox("Pooler Type", ["attention", "mean"], help="Como agregar os tokens visuais.")
-        head_type = st.selectbox("Head Type", ["mlp", "simple_mlp"], help="Arquitetura da cabeça de projeção.")
-        loss_type = st.selectbox("Loss Function", ["contrastive"], help="Função de perda a ser otimizada.")
+        head_type = st.selectbox("Head Type", ["mlp", "simple_mlp", "residual"], help="Arquitetura da cabeça de projeção.")
+        loss_type = st.selectbox("Loss Function", ["contrastive", "arcface", "cosface"], help="Função de perda a ser otimizada.")
         
         load_4bit = st.checkbox("Load in 4-bit (QLoRA)", value=False)
         use_wandb = st.checkbox("Usar Weights & Biases", value=True)
@@ -119,6 +119,7 @@ with tab_new:
             baseline_a = st.number_input("Baseline Alpha", value=0.01, format="%.3f")
         with ac3:
             max_tokens = st.number_input("Max Image Tokens", value=12)
+            num_queries = st.number_input("Num Queries (Pooler)", value=1, min_value=1, help="Qtd de vetores de atenção (Multi-Query).")
 
     # --- MONTAGEM DO COMANDO ---
     cmd = [
@@ -139,6 +140,7 @@ with tab_new:
         "--baseline-alpha", str(baseline_a),
         "--entropy-coeff", str(entropy_c),
         "--max-num-image-tokens", str(max_tokens),
+        "--num-queries", str(num_queries),
         "--pooler-type", pooler_type,
         "--head-type", head_type,
         "--loss-type", loss_type
@@ -161,30 +163,57 @@ with tab_new:
     with col_btn1:
         run_btn = st.button("▶️ Executar Treinamento", type="primary")
     
+    # ... (código anterior do app.py) ...
+
     if run_btn:
         st.info("Iniciando processo... Acompanhe os logs abaixo.")
         output_area = st.empty()
         logs = []
         
-        # Execução em tempo real
+        process = None # Inicializa variável
+        
         try:
-            process = run_training(cmd)
+            # Inicia o processo
+            process = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.STDOUT, 
+                text=True,
+                bufsize=1, # Buffer de linha para aparecer rápido
+                universal_newlines=True
+            )
+            
+            # Loop de leitura seguro
             while True:
                 line = process.stdout.readline()
                 if not line and process.poll() is not None:
                     break
+                
                 if line:
                     logs.append(line)
-                    # Mostra as últimas 20 linhas para não travar a UI
-                    output_area.code("".join(logs[-20:]), language="text")
+                    # Mantém apenas as últimas 30 linhas para não travar o navegador
+                    output_area.code("".join(logs[-30:]), language="text")
             
             if process.returncode == 0:
                 st.success("Treinamento finalizado com sucesso! Verifique a aba 'Histórico'.")
             else:
-                st.error("Ocorreu um erro durante o treinamento.")
-                
+                st.error(f"Ocorreu um erro. Código de saída: {process.returncode}")
+
         except Exception as e:
-            st.error(f"Erro ao executar: {e}")
+            st.warning("Processo interrompido pelo usuário ou erro de sistema.")
+            st.error(f"Detalhe: {e}")
+            
+        finally:
+            # O BLOCO DE SEGURANÇA
+            # Se você clicar em "Stop" no Streamlit, este bloco é executado.
+            if process and process.poll() is None:
+                print("Matando processo zumbi...")
+                process.terminate() # Tenta fechar educadamente
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill() # Mata forçado se não fechar
+                st.warning("🛑 O processo de treinamento foi encerrado forçadamente.")
 
 # ==========================================
 # ABA 2: HISTÓRICO

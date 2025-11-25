@@ -12,6 +12,7 @@ class CaVLConfig(PretrainedConfig):
         proj_hidden=4096,
         proj_out=512,
         num_pool_heads=8,
+        num_queries=1,  # <--- ADICIONE ISSO (Default 1 para compatibilidade)
         use_gradient_checkpointing=True,
         force_input_grads=True,
         **kwargs
@@ -23,5 +24,6 @@ class CaVLConfig(PretrainedConfig):
         self.proj_hidden = proj_hidden
         self.proj_out = proj_out
         self.num_pool_heads = num_pool_heads
+        self.num_queries = num_queries # <--- E ISSO
         self.use_gradient_checkpointing = use_gradient_checkpointing
         self.force_input_grads = force_input_grads

@@ -32,16 +32,14 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 from cavl_doc.data.dataset import DocumentPairDataset
 from cavl_doc.models.backbone_loader import load_model, warm_up_model
 from cavl_doc.utils.helpers import setup_experiment_dir
+from cavl_doc.modules.heads import build_head
 from cavl_doc.models.policy import ProfessorNetwork
 from cavl_doc.trainers.rl_trainer import run_rl_siamese_loop
-
-# Importa o builder de heads (para usar o default ou custom)
-from cavl_doc.modules.heads import build_head
 
 def prepare_experiment(args):
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     if not args.wandb_run_name:
-        args.wandb_run_name = f"{args.dataset_name}_{args.model_name}_rl_{timestamp}"
+        args.wandb_run_name = f"{args.dataset_name}_{args.model_name}_{args.loss_type}_{timestamp}"
     
     experiment_name = args.wandb_run_name
     base_path = "/mnt/large/checkpoints" if os.path.exists("/mnt/large") else "checkpoints"
@@ -72,7 +70,7 @@ def main(args):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # --- 1) Carregar Backbone ---
-    print(f"Loading backbone model '{args.model_name}' (4-bit={args.load_in_4bit}) ...")
+    print(f"Loading backbone model '{args.model_name}'...")
     backbone, processor, tokenizer, _, _ = load_model(
         model_name=args.model_name,
         adapter_path=None,
@@ -85,7 +83,6 @@ def main(args):
     # --- 2) Instanciar Head e Professor ---
     LLM_HIDDEN_DIM = 1536
     
-    # Agora usamos o BUILDER para criar o head, permitindo troca fácil via args
     print(f"Construindo Head do tipo: '{args.head_type}'")
     student_head = build_head(
         head_type=args.head_type,
@@ -108,6 +105,15 @@ def main(args):
         device='cpu'
     )
     
+    # Se o dataset tiver classes detectadas, usa esse número. Senão usa o argumento.
+    detected_classes = getattr(dataset, 'num_classes', 0)
+    if detected_classes > 0:
+        num_classes = detected_classes
+        print(f"Classes detectadas no dataset: {num_classes}")
+    else:
+        num_classes = args.num_classes
+        print(f"Usando num_classes do argumento: {num_classes}")
+
     if args.training_sample_size > 0 and args.training_sample_size < len(dataset):
         indices = random.sample(range(len(dataset)), args.training_sample_size)
         dataset = torch.utils.data.Subset(dataset, indices)
@@ -117,11 +123,9 @@ def main(args):
     if not os.path.exists(val_csv):
         val_csv = None
         print("Aviso: validation_pairs.csv não encontrado. Usando split automático.")
-    else:
-        print(f"Usando validação externa: {val_csv}")
 
     # --- 5) Iniciar Treinamento ---
-    print("Starting run_rl_siamese_loop trainer ...")
+    print(f"Starting run_rl_siamese_loop (Loss: {args.loss_type})...")
     run_rl_siamese_loop(
         base_model=backbone,
         student_head=student_head,
@@ -148,10 +152,12 @@ def main(args):
         entropy_coeff=args.entropy_coeff,
         seed=args.seed,
         use_wandb=args.use_wandb,
-        # Novos argumentos modulares
+        # Argumentos Modulares
         loss_type=args.loss_type,
         pooler_type=args.pooler_type,
-        head_type=args.head_type
+        head_type=args.head_type,
+        num_classes=num_classes, # Necessário para ArcFace
+        num_queries=args.num_queries # <--- Conecta o último fio
     )
     
     if args.use_wandb:
@@ -162,14 +168,18 @@ def parse_args():
     p = argparse.ArgumentParser(description="Script to run CaVL (Siamese) RL training.")
     
     # WandB Arguments
-    p.add_argument("--use-wandb", action="store_true", help="Enable Weights & Biases logging")
-    p.add_argument("--wandb-project", type=str, default="CaVL-Doc", help="WandB Project Name")
-    p.add_argument("--wandb-run-name", type=str, default=None, help="WandB Run Name (Optional)")
+    p.add_argument("--use-wandb", action="store_true")
+    p.add_argument("--wandb-project", type=str, default="CaVL-Doc")
+    p.add_argument("--wandb-run-name", type=str, default=None)
 
-    # Modular Arguments (Novos)
-    p.add_argument("--loss-type", type=str, default="contrastive", choices=["contrastive"], help="Type of loss function")
-    p.add_argument("--pooler-type", type=str, default="attention", choices=["attention", "mean"], help="Type of pooling layer")
-    p.add_argument("--head-type", type=str, default="mlp", choices=["mlp", "simple_mlp"], help="Type of projection head")
+    # Modular Arguments (ATUALIZADO)
+    p.add_argument("--loss-type", type=str, default="contrastive", 
+                   choices=["contrastive", "arcface", "cosface"], 
+                   help="Type of loss function")
+    p.add_argument("--pooler-type", type=str, default="attention", choices=["attention", "mean"])
+    p.add_argument("--head-type", type=str, default="mlp", choices=["mlp", "simple_mlp", "residual"])
+    p.add_argument("--num-classes", type=int, default=16, help="Número de classes (para ArcFace/CosFace)")
+    p.add_argument("--num-queries", type=int, default=1, help="Número de queries para Attention Pooling (Multi-Query)")
 
     p.add_argument("--dataset-name", type=str, default="LA-CDIP")
     p.add_argument("--pairs-csv", type=str, required=True)
