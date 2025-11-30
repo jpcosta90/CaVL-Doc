@@ -12,7 +12,7 @@ def compute_eer(labels, scores):
     thr = thresholds[idx]
     return eer, thr
 
-def compute_knn_accuracy(embeddings, labels, k_vals=[1, 5]):
+def compute_knn_metrics(embeddings, labels, k_vals=[1, 5]):
     """
     Computa acurácia k-NN (Top-1 e Top-k).
     embeddings: [N, Dim]

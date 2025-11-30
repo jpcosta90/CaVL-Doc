@@ -34,6 +34,26 @@ from cavl_doc.utils.helpers import setup_experiment_dir
 from cavl_doc.modules.heads import build_head
 from cavl_doc.models.policy import ProfessorNetwork
 from cavl_doc.trainers.rl_trainer import run_rl_siamese_loop
+from cavl_doc.trainers.curriculum_trainer import CurriculumTrainer
+from cavl_doc.models.modeling_cavl import build_cavl_model
+from cavl_doc.utils.embedding_utils import prepare_inputs_for_multimodal_embedding
+from torch.utils.data import DataLoader, Subset
+
+EMBEDDING_PROMPT = "<image> Analyze this document"
+
+def rl_full_collate_fn(batch):
+    img_a_list = [item['image_a'] for item in batch]
+    img_b_list = [item['image_b'] for item in batch]
+    labels = torch.tensor([item['label'] for item in batch], dtype=torch.float32)
+    
+    if 'class_a' in batch[0]:
+        class_a = torch.tensor([item['class_a'] for item in batch], dtype=torch.long)
+        class_b = torch.tensor([item['class_b'] for item in batch], dtype=torch.long)
+    else:
+        class_a = torch.zeros(len(batch), dtype=torch.long)
+        class_b = torch.zeros(len(batch), dtype=torch.long)
+        
+    return img_a_list, img_b_list, labels, class_a, class_b
 
 def prepare_experiment(args):
     timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -129,35 +149,120 @@ def main(args):
         print("Aviso: validation_pairs.csv não encontrado. Usando split automático.")
 
     # --- 5) Iniciar Treinamento ---
-    print(f"Starting run_rl_siamese_loop (Loss: {args.loss_type})...")
-    run_rl_siamese_loop(
-        base_model=backbone,
-        student_head=student_head,
-        professor_model=professor_model,
-        tokenizer=tokenizer,
-        dataset=dataset,
-        epochs=args.epochs,
-        student_lr=args.student_lr,
-        professor_lr=args.professor_lr,
-        device=device,
-        output_dir=str(outdir),
-        candidate_pool_size=args.candidate_pool_size,
-        student_batch_size=args.student_batch_size,
-        max_num_image_tokens=args.max_num_image_tokens,
-        cut_layer=args.cut_layer,
-        projection_output_dim=args.projection_output_dim,
-        val_csv_path=val_csv,
-        base_image_dir=args.base_image_dir,
-        val_fraction=args.val_fraction,
-        val_min_size=args.val_min_size,
-        patience=args.patience,
-        lr_reduce_factor=args.lr_reduce_factor,
-        baseline_alpha=args.baseline_alpha,
-        entropy_coeff=args.entropy_coeff,
-        seed=args.seed,
-        use_wandb=args.use_wandb,
-        # Args Modulares
-        loss_type=args.loss_type,
+    if args.use_curriculum:
+        phases_str = f"{args.phase1_loss} -> {args.phase2_loss}"
+        if args.phase3_loss:
+            phases_str += f" -> {args.phase3_loss}"
+        print(f"🚀 Starting Curriculum Training ({phases_str})")
+        
+        # 5.1 Prepare DataLoaders
+        if val_csv and os.path.exists(val_csv):
+            print(f"Carregando validação: {val_csv}")
+            val_dataset = DocumentPairDataset(val_csv, args.base_image_dir, args.input_size, args.max_num_image_tokens, 'cpu')
+            train_dataset = dataset
+        else:
+            print("Split automático treino/val.")
+            if isinstance(dataset, Subset): full_ds, ds_indices = dataset.dataset, list(dataset.indices)
+            else: full_ds, ds_indices = dataset, list(range(len(dataset)))
+            val_size = min(max(args.val_min_size, int(len(ds_indices) * args.val_fraction)), len(ds_indices)//10)
+            if val_size <= 0: val_size = min(args.val_min_size, len(ds_indices)//10)
+            val_indices = ds_indices[-val_size:]; train_indices = ds_indices[:-val_size]
+            if not train_indices:
+                random.shuffle(ds_indices); val_indices = ds_indices[:val_size]; train_indices = ds_indices[val_size:]
+            train_dataset = Subset(full_ds, train_indices)
+            val_dataset = Subset(full_ds, val_indices)
+
+        train_loader = DataLoader(train_dataset, batch_size=args.candidate_pool_size, shuffle=True, num_workers=4, collate_fn=rl_full_collate_fn)
+        val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, num_workers=2, collate_fn=rl_full_collate_fn)
+
+        # 5.2 Build Full Model
+        def _encode_fn(backbone, pv_tensor, cut_layer=args.cut_layer, **kwargs):
+            if pv_tensor.dim() == 5:
+                b, n, c, h, w = pv_tensor.shape
+                pv_tensor = pv_tensor.view(b * n, c, h, w)
+            inputs = prepare_inputs_for_multimodal_embedding(backbone, tokenizer, pv_tensor, EMBEDDING_PROMPT)
+            out = backbone(
+                input_ids=inputs['input_ids'].to(device),
+                attention_mask=inputs['attention_mask'].to(device),
+                pixel_values=inputs['pixel_values'].to(device, dtype=torch.bfloat16),
+                image_flags=inputs['image_flags'].to(device),
+                output_hidden_states=True,
+                return_dict=True
+            )
+            hidden_states = out.hidden_states
+            lm = backbone.language_model.model
+            idx = cut_layer + 1 if len(hidden_states) == (len(lm.layers) + 1) else cut_layer
+            return hidden_states[idx], None
+
+        siam = build_cavl_model(
+            backbone=backbone, 
+            cut_layer=args.cut_layer, 
+            encode_fn=_encode_fn,
+            pool_dim=1536, # InternVL hidden dim
+            proj_hidden=4096,
+            proj_out=args.projection_output_dim,
+            set_trainable=True,
+            tokenizer=tokenizer,
+            pooler_type=args.pooler_type,
+            head_type=args.head_type,
+            num_queries=args.num_queries
+        ).to(device)
+        siam.set_default_trainable()
+
+        # 5.3 Run Curriculum
+        config = vars(args)
+        config['lr'] = args.student_lr
+        config['professor_lr'] = args.professor_lr
+        config['weight_decay'] = 1e-4
+        config['output_dir'] = str(outdir)
+        config['num_classes'] = num_classes
+        config['entropy_coeff'] = args.entropy_coeff
+        config['baseline_alpha'] = args.baseline_alpha
+        
+        wandb_run = wandb if args.use_wandb else None
+        
+        trainer = CurriculumTrainer(
+            model=siam,
+            professor_model=professor_model,
+            tokenizer=tokenizer,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            device=device,
+            config=config,
+            wandb_run=wandb_run
+        )
+        trainer.run(epochs=args.epochs)
+
+    else:
+        print(f"Starting run_rl_siamese_loop (Loss: {args.loss_type})...")
+        run_rl_siamese_loop(
+            base_model=backbone,
+            student_head=student_head,
+            professor_model=professor_model,
+            tokenizer=tokenizer,
+            dataset=dataset,
+            epochs=args.epochs,
+            student_lr=args.student_lr,
+            professor_lr=args.professor_lr,
+            device=device,
+            output_dir=str(outdir),
+            candidate_pool_size=args.candidate_pool_size,
+            student_batch_size=args.student_batch_size,
+            max_num_image_tokens=args.max_num_image_tokens,
+            cut_layer=args.cut_layer,
+            projection_output_dim=args.projection_output_dim,
+            val_csv_path=val_csv,
+            base_image_dir=args.base_image_dir,
+            val_fraction=args.val_fraction,
+            val_min_size=args.val_min_size,
+            patience=args.patience,
+            lr_reduce_factor=args.lr_reduce_factor,
+            baseline_alpha=args.baseline_alpha,
+            entropy_coeff=args.entropy_coeff,
+            seed=args.seed,
+            use_wandb=args.use_wandb,
+            # Args Modulares
+            loss_type=args.loss_type,
         pooler_type=args.pooler_type,
         head_type=args.head_type,
         num_queries=args.num_queries,
@@ -195,6 +300,12 @@ def parse_args():
     p.add_argument("--scale", type=float, default=64.0, help="Scale (s/gamma) for ArcFace/Circle")
     p.add_argument("--num-sub-centers", type=int, default=3, help="Number of sub-centers (k) for SubCenter losses")
     p.add_argument("--std", type=float, default=0.05, help="Standard Deviation (std) for ElasticArcFace")
+
+    # Curriculum Learning
+    p.add_argument("--use-curriculum", action="store_true", help="Enable Two-Phase Curriculum Learning")
+    p.add_argument("--phase1-loss", type=str, default="expface", help="Loss for Phase 1 (GGA)")
+    p.add_argument("--phase2-loss", type=str, default="elastic_expface", help="Loss for Phase 2 (EHR)")
+    p.add_argument("--phase3-loss", type=str, default=None, help="Optional Loss for Phase 3")
 
     # Dataset & Model
     p.add_argument("--dataset-name", type=str, default="LA-CDIP")

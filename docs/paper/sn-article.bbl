@@ -1,6 +1,6 @@
 %% BioMed_Central_Bib_Style_v1.01
 
-\begin{thebibliography}{19}
+\begin{thebibliography}{17}
 % BibTex style file: bmc-mathphys.bst (version 2.1), 2014-07-24
 \ifx \bisbn   \undefined \def \bisbn  #1{ISBN #1}\fi
 \ifx \binits  \undefined \def \binits#1{#1}\fi
@@ -44,8 +44,7 @@
 \csname PreBibitemsHook\endcsname
 
 %%% 1
-\bibitem[\protect\citeauthoryear{Abdallah
-  et~al.}{2024}]{formUnderstandingSurvey}
+\bibitem[\protect\citeauthoryear{Abdallah et~al.}{2024}]{formUnderstandingSurvey}
 \begin{botherref}
 \oauthor{\bsnm{Abdallah}, \binits{A.}},
 \oauthor{\bsnm{Eberharter}, \binits{D.}},
@@ -83,8 +82,7 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (WML)}.
 \bauthor{\bsnm{Sidere}, \binits{N.}},
 \bauthor{\bsnm{Coustaty}, \binits{M.}},
 \bauthor{\bsnm{Lessard}, \binits{O.}}:
-\batitle{Optimizing identity documents classification in online systems: A
-  comparative analysis}.
+\batitle{Optimizing identity documents classification in online systems: A comparative analysis}.
 \bjtitle{International Journal on Document Analysis and Recognition (IJDAR)}
 (\byear{2025})
 \doiurl{10.1007/s10032-025-00555-5} .
@@ -102,10 +100,8 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (WML)}.
 \bauthor{\bsnm{Rusi{\~n}ol}, \binits{M.}},
 \bauthor{\bsnm{Terrades}, \binits{O.R.}},
 \bauthor{\bsnm{Llad{\'o}s}, \binits{J.}}:
-\bctitle{Globaldoc: A cross-modal vision-language framework for real-world
-  document image retrieval and classification}.
-In: \bbtitle{2025 IEEE/CVF Winter Conference on Applications of Computer Vision
-  (WACV)}
+\bctitle{Globaldoc: A cross-modal vision-language framework for real-world document image retrieval and classification}.
+In: \bbtitle{2025 IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)}
 (\byear{2025}).
 \doiurl{10.1109/WACV61041.2025.00147} .
 \bcomment{Referenciado do arquivo: GlobalDoc...pdf}
@@ -113,24 +109,21 @@ In: \bbtitle{2025 IEEE/CVF Winter Conference on Applications of Computer Vision
 \endbibitem
 
 %%% 5
-\bibitem[\protect\citeauthoryear{Scius{-}Bertrand
-  et~al.}{2024}]{scius2024zeroshot}
+\bibitem[\protect\citeauthoryear{Scius{-}Bertrand et~al.}{2024}]{scius2024zeroshot}
 \begin{bchapter}
 \bauthor{\bsnm{Scius{-}Bertrand}, \binits{A.}},
 \bauthor{\bsnm{Jungo}, \binits{M.}},
 \bauthor{\bsnm{V{\"{o}}gtlin}, \binits{L.}},
 \bauthor{\bsnm{Spat}, \binits{J.}},
 \bauthor{\bsnm{Fischer}, \binits{A.}}:
-\bctitle{Zero-shot prompting and few-shot fine-tuning: Revisiting document
-  image classification using large language models}.
+\bctitle{Zero-shot prompting and few-shot fine-tuning: Revisiting document image classification using large language models}.
 In: \beditor{\bsnm{Antonacopoulos}, \binits{A.}},
 \beditor{\bsnm{Chaudhuri}, \binits{S.}},
 \beditor{\bsnm{Chellappa}, \binits{R.}},
 \beditor{\bsnm{Liu}, \binits{C.}},
 \beditor{\bsnm{Bhattacharya}, \binits{S.}},
 \beditor{\bsnm{Pal}, \binits{U.}} (eds.)
-\bbtitle{Pattern Recognition - 27th International Conference, {ICPR} 2024,
-  Kolkata, India, December 1-5, 2024, Proceedings, Part {XIX}}.
+\bbtitle{Pattern Recognition - 27th International Conference, {ICPR} 2024, Kolkata, India, December 1-5, 2024, Proceedings, Part {XIX}}.
 \bsertitle{Lecture Notes in Computer Science},
 vol. \bseriesno{15319},
 pp. \bfpage{152}--\blpage{166}.
@@ -151,11 +144,8 @@ pp. \bfpage{152}--\blpage{166}.
 \bauthor{\bsnm{Warrier}, \binits{B.}},
 \bauthor{\bsnm{Mahalingam}, \binits{N.}},
 \bauthor{\bsnm{Bianchini}, \binits{R.}}:
-\bctitle{Characterizing power management opportunities for {LLMs} in the
-  cloud}.
-In: \bbtitle{Proceedings of the 29th ACM International Conference on
-  Architectural Support for Programming Languages and Operating Systems, Volume
-  3 (ASPLOS '24)},
+\bctitle{Characterizing power management opportunities for {LLMs} in the cloud}.
+In: \bbtitle{Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 3 (ASPLOS '24)},
 pp. \bfpage{207}--\blpage{222}.
 \bpublisher{ACM}, \blocation{???}
 (\byear{2024}).
@@ -169,8 +159,7 @@ pp. \bfpage{207}--\blpage{222}.
 \bauthor{\bsnm{Cruz}, \binits{L.}},
 \bauthor{\bsnm{Franch}, \binits{X.}},
 \bauthor{\bsnm{Mart{\'i}nez-Fern{\'a}ndez}, \binits{S.}}:
-\batitle{Innovating for tomorrow: The convergence of software engineering and
-  green {AI}}.
+\batitle{Innovating for tomorrow: The convergence of software engineering and green {AI}}.
 \bjtitle{ACM Transactions on Software Engineering and Methodology}
 \bvolume{34}(\bissue{5}),
 \bfpage{138}--\blpage{113813}
@@ -192,8 +181,7 @@ pp. \bfpage{207}--\blpage{222}.
 \bauthor{\bsnm{So}, \binits{D.}},
 \bauthor{\bsnm{Texier}, \binits{M.}},
 \bauthor{\bsnm{Dean}, \binits{J.}}:
-\batitle{The carbon footprint of machine learning training will plateau, then
-  shrink}.
+\batitle{The carbon footprint of machine learning training will plateau, then shrink}.
 \bjtitle{Computer}
 \bvolume{55}(\bissue{4}),
 \bfpage{18}--\blpage{28}
@@ -217,8 +205,7 @@ pp. \bfpage{207}--\blpage{222}.
 \bauthor{\bsnm{Ebert}, \binits{M.P.}},
 \bauthor{\bsnm{Truhn}, \binits{D.}},
 \bauthor{\bsnm{Kather}, \binits{J.N.}}:
-\batitle{Privacy-preserving large language models for structured medical
-  information retrieval}.
+\batitle{Privacy-preserving large language models for structured medical information retrieval}.
 \bjtitle{npj Digital Medicine}
 \bvolume{7}(\bissue{1}),
 \bfpage{257}
@@ -233,10 +220,8 @@ pp. \bfpage{207}--\blpage{222}.
 \bauthor{\bsnm{Strong}, \binits{J.}},
 \bauthor{\bsnm{Men}, \binits{Q.}},
 \bauthor{\bsnm{Noble}, \binits{J.A.}}:
-\bctitle{Trustworthy and practical {AI} for healthcare: {A} guided deferral
-  system with large language models}.
-In: \bbtitle{The Thirty-Ninth AAAI Conference on Artificial Intelligence
-  (AAAI-25)}
+\bctitle{Trustworthy and practical {AI} for healthcare: {A} guided deferral system with large language models}.
+In: \bbtitle{The Thirty-Ninth AAAI Conference on Artificial Intelligence (AAAI-25)}
 (\byear{2025})
 \end{bchapter}
 \endbibitem
@@ -260,21 +245,6 @@ In: \bbtitle{The Thirty-Ninth AAAI Conference on Artificial Intelligence
 \endbibitem
 
 %%% 12
-\bibitem[\protect\citeauthoryear{Matiisen et~al.}{2017}]{matiisen2017tscl}
-\begin{botherref}
-\oauthor{\bsnm{Matiisen}, \binits{T.}},
-\oauthor{\bsnm{Oliver}, \binits{A.}},
-\oauthor{\bsnm{Cohen}, \binits{T.}},
-\oauthor{\bsnm{Schulman}, \binits{J.}}:
-Teacher-student curriculum learning.
-arXiv preprint arXiv:1707.00183
-(2017)
-{\href{https://arxiv.org/abs/1707.00183}{{arXiv:1707.00183}}}
-{[cs.LG]}
-\end{botherref}
-\endbibitem
-
-%%% 13
 \bibitem[\protect\citeauthoryear{Liu et~al.}{2021}]{liu_document_2021}
 \begin{barticle}
 \bauthor{\bsnm{Liu}, \binits{L.}},
@@ -292,7 +262,7 @@ arXiv preprint arXiv:1707.00183
 \end{barticle}
 \endbibitem
 
-%%% 14
+%%% 13
 \bibitem[\protect\citeauthoryear{Macedo et~al.}{2026}]{macedo2026vdm}
 \begin{bchapter}
 \bauthor{\bsnm{Macedo}, \binits{L.D.A.B.}},
@@ -301,23 +271,21 @@ arXiv preprint arXiv:1707.00183
 \bauthor{\bsnm{Freitas}, \binits{P.G.}},
 \bauthor{\bsnm{Weigang}, \binits{L.}}:
 \bctitle{Visual document matching for zero-shot document classification}.
-In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML
-  2026)}.
+In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML 2026)}.
 \bsertitle{Lecture Notes in Computer Science (LNCS)}.
 \bpublisher{Springer}, \blocation{???}
 (\byear{2026})
 \end{bchapter}
 \endbibitem
 
-%%% 15
+%%% 14
 \bibitem[\protect\citeauthoryear{Shu et~al.}{2024}]{shu2024dsncl}
 \begin{barticle}
 \bauthor{\bsnm{Shu}, \binits{Z.}},
 \bauthor{\bsnm{Zhuo}, \binits{G.}},
 \bauthor{\bsnm{Yu}, \binits{J.}},
 \bauthor{\bsnm{Yu}, \binits{Z.}}:
-\batitle{Deep supervision network with contrastive learning for zero-shot
-  sketch-based image retrieval}.
+\batitle{Deep supervision network with contrastive learning for zero-shot sketch-based image retrieval}.
 \bjtitle{Applied Soft Computing}
 \bvolume{167},
 \bfpage{112474}
@@ -326,7 +294,7 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML
 \end{barticle}
 \endbibitem
 
-%%% 16
+%%% 15
 \bibitem[\protect\citeauthoryear{Yan et~al.}{2024}]{yan2024lmmetric}
 \begin{barticle}
 \bauthor{\bsnm{Yan}, \binits{S.}},
@@ -334,8 +302,7 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML
 \bauthor{\bsnm{Shu}, \binits{X.}},
 \bauthor{\bsnm{Lu}, \binits{Z.}},
 \bauthor{\bsnm{Shen}, \binits{J.}}:
-\batitle{{LM-Metric}: Learned pair weighting and contextual memory for deep
-  metric learning}.
+\batitle{{LM-Metric}: Learned pair weighting and contextual memory for deep metric learning}.
 \bjtitle{Pattern Recognition}
 \bvolume{155},
 \bfpage{110722}
@@ -344,33 +311,14 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML
 \end{barticle}
 \endbibitem
 
-%%% 17
-\bibitem[\protect\citeauthoryear{Portelas
-  et~al.}{2020}]{portelas2020acl_survey}
-\begin{botherref}
-\oauthor{\bsnm{Portelas}, \binits{R.}},
-\oauthor{\bsnm{Colas}, \binits{C.}},
-\oauthor{\bsnm{Weng}, \binits{L.}},
-\oauthor{\bsnm{Hofmann}, \binits{K.}},
-\oauthor{\bsnm{Oudeyer}, \binits{P.-Y.}}:
-Automatic curriculum learning for deep rl: A short survey.
-arXiv preprint arXiv:2003.04664
-(2020)
-{\href{https://arxiv.org/abs/2003.04664}{{arXiv:2003.04664}}}
-{[cs.LG]}
-\end{botherref}
-\endbibitem
-
-%%% 18
+%%% 16
 \bibitem[\protect\citeauthoryear{Harley et~al.}{2015}]{harley2015rvlcdip}
 \begin{bchapter}
 \bauthor{\bsnm{Harley}, \binits{A.W.}},
 \bauthor{\bsnm{Ufkes}, \binits{A.}},
 \bauthor{\bsnm{Derpanis}, \binits{K.G.}}:
-\bctitle{Evaluation of deep convolutional nets for document image
-  classification and retrieval}.
-In: \bbtitle{13th International Conference on Document Analysis and
-  Recognition, {ICDAR} 2015, Nancy, France, August 23-26, 2015},
+\bctitle{Evaluation of deep convolutional nets for document image classification and retrieval}.
+In: \bbtitle{13th International Conference on Document Analysis and Recognition, {ICDAR} 2015, Nancy, France, August 23-26, 2015},
 pp. \bfpage{991}--\blpage{995}.
 \bpublisher{{IEEE} Computer Society}, \blocation{???}
 (\byear{2015}).
@@ -379,7 +327,7 @@ pp. \bfpage{991}--\blpage{995}.
 \end{bchapter}
 \endbibitem
 
-%%% 19
+%%% 17
 \bibitem[\protect\citeauthoryear{Sinha et~al.}{2024}]{sinha2024cica}
 \begin{bchapter}
 \bauthor{\bsnm{Sinha}, \binits{S.}},
@@ -387,14 +335,11 @@ pp. \bfpage{991}--\blpage{995}.
 \bauthor{\bsnm{Sheikh}, \binits{T.U.}},
 \bauthor{\bsnm{Stricker}, \binits{D.}},
 \bauthor{\bsnm{Afzal}, \binits{M.Z.}}:
-\bctitle{{CICA:} content-injected contrastive alignment for zero-shot document
-  image classification}.
+\bctitle{{CICA:} content-injected contrastive alignment for zero-shot document image classification}.
 In: \beditor{\bsnm{Smith}, \binits{E.H.B.}},
 \beditor{\bsnm{Liwicki}, \binits{M.}},
 \beditor{\bsnm{Peng}, \binits{L.}} (eds.)
-\bbtitle{Document Analysis and Recognition - {ICDAR} 2024 - 18th International
-  Conference, Athens, Greece, August 30 - September 4, 2024, Proceedings, Part
-  {IV}}.
+\bbtitle{Document Analysis and Recognition - {ICDAR} 2024 - 18th International Conference, Athens, Greece, August 30 - September 4, 2024, Proceedings, Part {IV}}.
 \bsertitle{Lecture Notes in Computer Science},
 vol. \bseriesno{14807},
 pp. \bfpage{124}--\blpage{141}.

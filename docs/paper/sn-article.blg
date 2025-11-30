@@ -20,50 +20,52 @@ Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Database file #1: sn-bibliography.bib
+Warning--I didn't find a database entry for "chen2024internvl"
 sn-mathphys-num.bst [2024/07/19 v1.1  bibliography style]
 Reallocated wiz_functions (elt_size=4) to 9000 items from 6000.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
-You've used 19 entries,
+You've used 17 entries,
             7485 wiz_defined-function locations,
-            1318 strings with 15546 characters,
-and the built_in function-call counts, 834447 in all, are:
-= -- 161350
-> -- 791
-< -- 213
-+ -- 104591
-- -- 378
-* -- 16122
-:= -- 141283
-add.period$ -- 39
-call.type$ -- 19
-change.case$ -- 245
-chr.to.int$ -- 583
-cite$ -- 19
-duplicate$ -- 1027
-empty$ -- 6912
-format.name$ -- 762
-if$ -- 217683
+            1305 strings with 15170 characters,
+and the built_in function-call counts, 827423 in all, are:
+= -- 160473
+> -- 741
+< -- 211
++ -- 104449
+- -- 360
+* -- 15596
+:= -- 139820
+add.period$ -- 37
+call.type$ -- 17
+change.case$ -- 235
+chr.to.int$ -- 581
+cite$ -- 17
+duplicate$ -- 955
+empty$ -- 6399
+format.name$ -- 700
+if$ -- 216146
 int.to.chr$ -- 1
-int.to.str$ -- 26
+int.to.str$ -- 24
 missing$ -- 0
-newline$ -- 384
-num.names$ -- 101
-pop$ -- 682
+newline$ -- 353
+num.names$ -- 91
+pop$ -- 624
 preamble$ -- 1
-purify$ -- 82
+purify$ -- 74
 quote$ -- 0
-skip$ -- 99435
+skip$ -- 99007
 stack$ -- 0
-substring$ -- 78761
-swap$ -- 525
-text.length$ -- 331
+substring$ -- 77738
+swap$ -- 505
+text.length$ -- 313
 text.prefix$ -- 0
 top$ -- 1
-type$ -- 804
+type$ -- 752
 warning$ -- 0
-while$ -- 794
+while$ -- 743
 width$ -- 0
-write$ -- 502
+write$ -- 459
+(There was 1 warning)

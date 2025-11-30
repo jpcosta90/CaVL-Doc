@@ -1,18 +1,18 @@
 # Fdb version 4
-["bibtex sn-article"] 1764467702.09555 "sn-article.aux" "sn-article.bbl" "sn-article" 1764467964.22542 0
+["bibtex sn-article"] 1764513450.6327 "sn-article.aux" "sn-article.bbl" "sn-article" 1764513452.91722 0
   "./sn-bibliography.bib" 1764466311.75162 56827 bbd01249779cd75d52f6e0d8cabb53cf ""
   "./sn-mathphys-num.bst" 1764466312.01562 64166 9adad5d5c1e00c8b866e91fad1a03aa0 ""
-  "sn-article.aux" 1764467963.80342 12248 5bd7b14832f287e539a3d781e9c77eb9 "pdflatex"
+  "sn-article.aux" 1764513452.46687 12321 2ca577124f25e9eb4b060e38df19327c "pdflatex"
   (generated)
   "sn-article.bbl"
   "sn-article.blg"
   (rewritten before read)
-["pdflatex"] 1764467962.10737 "/home/joaopaulo/Projects/CaVL-Doc/docs/paper/sn-article.tex" "sn-article.pdf" "sn-article" 1764467964.22609 0
+["pdflatex"] 1764513450.84889 "/home/joaopaulo/Projects/CaVL-Doc/docs/paper/sn-article.tex" "sn-article.pdf" "sn-article" 1764513452.91787 0
   "../../results/plots/LA-CDIP_performance_vs_parameters.png" 1763830696.9655 322945 86e0ef2488c35a62d8e301a7e10af4d7 ""
   "../assets/CAVL_structure.png" 1763837552.47877 1033301 d5a3b03ba8a04bb94955014b596fb8ff ""
   "../assets/problema pesquisa DAML.png" 1764467319.95211 25983 a9fdc258a799e6850e2fcaa78bdaf663 ""
   "/etc/texmf/web2c/texmf.cnf" 1762826628.54764 475 c0e671620eb5563b2130f56340a5fde8 ""
-  "/home/joaopaulo/Projects/CaVL-Doc/docs/paper/sn-article.tex" 1764467961.74578 63059 d2a9a081565f64bd97f6f816b4a31b3f ""
+  "/home/joaopaulo/Projects/CaVL-Doc/docs/paper/sn-article.tex" 1764513447.94186 56954 8ec7e84c4b57cf1a114679fe598653db ""
   "/usr/share/texlive/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/share/texlive/texmf-dist/fonts/tfm/jknappen/ec/ecbi1000.tfm" 1136768653 3072 e6fe53b666f9cbd66cb135c6fdea66d3 ""
   "/usr/share/texlive/texmf-dist/fonts/tfm/jknappen/ec/ecbx0800.tfm" 1136768653 3584 269b66e921ba58750c12f7f1c8ea3ebd ""
@@ -64,7 +64,6 @@
   "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb" 1248133631 32762 224316ccc9ad3ca0423a14971cfa7fc1 ""
   "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb" 1248133631 32569 5e5ddc8df908dea60932f3c484a54c0d ""
   "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb" 1248133631 32716 08e384dc442464e7285e891af9f45947 ""
-  "/usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/symbols/msbm10.pfb" 1248133631 34694 ad62b13721ee8eda1dcc8993c8bd7041 ""
   "/usr/share/texlive/texmf-dist/tex/context/base/mkii/supp-pdf.mkii" 1461363279 71627 94eb9990bed73c364d7f53f960cc8c5b ""
   "/usr/share/texlive/texmf-dist/tex/generic/atbegshi/atbegshi.sty" 1575674566 24708 5584a51a7101caf7e6bbf1fc27d8f7b1 ""
   "/usr/share/texlive/texmf-dist/tex/generic/bigintcalc/bigintcalc.sty" 1576625341 40635 c40361e206be584d448876bba8a64a3b ""
@@ -198,10 +197,10 @@
   "/usr/share/texmf/web2c/texmf.cnf" 1707919699 40399 f2c302f7d2af602abb742093540a5834 ""
   "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1762826651.02718 5472669 54eaf61a88b6b7896ebd0dac973cb29c ""
   "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1762826679 8213535 bd13190d91c5723e24b554d1ee1a2f46 ""
-  "sn-article.aux" 1764467963.80342 12248 5bd7b14832f287e539a3d781e9c77eb9 "pdflatex"
-  "sn-article.bbl" 1764467735.92231 14151 5be757e4aff9b36a1dc269c2f61f2144 "bibtex sn-article"
-  "sn-article.out" 1764467963.80442 7229 f7ec89c0da3c12d250ea9137497e4af7 "pdflatex"
-  "sn-article.tex" 1764467961.74578 63059 d2a9a081565f64bd97f6f816b4a31b3f ""
+  "sn-article.aux" 1764513452.46687 12321 2ca577124f25e9eb4b060e38df19327c "pdflatex"
+  "sn-article.bbl" 1764513450.83587 13172 ad1cc81e970dc6d63f1b220abc98ec1c "bibtex sn-article"
+  "sn-article.out" 1764513452.46887 7706 e74ed76509d9cd71fc54c82a58d90c62 "pdflatex"
+  "sn-article.tex" 1764513447.94186 56954 8ec7e84c4b57cf1a114679fe598653db ""
   "sn-jnl.cls" 1764466311.85362 55857 7d4515312123fd1744517a7415d792ff ""
   (generated)
   "sn-article.aux"

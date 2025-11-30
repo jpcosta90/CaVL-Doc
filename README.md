@@ -16,10 +16,14 @@ CaVL-Doc focuses exclusively on enhancing the **representation quality** of the 
 
 ![Model Architecture](docs/assets/CAVL_structure.png)
 
-The system utilizes a frozen, pre-trained LVLM (e.g., InternVL3) and fine-tunes it using a **Teacher-Student Curriculum Learning** strategy.
+The system utilizes a frozen, pre-trained LVLM (e.g., InternVL3) and fine-tunes it using a **Hybrid Curriculum-RL** strategy.
 
 * **The Student (CaVL Model):** A projection head attached to the frozen LVLM learns to map multimodal tokens into a compact embedding space optimized for comparison (Euclidean/Cosine).
-* **The Teacher (RL Policy):** A Reinforcement Learning agent selects the most informative training pairs ("hard negatives") to maximize the Student's learning efficiency.
+* **The Teacher (RL Policy):** A Reinforcement Learning agent (Professor) selects the most informative training pairs ("hard negatives") to maximize the Student's learning efficiency.
+* **The Curriculum (Loss Schedule):** A macro-strategy that transitions the objective function through three phases to ensure robust convergence:
+    1.  **Phase 1 (Geometric Alignment):** Uses **Contrastive Loss** to establish global structure.
+    2.  **Phase 2 (Angular Refinement):** Uses **ExpFace Loss** to enforce strict angular margins.
+    3.  **Phase 3 (Hard Adaptation):** Uses **Elastic ExpFace Loss** with stochastic margins to handle difficult samples and prevent overfitting.
 
 ---
 
@@ -34,7 +38,7 @@ The project is structured as a reusable Python package (`cavl_doc`).
 ├── analysis/                 # Stores CSV files related to error analysis
 ├── results/                  # Stores master result logs and generated plots
 ├── scripts/                  # Executable Python scripts
-│   ├── run_cavl_training.py  # Main training loop (RL + CaVL Model)
+│   ├── run_cavl_training.py  # Main training loop (Curriculum + RL)
 │   ├── run_siamese_eval.py   # Evaluation script for trained checkpoints
 │   └── update_readme.py      # Utility to update this README with new results
 └── src/                      # Source code library
@@ -42,7 +46,7 @@ The project is structured as a reusable Python package (`cavl_doc`).
     │   ├── __init__.py
     │   ├── models/           # Model definitions (CaVLModel, Policy, Backbone)
     │   ├── modules/          # Building blocks (Heads, Poolers, Losses)
-    │   ├── trainers/         # Training loops
+    │   ├── trainers/         # Training loops (CurriculumTrainer)
     │   ├── data/             # Dataset classes
     │   ├── evaluation/       # Metrics and Baselines
     │   └── utils/            # Helpers and visualization
@@ -79,20 +83,37 @@ The project is structured as a reusable Python package (`cavl_doc`).
 
 ### 1. Training the CaVL Model (`run_cavl_training.py`)
 
-This script runs the Siamese RL-based training loop. It freezes the backbone and trains the Projection Head (and optionally specified layers) using the Teacher-Student curriculum.
+This script runs the **Hybrid Curriculum-RL** training loop. It freezes the backbone and trains the Projection Head using the 3-phase curriculum, where the RL Agent selects data in every phase.
 
 ```bash
 python scripts/run_cavl_training.py \
-    --dataset-name "RVL-CDIP" \
-    --model-name "InternVL3-2B" \
-    --pairs-csv "data/RVL-CDIP/train_pairs.csv" \
-    --base-image-dir "/path/to/images/" \
-    --training-sample-size 2000 \
-    --epochs 5 \
-    --projection-output-dim 512 \
-    --student-batch-size 4
+  --dataset-name LA-CDIP \
+  --model-name InternVL3-2B \
+  --pairs-csv data/LA-CDIP/train_pairs.csv \
+  --base-image-dir /mnt/data/la-cdip \
+  --epochs 15 \
+  --training-sample-size 2000 \
+  --student-lr 0.0001 \
+  --professor-lr 0.0001 \
+  --candidate-pool-size 25 \
+  --student-batch-size 4 \
+  --cut-layer 27 \
+  --projection-output-dim 512 \
+  --patience 3 \
+  --baseline-alpha 0.01 \
+  --entropy-coeff 0.01 \
+  --max-num-image-tokens 12 \
+  --num-queries 1 \
+  --pooler-type attention \
+  --head-type mlp \
+  --use-wandb \
+  --wandb-project CaVL-Doc-Experiments-LA-CDIP \
+  --use-curriculum \
+  --phase1-loss contrastive \
+  --phase2-loss expface \
+  --phase3-loss elastic_expface
 ```
-* **Output:** Saves the best model to `checkpoints/` (e.g., `best_siam.pt`).
+* **Output:** Saves the best model to `checkpoints/` (e.g., `best_phase3.pt`).
 
 ### 2. Evaluating Embeddings (`run_siamese_eval.py`)
 
