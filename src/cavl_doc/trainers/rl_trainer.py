@@ -111,16 +111,17 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion):
             labels = labels.to(device)
             
             # --- [DIAGNÓSTICO DA LOSS] ---
-            # Não usamos student_criterion aqui porque ArcFace falha em Zero-Shot.
-            # Calculamos uma métrica agnóstica: Distância Cosseno Média.
-            # Isso deve dar um número diferente de zero se os vetores não forem nulos.
-            cos_sim = torch.nn.functional.cosine_similarity(za, zb)
-            # Loss dummy apenas para monitoramento: (1 - cos) para pares positivos
-            dummy_loss = (labels * (1 - cos_sim) + (1 - labels) * torch.relu(cos_sim)).mean()
-            losses.append(dummy_loss.item())
+            # Tenta calcular loss original, se falhar (ArcFace), usa proxy de cosseno
+            try:
+                ind_losses = student_criterion.forward_individual(za, zb, labels)
+                losses.append(ind_losses.mean().item())
+            except:
+                cos_sim = torch.nn.functional.cosine_similarity(za, zb)
+                dummy_loss = (labels * (1 - cos_sim) + (1 - labels) * torch.relu(cos_sim)).mean()
+                losses.append(dummy_loss.item())
             # -----------------------------
 
-            scores = cos_sim.cpu().numpy()
+            scores = torch.nn.functional.cosine_similarity(za, zb, dim=-1).cpu().numpy()
             all_scores.append(scores)
             all_labels.append(labels.cpu().numpy())
 
@@ -143,28 +144,17 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion):
         full_embeds = np.vstack(knn_embeds)
         full_classes = np.concatenate(knn_classes, axis=0)
         
-        # IMPRIME O QUE ESTÁ ACONTECENDO
-        unique_labels = np.unique(full_classes)
-        if len(unique_labels) < 10:
-            print(f"\n[DEBUG k-NN] Classes únicas encontradas na validação: {unique_labels}")
-            print(f"[DEBUG k-NN] Shape dos Embeddings: {full_embeds.shape}")
-            print(f"[DEBUG k-NN] Exemplo de classe: {full_classes[:5]}")
-        
-        # Filtra classes inválidas
         mask = full_classes != -1
         
-        if mask.sum() < 2:
-            print("[DEBUG k-NN] ⚠️ AVISO: Menos de 2 amostras válidas após filtro (-1).")
-        else:
-            from cavl_doc.evaluation.metrics import compute_knn_metrics
-            # Chamada explícita para ver se dá erro
+        if mask.sum() > 1:
             metrics = compute_knn_metrics(full_embeds[mask], full_classes[mask], k_vals=[1])
             r1 = metrics.get('R@1', 0.0)
+        else:
+            # Se não houver classes válidas, R@1 fica 0.0
+            pass
             
     except Exception as e:
-        print(f"\n[DEBUG k-NN] ❌ ERRO FATAL NO CÁLCULO: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"\n[DEBUG k-NN] ❌ Erro no cálculo: {e}")
 
     return mean_loss, eer, thr, r1
 
@@ -175,7 +165,9 @@ def run_rl_siamese_loop(
     cut_layer=27, projection_output_dim=512, val_fraction=0.05, val_min_size=200,
     patience=3, lr_reduce_factor=0.5, baseline_alpha=0.01, entropy_coeff=0.01, seed=42,
     use_wandb=False,
-    loss_type="contrastive", pooler_type="attention", head_type="mlp", num_classes=None, num_queries=1
+    loss_type="contrastive", pooler_type="attention", head_type="mlp", num_classes=None, num_queries=1,
+    # Novos argumentos para losses
+    margin=0.5, scale=64.0, num_sub_centers=3, std=0.05
 ):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -189,14 +181,23 @@ def run_rl_siamese_loop(
         'hidden_dim': 1536,
         'loss_type': loss_type,
         'head_type': head_type,
-        'num_queries': num_queries
+        'pooler_type': pooler_type,
+        'num_queries': num_queries,
+        # Use as variáveis diretamente, pois elas são argumentos da função
+        'margin': margin,  
+        'scale': scale,
+        'num_sub_centers': num_sub_centers,
+        'std': std
     }
 
+    # Define encode_fn (COM CORREÇÃO DE FLATTENING 5D)
     def _encode_fn(backbone, pv_tensor, cut_layer=cut_layer, **kwargs):
+        # --- CORREÇÃO CRÍTICA ---
         if pv_tensor.dim() == 5:
             b, n, c, h, w = pv_tensor.shape
             pv_tensor = pv_tensor.view(b * n, c, h, w)
-        
+        # ------------------------
+
         inputs = prepare_inputs_for_multimodal_embedding(backbone, tokenizer, pv_tensor, EMBEDDING_PROMPT)
         out = backbone(
             input_ids=inputs['input_ids'].to(device),
@@ -229,10 +230,17 @@ def run_rl_siamese_loop(
     
     professor_model.to(device).train()
 
+    # Loss Builder com novos parâmetros
+    print(f"Construindo Loss: {loss_type} (m={margin}, s={scale}, k={num_sub_centers}, std={std})")
     student_criterion = build_loss(
         loss_type, 
-        margin=0.5 if loss_type == 'arcface' else 1.0, 
+        margin=margin, 
+        m=margin, # ArcFace/CosFace/Circle usam 'm'
+        s=scale,
+        gamma=scale, # Circle usa gamma
         num_classes=num_classes, 
+        k=num_sub_centers,
+        std=std,
         in_features=projection_output_dim
     ).to(device)
 
@@ -307,12 +315,15 @@ def run_rl_siamese_loop(
             professor_model.train()
             with torch.no_grad():
                 ea, eb = student_forward_pass(img_a, img_b, False)
-                if loss_type == 'contrastive':
+                
+                if loss_type in ['contrastive', 'angular']:
                     sl = student_criterion.forward_individual(ea, eb, labels)
                 else:
+                    # Para ArcFace/CosFace, calculamos a loss individual de cada braço e tiramos a média
                     loss_a = student_criterion.forward_individual(ea, cls_a)
                     loss_b = student_criterion.forward_individual(eb, cls_b)
                     sl = (loss_a + loss_b) / 2.0
+
                 denom = (sl.max() - sl.min()).item() or 1.0
                 sl_norm = (sl - sl.min()) / (denom + 1e-6)
                 state = sl_norm.unsqueeze(-1)
@@ -331,7 +342,7 @@ def run_rl_siamese_loop(
             student_optimizer.zero_grad()
             sea, seb = student_forward_pass(sa, sb, True)
             
-            if loss_type == 'contrastive':
+            if loss_type in ['contrastive', 'angular']:
                 loss = student_criterion(sea, seb, slbs)
             else:
                 loss = student_criterion(sea, s_cls_a) + student_criterion(seb, s_cls_b)
@@ -342,7 +353,7 @@ def run_rl_siamese_loop(
 
             # 3. Update Prof
             with torch.no_grad():
-                if loss_type == 'contrastive':
+                if loss_type in ['contrastive', 'angular']:
                     s_ind = student_criterion.forward_individual(sea.detach(), seb.detach(), slbs)
                 else:
                     l_a = student_criterion.forward_individual(sea.detach(), s_cls_a)
@@ -376,16 +387,11 @@ def run_rl_siamese_loop(
             log_writer.writerow([epoch+1, global_batch_step, f"{loss.item():.4f}", f"{ploss.item():.4f}", f"{avg_r:.4f}", "", "", "", "", ""])
 
         pbar.close()
-        
-        # Validação
         vloss, veer, vthr, vr1 = validate_siam_on_loader(siam, val_loader, device, student_criterion)
         print(f"Val: EER={veer*100:.2f}% | R@1={vr1*100:.2f}% | Loss={vloss:.4f}")
         
         if use_wandb and wandb:
-            wandb.log({
-                "val/eer": veer, "val/loss": vloss, "val/recall_at_1": vr1,
-                "epoch": epoch + 1
-            })
+            wandb.log({"val/eer": veer, "val/loss": vloss, "val/recall_at_1": vr1, "epoch": epoch + 1})
 
         log_writer.writerow([epoch+1, "end", "", "", "", "", "", "", f"{vloss:.4f}", f"{veer:.4f}"])
 

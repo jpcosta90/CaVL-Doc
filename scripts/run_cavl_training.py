@@ -28,7 +28,6 @@ if not hasattr(warnings, '_original_warn'):
 
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-# Imports do Pacote cavl_doc
 from cavl_doc.data.dataset import DocumentPairDataset
 from cavl_doc.models.backbone_loader import load_model, warm_up_model
 from cavl_doc.utils.helpers import setup_experiment_dir
@@ -66,6 +65,10 @@ def main(args):
             group="cavl-rl-training"
         )
         print(f"🚀 WandB Inicializado: Run {args.wandb_run_name}")
+        if wandb.run:
+            for k, v in wandb.config.items():
+                if hasattr(args, k):
+                    setattr(args, k, v)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -88,7 +91,8 @@ def main(args):
         head_type=args.head_type,
         input_dim=LLM_HIDDEN_DIM, 
         proj_hidden=4096,
-        proj_out=args.projection_output_dim
+        proj_out=args.projection_output_dim,
+        dropout=0.1 # Opcional: expor no futuro
     ).to(device)
     student_head.train()
 
@@ -105,7 +109,7 @@ def main(args):
         device='cpu'
     )
     
-    # Se o dataset tiver classes detectadas, usa esse número. Senão usa o argumento.
+    # Detecção de Classes
     detected_classes = getattr(dataset, 'num_classes', 0)
     if detected_classes > 0:
         num_classes = detected_classes
@@ -152,12 +156,17 @@ def main(args):
         entropy_coeff=args.entropy_coeff,
         seed=args.seed,
         use_wandb=args.use_wandb,
-        # Argumentos Modulares
+        # Args Modulares
         loss_type=args.loss_type,
         pooler_type=args.pooler_type,
         head_type=args.head_type,
-        num_classes=num_classes, # Necessário para ArcFace
-        num_queries=args.num_queries # <--- Conecta o último fio
+        num_queries=args.num_queries,
+        num_classes=num_classes,
+        # Hiperparâmetros de Loss
+        margin=args.margin,
+        scale=args.scale,
+        num_sub_centers=args.num_sub_centers,
+        std=args.std
     )
     
     if args.use_wandb:
@@ -167,20 +176,27 @@ def main(args):
 def parse_args():
     p = argparse.ArgumentParser(description="Script to run CaVL (Siamese) RL training.")
     
-    # WandB Arguments
+    # WandB
     p.add_argument("--use-wandb", action="store_true")
     p.add_argument("--wandb-project", type=str, default="CaVL-Doc")
     p.add_argument("--wandb-run-name", type=str, default=None)
 
-    # Modular Arguments (ATUALIZADO)
+    # Modular Arguments
     p.add_argument("--loss-type", type=str, default="contrastive", 
-                   choices=["contrastive", "arcface", "cosface"], 
+                   choices=["contrastive", "arcface", "elastic_arcface", "cosface", "elastic_cosface", "expface", "elastic_expface", "subcenter_arcface", "circle", "elastic_circle", "subcenter_circle", "angular"],
                    help="Type of loss function")
-    p.add_argument("--pooler-type", type=str, default="attention", choices=["attention", "mean"])
+    p.add_argument("--pooler-type", type=str, default="attention", choices=["attention", "mean", "gem", "netvlad"])
     p.add_argument("--head-type", type=str, default="mlp", choices=["mlp", "simple_mlp", "residual"])
-    p.add_argument("--num-classes", type=int, default=16, help="Número de classes (para ArcFace/CosFace)")
-    p.add_argument("--num-queries", type=int, default=1, help="Número de queries para Attention Pooling (Multi-Query)")
+    p.add_argument("--num-queries", type=int, default=1, help="Number of attention queries for pooling")
+    p.add_argument("--num-classes", type=int, default=16, help="Number of classes (fallback if not detected)")
 
+    # Hiperparâmetros de Loss
+    p.add_argument("--margin", type=float, default=0.5, help="Margin (m) for ArcFace/CosFace/ExpFace")
+    p.add_argument("--scale", type=float, default=64.0, help="Scale (s/gamma) for ArcFace/Circle")
+    p.add_argument("--num-sub-centers", type=int, default=3, help="Number of sub-centers (k) for SubCenter losses")
+    p.add_argument("--std", type=float, default=0.05, help="Standard Deviation (std) for ElasticArcFace")
+
+    # Dataset & Model
     p.add_argument("--dataset-name", type=str, default="LA-CDIP")
     p.add_argument("--pairs-csv", type=str, required=True)
     p.add_argument("--base-image-dir", type=str, required=True)
@@ -190,9 +206,9 @@ def parse_args():
     p.add_argument("--max-num-image-tokens", dest="max_num_image_tokens", type=int, default=12)
     p.add_argument("--input-size", type=int, default=448)
 
+    # Training config
     p.add_argument("--training-sample-size", dest="training_sample_size", type=int, default=0)
     p.add_argument("--epochs", type=int, default=5)
-    
     p.add_argument("--load-in-4bit", action="store_true", default=False)
 
     p.add_argument("--student-lr", type=float, default=1e-4)

@@ -5,6 +5,17 @@ import glob
 import pandas as pd
 import subprocess
 import sys
+from cavl_doc.utils.tracking import fetch_wandb_runs # <--- Importe a nova função
+
+# ... (Funções auxiliares load_experiment_history e run_training mantidas) ...
+
+st.title("🧠 CaVL-Doc Manager")
+st.markdown("Gerenciador de Treinamento e Histórico para Modelos Vision-Language.")
+
+# ==========================================
+# ATUALIZAÇÃO: 3 ABAS AGORA
+# ==========================================
+tab_new, tab_local, tab_wandb = st.tabs(["🚀 Novo Treinamento", "📂 Histórico Local", "☁️ Histórico WandB"])
 
 # Configuração da Página
 st.set_page_config(page_title="CaVL-Doc Manager", page_icon="🧠", layout="wide")
@@ -216,49 +227,78 @@ with tab_new:
                 st.warning("🛑 O processo de treinamento foi encerrado forçadamente.")
 
 # ==========================================
-# ABA 2: HISTÓRICO
+# ABA 3: HISTÓRICO WANDB (NOVA)
 # ==========================================
-with tab_history:
-    st.header("Histórico de Experimentos")
-    
-    if st.button("🔄 Atualizar Lista"):
-        st.rerun()
+with tab_wandb:
+    st.header("Histórico na Nuvem (Weights & Biases)")
+    st.caption("Visualize métricas finais e comparações de todos os runs sincronizados.")
+
+    # Inputs de Conexão
+    c1, c2, c3 = st.columns([2, 2, 1])
+    with c1:
+        wb_entity = st.text_input("Entity/Usuário", value="jpcosta1990-university-of-brasilia")
+    with c2:
+        wb_proj = st.text_input("Projeto", value="CaVL-Doc-Experiments")
+    with c3:
+        st.write("") # Espaçamento
+        btn_load_wb = st.button("🔄 Baixar do WandB")
+
+    if btn_load_wb:
+        with st.spinner(f"Baixando dados de {wb_entity}/{wb_proj}..."):
+            try:
+                df_wandb = fetch_wandb_runs(entity=wb_entity, project=wb_proj)
+                if not df_wandb.empty:
+                    # Salva na sessão para não perder ao recarregar
+                    st.session_state['wandb_data'] = df_wandb
+                    st.success(f"Carregados {len(df_wandb)} experimentos!")
+                else:
+                    st.warning("Nenhum run encontrado ou erro de conexão.")
+            except Exception as e:
+                st.error(f"Erro: {e}")
+
+    # Exibição da Tabela WandB
+    if 'wandb_data' in st.session_state:
+        df = st.session_state['wandb_data']
         
-    df_hist = load_experiment_history()
-    
-    if df_hist.empty:
-        st.warning("Nenhum arquivo 'training_config.json' encontrado em 'checkpoints/'.")
-    else:
-        # Filtros de Tabela
+        # 1. Filtro de Colunas (WandB traz muita coisa)
+        all_cols = df.columns.tolist()
+        # Colunas prioritárias que queremos ver
+        priority_cols = [
+            'name', 'status', 
+            'val/best_eer', 'val/recall_at_1',  # Métricas Chave
+            'loss_type', 'head_type', 'pooler_type', # Arquitetura
+            'training_sample_size', 'epochs'
+        ]
+        # Interseção para garantir que existem
+        cols_to_show = [c for c in priority_cols if c in all_cols]
+        
+        # 2. Ordenação Inteligente (Melhor modelo primeiro)
+        if 'val/best_eer' in df.columns:
+            df = df.sort_values(by='val/best_eer', ascending=True)
+
         st.dataframe(
-            df_hist,
+            df,
+            column_order=cols_to_show,
             column_config={
-                "status": st.column_config.TextColumn("Status"),
-                "timestamp": st.column_config.TextColumn("Data/Hora"),
-                "outdir": None, # Esconde caminho completo se quiser
+                "name": st.column_config.TextColumn("Run Name", width="medium"),
+                "val/best_eer": st.column_config.NumberColumn("Melhor EER", format="%.4f"),
+                "val/recall_at_1": st.column_config.NumberColumn("R@1 (k-NN)", format="%.4f"),
+                "status": st.column_config.TextColumn("Status", width="small"),
             },
             use_container_width=True,
             hide_index=True
         )
         
+        # 3. Comparador Rápido
         st.divider()
-        st.subheader("Detalhes do Experimento Selecionado")
-        
-        selected_exp = st.selectbox("Selecione um experimento para ver detalhes:", df_hist['timestamp'] + " - " + df_hist['dataset_name'])
-        
-        if selected_exp:
-            # Recupera a linha selecionada
-            timestamp_key = selected_exp.split(" - ")[0]
-            row = df_hist[df_hist['timestamp'] == timestamp_key].iloc[0]
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown(f"**📂 Caminho:** `{row['checkpoint_path']}`")
-                st.markdown(f"**⚙️ Modelo:** `{row['model_name']}`")
-                st.markdown(f"**📉 Loss:** `{row.get('loss_type', 'N/A')}`")
-            with c2:
-                st.markdown(f"**🧠 Head:** `{row.get('head_type', 'N/A')}`")
-                st.markdown(f"**🌊 Pooler:** `{row.get('pooler_type', 'N/A')}`")
-                st.markdown(f"**🔢 Batch (Student):** `{row.get('student_batch_size', 'N/A')}`")
-            
-            st.json(row.to_dict())
+        st.subheader("Comparação Rápida")
+        if 'val/best_eer' in df.columns and 'val/recall_at_1' in df.columns:
+             # Gráfico de dispersão EER vs Recall (Trade-off)
+             st.scatter_chart(
+                 df, 
+                 x='val/recall_at_1', 
+                 y='val/best_eer',
+                 color='loss_type', # Colore por tipo de loss para ver qual é melhor
+                 size='epochs'
+             )
+             st.caption("Eixo X: Recall@1 (Maior é melhor) | Eixo Y: EER (Menor é melhor)")

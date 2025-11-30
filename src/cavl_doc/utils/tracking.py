@@ -3,6 +3,7 @@
 import pandas as pd
 from datetime import datetime
 import os
+import wandb
 
 class ExperimentTracker:
     """
@@ -72,3 +73,55 @@ class ExperimentTracker:
             sorted_df = self.results.sort_values(by='eer', ascending=True)
             print(sorted_df[existing_cols].to_string())
         print("---------------------------------------")
+
+def fetch_wandb_runs(entity=None, project="CaVL-Doc-Experiments"):
+    """
+    Baixa o histórico de experimentos direto do WandB.
+    
+    Args:
+        entity: Seu usuário ou organização no WandB (ex: 'jpcosta1990...'). 
+                Se None, usa o default configurado no login.
+        project: Nome do projeto.
+    """
+    api = wandb.Api()
+    
+    # Constrói o caminho "usuario/projeto"
+    path = f"{entity}/{project}" if entity else project
+    
+    try:
+        runs = api.runs(path)
+    except Exception as e:
+        print(f"Erro ao conectar ao WandB ({path}): {e}")
+        return pd.DataFrame()
+
+    summary_list = [] 
+    config_list = [] 
+    name_list = [] 
+    status_list = []
+    
+    print(f"Baixando dados de {len(runs)} experimentos do WandB...")
+    
+    for run in runs: 
+        # 1. Resumo (Métricas finais: best_eer, loss, etc)
+        # O .summary contém o último valor ou o valor marcado como summary (min/max)
+        summary_list.append(run.summary._json_dict) 
+        
+        # 2. Configuração (Hiperparâmetros: lr, batch_size, head_type...)
+        config_list.append({k:v for k,v in run.config.items() if not k.startswith('_')}) 
+        
+        # 3. Metadados
+        name_list.append(run.name) 
+        status_list.append(run.state) # running, finished, crashed
+
+    # Cria DataFrames
+    summary_df = pd.DataFrame(summary_list) 
+    config_df = pd.DataFrame(config_list) 
+    
+    # Junta tudo
+    runs_df = pd.concat([
+        pd.DataFrame({'name': name_list, 'status': status_list}),
+        config_df, 
+        summary_df
+    ], axis=1)
+    
+    return runs_df
