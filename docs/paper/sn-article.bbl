@@ -1,6 +1,6 @@
 %% BioMed_Central_Bib_Style_v1.01
 
-\begin{thebibliography}{17}
+\begin{thebibliography}{18}
 % BibTex style file: bmc-mathphys.bst (version 2.1), 2014-07-24
 \ifx \bisbn   \undefined \def \bisbn  #1{ISBN #1}\fi
 \ifx \binits  \undefined \def \binits#1{#1}\fi
@@ -312,6 +312,20 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML 202
 \endbibitem
 
 %%% 16
+\bibitem[\protect\citeauthoryear{Weigang and da~Silva}{1999}]{weigang1999study}
+\begin{bchapter}
+\bauthor{\bsnm{Weigang}, \binits{L.}},
+\bauthor{\bsnm{Silva}, \binits{N.C.}}:
+\bctitle{A study of parallel neural networks}.
+In: \bbtitle{IJCNN'99. International Joint Conference on Neural Networks. Proceedings (Cat. No. 99CH36339)},
+vol. \bseriesno{2},
+pp. \bfpage{1113}--\blpage{1116}
+(\byear{1999}).
+\bcomment{IEEE}
+\end{bchapter}
+\endbibitem
+
+%%% 17
 \bibitem[\protect\citeauthoryear{Harley et~al.}{2015}]{harley2015rvlcdip}
 \begin{bchapter}
 \bauthor{\bsnm{Harley}, \binits{A.W.}},
@@ -327,7 +341,7 @@ pp. \bfpage{991}--\blpage{995}.
 \end{bchapter}
 \endbibitem
 
-%%% 17
+%%% 18
 \bibitem[\protect\citeauthoryear{Sinha et~al.}{2024}]{sinha2024cica}
 \begin{bchapter}
 \bauthor{\bsnm{Sinha}, \binits{S.}},

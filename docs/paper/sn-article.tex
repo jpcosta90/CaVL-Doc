@@ -290,6 +290,11 @@ The aggregated features are then processed by a \textbf{Residual Projection Head
 \end{equation}
 where $v$ is the concatenated output of the attention pooling. This residual structure ensures that the original, robust LVLM features are preserved as a baseline, while the MLP learns only the necessary non-linear transformations to adapt the metric space to the specific document classification task.
 
+\subsubsection{Efficiency: Once Learning vs. Autoregressive Decoding}
+A critical advantage of this architecture is its alignment with the concept of "Once Learning" \cite{weigang1999study}. Drawing inspiration from biological neural processing, where recognition often occurs as a rapid, parallel integration of stimuli rather than a sequential reconstruction, this paradigm contrasts sharply with standard LVLM usage. In the standard approach, comparing documents involves prompting the model and waiting for it to generate a textual response via autoregressive token decoding. This process is inherently sequential, akin to a slow, deliberative reasoning chain.
+
+In contrast, CaVL-Doc captures the entire semantic structure of the document—represented by the sequence of aligned multimodal tokens—in a single, holistic forward pass. This "at once" aggregation transforms the complex token sequence into a unified metric representation without the latency of sequential generation. The comparison is then reduced to a direct metric operation in the embedding space, which is orders of magnitude faster and scalable to large databases.
+
 \begin{figure}[t]
 \centering
 \includegraphics[width=\columnwidth]{../assets/CAVL_structure.png}
@@ -319,7 +324,7 @@ By introducing this stochasticity, the "Elastic" losses prevent the model from c
 
 \subsection{Optimization Strategy: A Hybrid Curriculum-RL Approach}\label{sec:curriculum}
 
-To further enhance the generalization capability of our model, particularly for unseen classes, we propose a robust training strategy that combines a **Macro-Level Curriculum** (scheduling the loss function) with a **Micro-Level RL Agent** (scheduling the data distribution).
+To further enhance the generalization capability of our model, particularly for unseen classes, we propose a robust training strategy that combines a Macro-Level Curriculum (scheduling the loss function) with a Micro-Level RL Agent (scheduling the data distribution).
 
 \subsubsection{Macro-Level: Three-Phase Loss Schedule}
 Instead of training with a static objective throughout, we divide the optimization process into three distinct phases. This strategy is designed to first establish a stable geometric baseline and then refine the decision boundaries by progressively introducing angular constraints and elasticity.
@@ -452,6 +457,7 @@ Ours (w/ ElasticArcFace) & Learned & \textbf{--} \\
 Ours (w/ ElasticCosFace) & Learned & -- \\
 Ours (w/ ElasticCircle) & Learned & -- \\
 Ours (w/ ElasticExpFace) & Learned & -- \\
+\textbf{Ours (CaVL-Doc w/ Curriculum)} & \textbf{Learned} & \textbf{--} \\
 \bottomrule
 \end{tabularx}
 
@@ -478,7 +484,6 @@ Ours (w/ ElasticExpFace) & Learned & -- \\
 % --- Bloco de Baselines ---
 \multicolumn{3}{l}{\textit{Baselines (Reference \& SOTA)}} \\
 \addlinespace[2pt] % Adiciona um pequeno espaço
-Pixel-Baseline (Reference) & Euclidean & 44.80 \\
 Pixel-Baseline (Reference) & Cosine & 36.30 \\
 \addlinespace[2pt]
 % --- Baselines SOTA (com proxy EER) ---
@@ -494,8 +499,14 @@ CICA (ZSL Split A T1)\tnote{1} \cite{sinha2024cica} & N/A & 29.36 \\
 InternVL3-2B (Base Model) & Cosine & 36.70 \\
 InternVL3-2B (Base Model) & Euclidean & 34.80 \\
 \addlinespace[2pt]
-Ours (Standard Metric Learning Ablation) & Learned (Euclidean) & -- \\
-\textbf{Ours (CaVL-Doc w/ ElasticArcFace)} & \textbf{Learned (Euclidean)} & \textbf{--} \\
+\multicolumn{3}{l}{\textit{CaVL-Doc (Multi-Query Attention + Residual Head)}} \\
+Ours (w/ Contrastive Loss) & Learned & -- \\
+Ours (w/ ArcFace) & Learned & -- \\
+Ours (w/ ElasticArcFace) & Learned & \textbf{--} \\
+Ours (w/ ElasticCosFace) & Learned & -- \\
+Ours (w/ ElasticCircle) & Learned & -- \\
+Ours (w/ ElasticExpFace) & Learned & -- \\
+\textbf{Ours (CaVL-Doc w/ Curriculum)} & \textbf{Learned} & \textbf{--} \\
 \bottomrule
 % --- MUDANÇA AQUI ---
 \end{tabularx}
