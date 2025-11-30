@@ -130,7 +130,7 @@
 
 \begin{document}
 
-\title[Article Title]{Difficulty-Aware Metric Learning for Few-Shot Document Image Classification}
+\title[Article Title]{CaVL-Doc: Comparative Aligned Vision-Language Document Embeddings for Zero-Shot DIC}
 
 %%=============================================================%%
 %% GivenName	-> \fnm{Joergen W.}
@@ -200,14 +200,14 @@ Despite this powerful zero-shot capability, two critical challenges limit the di
 
 This reveals a critical gap in the literature: a lack of methodologies for efficient and robust few-shot adaptation of LVLMs. The state-of-the-art for efficient FSL in documents is converging on Metric Learning—such as Prototypical Networks \cite{voerman2025optimizing, bakkali2025globaldoc} or Siamese Networks \cite{macedo2025vdm}—which learn a specialized embedding space on top of fixed model features. However, these standard metric learning approaches treat all training samples equally. They often fail when faced with high intra-class variance (e.g., visually distinct documents in the same class) and hard-to-distinguish negative pairs, leading to sub-optimal generalization and accuracy issues.
 
-To address this gap, we introduce a novel Difficulty-Aware Metric Learning (DAML) framework. Our approach enhances standard metric learning by incorporating a Policy-Guided Curriculum. Instead of relying on static, manual heuristics to define training difficulty, we introduce a Teacher-Student Reinforcement Learning (RL) architecture \cite{matiisen2017tscl}. In this framework, a "Teacher" agent is trained via Policy Gradient to learn an optimal, dynamic policy for curriculum generation. This policy guides the training of the "Student"—a lightweight metric learning head—by intelligently selecting the most informative training pairs. This RL-guided curriculum forces the metric head to learn a more robust and generalizable embedding space. We demonstrate that this lightweight adaptation method, applied to a 2B parameter open-source LVLM, achieves state-of-the-art few-shot performance, significantly outperforming standard metric learning baselines.
+To address this gap, we introduce CaVL-Doc (Comparative Aligned Vision-Language Document Embeddings), a novel framework for efficient few-shot adaptation. Our approach enhances standard metric learning by incorporating a Difficulty-Aware Policy-Guided Curriculum. Instead of relying on static, manual heuristics to define training difficulty, we introduce a Teacher-Student Reinforcement Learning (RL) architecture \cite{matiisen2017tscl}. In this framework, a "Teacher" agent is trained via Policy Gradient to learn an optimal, dynamic policy for curriculum generation. This policy guides the training of the "Student"—a lightweight metric learning head—by intelligently selecting the most informative training pairs. This RL-guided curriculum forces the metric head to learn a more robust and generalizable embedding space. We demonstrate that CaVL-Doc, applied to a 2B parameter open-source LVLM, achieves state-of-the-art few-shot performance, significantly outperforming standard metric learning baselines.
 
 % --- FIGURA CORRIGIDA PARA LAYOUT DE 2 COLUNAS ---
 \begin{figure}[t]
 \centering
 % MUDANÇA: 'textwidth' foi substituído por 'columnwidth'
 % 'columnwidth' se ajusta automaticamente à largura de uma única coluna.
-\includegraphics[width=\columnwidth]{images/problema pesquisa DAML.png}
+\includegraphics[width=\columnwidth]{../assets/problema pesquisa DAML.png}
 \caption{The conceptual problem of metric adaptation. An initial baseline metric is used for classification (green). The model's performance is evaluated (red), and the results feed an adaptation loop (purple) to continually improve the classification metric.}
 \label{fig:daml-loop}
 \end{figure}
@@ -215,21 +215,21 @@ To address this gap, we introduce a novel Difficulty-Aware Metric Learning (DAML
 \subsection{The main contributions}
 The key contributions of this work are summarized as follows:
 \begin{enumerate}
-    \item The proposal of a novel Difficulty-Aware Metric Learning (DAML) framework for efficient, few-shot adaptation of LVLMs in document image classification, which operates on fixed-backbone model embeddings.
+    \item The proposal of CaVL-Doc, a novel framework for efficient, few-shot adaptation of LVLMs in document image classification, which operates on fixed-backbone model embeddings.
     
     \item The introduction of a Policy-Guided Curriculum Learning strategy \cite{matiisen2017tscl} to the document domain, employing a Teacher-Student Reinforcement Learning (RL) architecture. In this framework, a "Teacher" agent is trained with Policy Gradient to learn an optimal curriculum for training the metric head.
     
     \item The design of a lightweight Metric Learning Head (the "Student") that is trained on the automated curriculum provided by the RL Teacher, learning a specialized and generalizable metric space for the target document domain.
     
-    \item An empirical demonstration that our DAML framework significantly outperforms standard FSL metric learning baselines (e.g., Prototypical Networks and standard Contrastive Loss) on the standard LA-CDIP document dataset.
+    \item An empirical demonstration that CaVL-Doc significantly outperforms standard FSL metric learning baselines (e.g., Prototypical Networks and standard Contrastive Loss) on the standard LA-CDIP document dataset.
 \end{enumerate}
 
-The remainder of this article is structured as follows: Section~\ref{sec:related-work} reviews the state-of-the-art in few-shot document classification, metric learning, and curriculum learning. Section~\ref{sec:methodology} details the proposed Difficulty-Aware Metric Learning framework, including the LVLM embedding extraction, the Metric Learning Head architecture, and the Policy-Guided RL Teacher. Section~\ref{sec:experiments} describes the experimental setup, datasets, and baseline comparisons. Section~\ref{sec:results} presents and analyzes the empirical results of our framework. Finally, section \ref{sec:conclusion} concludes the article by summarizing our contributions and outlining future research directions.
+The remainder of this article is structured as follows: Section~\ref{sec:related-work} reviews the state-of-the-art in few-shot document classification, metric learning, and curriculum learning. Section~\ref{sec:methodology} details the proposed CaVL-Doc framework, including the LVLM embedding extraction, the Metric Learning Head architecture, and the Policy-Guided RL Teacher. Section~\ref{sec:experiments} describes the experimental setup, datasets, and baseline comparisons. Section~\ref{sec:results} presents and analyzes the empirical results of our framework. Finally, section \ref{sec:conclusion} concludes the article by summarizing our contributions and outlining future research directions.
 
 % --- Fim da Introdução ---
 
 \section{Related Work}\label{sec:related-work}
-This work is positioned at the intersection of several key research areas within document analysis and machine learning. To provide a comprehensive background for our proposed Difficulty-Aware Metric Learning (DAML) framework, this section reviews the foundational and recent advancements in four critical domains:
+This work is positioned at the intersection of several key research areas within document analysis and machine learning. To provide a comprehensive background for our proposed CaVL-Doc framework, this section reviews the foundational and recent advancements in four critical domains:
 (1) The evolution of Document Image Classification (DIC) toward Few-Shot (FSL) paradigms; 
 (2) The application of Large Vision-Language Models (LVLMs) as fixed-backbone feature extractors; 
 (3) The adoption of Metric Learning as the state-of-the-art for efficient FSL in documents; and 
@@ -258,14 +258,14 @@ This "policy" of task selection can be formally optimized using reinforcement le
 
 % --- SEÇÃO DE METODOLOGIA REESCRITA ---
 
-\section{The Difficulty-Aware Metric Learning Framework}\label{sec:methodology}
+\section{The CaVL-Doc Framework}\label{sec:methodology}
 
 % MUDANÇA: O parágrafo introdutório foi totalmente reescrito.
 % Ele não menciona mais "Dual-Axis" ou "Policy-Guided Evolution".
 % Ele introduz o FSL e o "Difficulty-Aware Metric Learning" como a tese central.
 Our framework is designed for efficient Few-Shot Document Classification (FSL), where system performance must be adapted to specialized enterprise domains using only a handful of examples (the "support set"), without requiring full model retraining.
 
-The methodology is based on learning a specialized, lightweight metric head on top of a \textit{fixed} LVLM backbone. The core of our contribution is a Difficulty-Aware Metric Learning (DAML) approach. Instead of using standard metric learning, which treats all samples equally, we implement a Teacher-Student Curriculum Learning framework \cite{matiisen2017tscl}, where a Reinforcement Learning (RL) "Teacher" agent learns an optimal policy to train the metric head "Student" on the most informative samples.
+The methodology is based on learning a specialized, lightweight metric head on top of a \textit{fixed} LVLM backbone. The core of our contribution is the CaVL-Doc approach, which utilizes Difficulty-Aware Metric Learning. Instead of using standard metric learning, which treats all samples equally, we implement a Teacher-Student Curriculum Learning framework \cite{matiisen2017tscl}, where a Reinforcement Learning (RL) "Teacher" agent learns an optimal policy to train the metric head "Student" on the most informative samples.
 
 \subsection{Problem Formulation and Initial Deployment (Phase 1)}
 
@@ -318,13 +318,23 @@ The new classification metric becomes $\mathcal{S}_{new} = d(v'_q, v'_{p,k})$, w
 
 To train this \texttt{ProjectionHead}, we implement a Teacher-Student Curriculum Learning framework \cite{matiisen2017tscl, portelas2020acl_survey}.
 
-\subsubsection{The Student: Projection Head with Contrastive Loss}
+\subsubsection{The Student: Architecture and Objective}
 
-The Student is the \texttt{ProjectionHead} network $\mathcal{G}_\phi$. Its goal is to learn a discriminative embedding space. The Student is optimized using a Supervised Contrastive Loss ($\mathcal{L}_{Contrast}$) \cite{shu2024dsncl}. Given a batch of projected embeddings, this loss function pulls embeddings from the same class (positive pairs) closer together, while pushing embeddings from different classes (negative pairs) apart.
+The Student is the metric learning module, composed of two key components designed to preserve the geometric richness of the LVLM features while adapting them to the target domain.
+
+\paragraph{Architecture: Multi-Query Attention and Residual Projection}
+To capture the complex, multi-modal nature of documents (e.g., text, layout, stamps), we replace standard mean pooling with a \textbf{Multi-Query Attention Pooling} mechanism. Instead of condensing the document into a single vector, the model learns $Q$ distinct query vectors (e.g., $Q=4$), allowing it to attend to different semantic aspects of the document simultaneously.
+
+These pooled features are then processed by a \textbf{Residual Projection Head} ($\mathcal{G}_\phi$). Unlike standard MLPs that can distort the pre-trained geometry, our residual architecture ($x + \text{MLP}(x)$) ensures that the original, robust LVLM features are preserved, with the network learning only the necessary refinements for the specific task. This is crucial for maintaining Zero-Shot generalization capability.
+
+\paragraph{Objective: Elastic Margin Losses for Robustness}
+While standard Contrastive Loss is effective, it often struggles with the high intra-class variance of documents. To address this, we adopt angular margin losses (e.g., ArcFace, CosFace, Circle Loss) which enforce a stricter geometric structure on the embedding space.
+
+Crucially, to prevent overfitting to the seen classes (a common failure mode in Few-Shot scenarios), we introduce \textbf{Elastic Margin Losses} (e.g., ElasticArcFace, ElasticCircle). Instead of a fixed margin $m$, these losses sample the margin from a Gaussian distribution $m \sim \mathcal{N}(\mu, \sigma^2)$ at each training step. This stochasticity prevents the model from collapsing onto rigid class boundaries, forcing it to learn a more flexible and robust metric that generalizes better to unseen document types.
 \begin{equation}
-    \mathcal{L}_{Student}(\phi) = \mathcal{L}_{Contrast}(\{\mathcal{G}(v^{(i)}; \phi), y^{(i)}\}_{i=1}^{B})
+    \mathcal{L}_{Student}(\phi) = \mathcal{L}_{Elastic}(\{\mathcal{G}(v^{(i)}; \phi), y^{(i)}\}_{i=1}^{B})
 \end{equation}
-where $v^{(i)}$ are embeddings from the Error Bank $\mathcal{E}$ and $y^{(i)}$ are their corresponding true class labels.
+where $\mathcal{L}_{Elastic}$ represents our family of robust losses.
 
 \subsubsection{The Teacher: Policy Gradient for Curriculum Learning}
 
@@ -338,6 +348,13 @@ The core of this module is the reward signal. The Teacher is rewarded for findin
 \end{equation}
 The Teacher's policy $\pi_\psi$ is optimized using a Policy Gradient (PG) algorithm (e.g., REINFORCE) \cite{yan2024lmmetric} to maximize the expected future reward $J(\psi) = \mathbb{E}_{\pi_\psi}[R_t]$. By being trained to maximize the Student's loss, the Teacher learns a policy that focuses training on the most informative and challenging errors, thereby effectively maximizing the Student's Learning Progress (LP) \cite{matiisen2017tscl}.
 
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{../assets/CAVL_structure.png}
+\caption{Overview of the CaVL-Doc framework. The RL Teacher selects hard examples from the Error Bank to train the Student (Metric Head), which learns a robust embedding space using Elastic Margin Losses.}
+\label{fig:cavl-structure}
+\end{figure}
+
 % --- SEÇÃO 3.5 (SYNERGISTIC EVOLUTION) REMOVIDA ---
 % A subseção inteira sobre a "sinergia" entre Eixo 1 e Eixo 2
 % foi deletada.
@@ -348,7 +365,7 @@ The Teacher's policy $\pi_\psi$ is optimized using a Policy Gradient (PG) algori
 \section{Experimental Setup}\label{sec:experiments}
 
 % MUDANÇA: Nome do framework atualizado.
-To validate our proposed \textbf{Difficulty-Aware Metric Learning (DAML)} framework, we conduct a series of experiments designed to measure its performance against several baselines and ablations. This section details the datasets, evaluation protocols, implementation settings, and the comparison methods used.
+To validate our proposed \textbf{CaVL-Doc} framework, we conduct a series of experiments designed to measure its performance against several baselines and ablations. This section details the datasets, evaluation protocols, implementation settings, and the comparison methods used.
 
 %------------------------------------------------
 \subsection{Datasets and Evaluation Metrics}
@@ -412,7 +429,7 @@ All experiments are conducted using PyTorch on a system equipped with NVIDIA GPU
 % MUDANÇA: Lista de baselines totalmente reescrita para refletir a nova tese.
 % Removemos "GA-Only" e "Policy-Guided Evolution".
 % Adicionamos "Standard Metric Learning" como a ablação principal.
-To validate the effectiveness of our full DAML framework, we compare its performance against several key baselines:
+To validate the effectiveness of our full CaVL-Doc framework, we compare its performance against several key baselines:
 
 \begin{itemize}
     \item \textbf{Pixel-Baseline:} A non-deep learning baseline that performs pair-wise comparison using raw pixel values with Euclidean distance, as reported in \cite{macedo2026vdm}.
@@ -421,14 +438,14 @@ To validate the effectiveness of our full DAML framework, we compare its perform
     
     \item \textbf{Standard Metric Learning (Ablation):} This ablation isolates the benefit of the Teacher. We train the \texttt{ProjectionHead} $\mathcal{G}_\phi$ (Student) directly on the Error Bank $\mathcal{E}$ using the same $\mathcal{L}_{Contrast}$, but with \textit{standard random batch sampling} instead of the Teacher's curriculum. This represents a strong, standard DML baseline.
     
-    \item \textbf{Ours (DAML Framework):} The full, proposed framework. This model uses the static prompt $P_{static}$ for feature extraction, but performs classification using the \texttt{ProjectionHead} $\mathcal{S}_{new}$, which has been trained by the \textbf{RL Teacher's} optimal, difficulty-aware curriculum.
+    \item \textbf{Ours (CaVL-Doc Framework):} The full, proposed framework. This model uses the static prompt $P_{static}$ for feature extraction, but performs classification using the \texttt{ProjectionHead} $\mathcal{S}_{new}$, which has been trained by the \textbf{RL Teacher's} optimal, difficulty-aware curriculum.
 \end{itemize}
 
 \section{Results and Discussion}\label{sec:results}
 
 % --- PARÁGRAFO INTRODUTÓRIO (REESCRITO) ---
 % Foco mudado de "Dual-Axis" para "DAML"
-This section analyzes the empirical performance of our Difficulty-Aware Metric Learning (DAML) framework. We evaluate the contribution of our RL-guided curriculum by comparing its performance against initial baselines, a standard metric learning ablation, and state-of-the-art (SOTA) models. We demonstrate a systematic reduction in classification error, proving that our efficient adaptation method, when applied to a small model, can outperform large, brute-force baselines.
+This section analyzes the empirical performance of our CaVL-Doc framework. We evaluate the contribution of our RL-guided curriculum by comparing its performance against initial baselines, a standard metric learning ablation, and state-of-the-art (SOTA) models. We demonstrate a systematic reduction in classification error, proving that our efficient adaptation method, when applied to a small model, can outperform large, brute-force baselines.
 
 The summary of our results on the LA-CDIP dataset is presented in Table \ref{tab:results-la-cdip}, and the setup for future validation on RVL-CDIP is in Table \ref{tab:results-rvl-cdip}.
 
@@ -441,7 +458,7 @@ The summary of our results on the LA-CDIP dataset is presented in Table \ref{tab
 \begin{table*}[t] 
 \centering
 \begin{threeparttable}
-\caption{Framework performance on the \textbf{LA-CDIP} dataset. Performance is measured by Equal Error Rate (EER). A lower EER indicates better performance. Our DAML framework, applied to the 2B model, successfully outperforms its own baseline and the larger SOTA models.}
+\caption{Framework performance on the \textbf{LA-CDIP} dataset. Performance is measured by Equal Error Rate (EER). A lower EER indicates better performance. Our CaVL-Doc framework, applied to the 2B model, successfully outperforms its own baseline and the larger SOTA models.}
 \label{tab:results-la-cdip}
 % --- MUDANÇA AQUI ---
 \begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}Xlr} 
@@ -466,7 +483,7 @@ InternVL3-2B (Base Model) & Cosine & 5.86 \\
 InternVL3-2B (Base Model) & Euclidean & 3.57 \\
 \addlinespace[2pt]
 Ours (Standard Metric Learning Ablation) & Learned (Euclidean) & -- \\
-\textbf{Ours (DAML w/ RL-Teacher, 8k samples)} & \textbf{Learned (Euclidean)} & \textbf{2.51} \\
+\textbf{Ours (CaVL-Doc w/ RL-Teacher, 8k samples)} & \textbf{Learned (Euclidean)} & \textbf{2.51} \\
 \bottomrule
 % --- MUDANÇA AQUI ---
 \end{tabularx}
@@ -512,7 +529,7 @@ InternVL3-2B (Base Model) & Cosine & 36.70 \\
 InternVL3-2B (Base Model) & Euclidean & 34.80 \\
 \addlinespace[2pt]
 Ours (Standard Metric Learning Ablation) & Learned (Euclidean) & -- \\
-\textbf{Ours (DAML w/ RL-Teacher)} & \textbf{Learned (Euclidean)} & \textbf{--} \\
+\textbf{Ours (CaVL-Doc w/ RL-Teacher)} & \textbf{Learned (Euclidean)} & \textbf{--} \\
 \bottomrule
 % --- MUDANÇA AQUI ---
 \end{tabularx}
@@ -546,7 +563,7 @@ CICA (Baseline) \cite{sinha2024cica} & 61.84 & 69.36 & 65.38 \\
 \addlinespace[2pt]
 
 % --- Bloco do Nosso Modelo ---
-\textbf{Ours (DAML w/ RL-Teacher)} & \textbf{--} & \textbf{--} & \textbf{--} \\
+\textbf{Ours (CaVL-Doc w/ RL-Teacher)} & \textbf{--} & \textbf{--} & \textbf{--} \\
 \bottomrule
 \end{tabularx}
 
@@ -570,11 +587,11 @@ Our specific backbone, the much smaller InternVL3-2B, serves as our true startin
 These results are significant: our 2B model's baseline performance is already competitive with (and in one case, better than) the 14B SOTA model. This establishes a high bar for our adaptation framework; our goal is not just to fix a broken model, but to improve a strong one.
 
 %------------------------------------------------
-\subsection{Performance Analysis of Difficulty-Aware Metric Learning}
+\subsection{Performance Analysis of CaVL-Doc}
 %------------------------------------------------
 % MUDANÇA: Seção reescrita. O foco é a comparação entre o baseline
 % e o resultado do DAML.
-Our DAML framework addresses the limitations of a static Euclidean metric by training a lightweight \texttt{ProjectionHead} ($\mathcal{G}_\phi$) using the Teacher-Student RL curriculum. This module learns a specialized, low-dimensional space optimized for the "hard pairs" identified in the HIL Error Bank $\mathcal{E}$.
+Our CaVL-Doc framework addresses the limitations of a static Euclidean metric by training a lightweight \texttt{ProjectionHead} ($\mathcal{G}_\phi$) using the Teacher-Student RL curriculum. This module learns a specialized, low-dimensional space optimized for the "hard pairs" identified in the HIL Error Bank $\mathcal{E}$.
 
 To isolate the contribution of our RL-Teacher, we compare our full framework against a Standard Metric Learning (Ablation) baseline (listed as "--"). This ablation trains the same \texttt{ProjectionHead} with a standard contrastive loss and random batch sampling, representing a strong, conventional DML adaptation.
 
@@ -584,14 +601,14 @@ These results are the product of the Policy-Guided Curriculum. By training the T
 \subsection{Overall System Improvement and Comparison with State-of-the-Art}
 %------------------------------------------------
 % MUDANÇA: Narrativa simplificada para "Eficiência vs. Força Bruta".
-The results from Table \ref{tab:results-la-cdip} demonstrate the clear success of our DAML framework. We show a systematic path to SOTA performance:
+The results from Table \ref{tab:results-la-cdip} demonstrate the clear success of our CaVL-Doc framework. We show a systematic path to SOTA performance:
 \begin{enumerate}
     \item \textbf{SOTA Baselines (14B, GPT-4o):} Set the target performance at \textbf{2.75\% - 2.85\%} EER.
     \item \textbf{Our Base-LVLM (2B):} Achieves a strong, competitive baseline of \textbf{3.57\%} EER.
-    \item \textbf{Our DAML Framework (2B):} After applying our lightweight, RL-guided metric learning, performance is further refined to a new SOTA of \textbf{2.51\%} EER.
+    \item \textbf{Our CaVL-Doc Framework (2B):} After applying our lightweight, RL-guided metric learning, performance is further refined to a new SOTA of \textbf{2.51\%} EER.
 \end{enumerate}
 
-The final, crucial finding is that our DAML Framework, running on an efficient 2B parameter model, achieves a final EER of 2.51\%. This result significantly outperforms the performance of the much larger InternVL3-14B (2.85\%) and the proprietary ChatGPT-4o (2.75\%) baselines.
+The final, crucial finding is that our CaVL-Doc Framework, running on an efficient 2B parameter model, achieves a final EER of 2.51\%. This result significantly outperforms the performance of the much larger InternVL3-14B (2.85\%) and the proprietary ChatGPT-4o (2.75\%) baselines.
 
 This directly confirms our hypothesis: an efficient, lightweight model, when adapted with an intelligent and specialized metric learning strategy, can achieve superior performance to "brute-force" SOTA models that rely on massive scale.
 
@@ -601,8 +618,8 @@ This efficiency and performance are visualized in Figure \ref{fig:param-plot}. T
 % (O usuário indicou para manter esta figura)
 \begin{figure*}[t]
     \centering
-    \includegraphics[width=\textwidth]{images/LA-CDIP_performance_vs_parameters.png}
-    \caption{Performance (EER \%) vs. Model Parameters (Log Scale) on the LA-CDIP dataset. Lower EER (y-axis) is better. Our final DAML-adapted model (InternVL3-2B + DAML Framework) achieves the best performance while remaining in the low-parameter (high-efficiency) quadrant.}
+    \includegraphics[width=\textwidth]{../../results/plots/LA-CDIP_performance_vs_parameters.png}
+    \caption{Performance (EER \%) vs. Model Parameters (Log Scale) on the LA-CDIP dataset. Lower EER (y-axis) is better. Our final CaVL-Doc-adapted model (InternVL3-2B + CaVL-Doc Framework) achieves the best performance while remaining in the low-parameter (high-efficiency) quadrant.}
     \label{fig:param-plot}
 \end{figure*}
 
@@ -619,8 +636,8 @@ These human-identified errors are used to populate the Error Bank $\mathcal{E}$.
 
 \section{Conclusion}\label{sec:conclusion}
 
-% MUDANÇA: "Dual-Axis" removido, focado em "DAML" e "HIL".
-In this paper, we proposed a novel Difficulty-Aware Metric Learning (DAML) framework for Few-Shot Document Classification, driven by a \textbf{Human-in-the-Loop (HIL)} feedback cycle. We demonstrated that this framework can take a small, efficient, open-source LVLM (InternVL3-2B)---which is already competitive but still inferior to SOTA---and systematically adapt it to outperform large-scale, proprietary models like ChatGPT-4o.
+% MUDANÇA: "Dual-Axis" removido, focado em "DAML" e "HIL".for
+In this paper, we proposed CaVL-Doc, a novel framework for Zero-Shot Document Classification, driven by a \textbf{Human-in-the-Loop (HIL)} feedback cycle. We demonstrated that this framework can take a small, efficient, open-source LVLM (InternVL3-2B)---which is already competitive but still inferior to SOTA---and systematically adapt it to outperform large-scale, proprietary models like ChatGPT-4o.
 
 \subsection{Summary of Findings}
 
@@ -629,9 +646,9 @@ Our primary contributions are validated by the empirical results on the LA-CDIP 
     % MUDANÇA: Bullet points totalmente reescritos para a nova narrativa.
     \item \textbf{Baseline Validation:} We established that a 2B parameter LVLM can achieve a strong baseline (3.57\% EER), already competitive with SOTA models (2.85\% EER), but that it starts from a very poor, unusable state (38.98\% EER) without proper prompting.
     
-    \item \textbf{Efficacy of DAML (RL-Teacher):} We demonstrated the clear, additive benefit of our \texttt{ProjectionHead} trained via an RL Teacher-Student curriculum. Our DAML Framework successfully improved a strong 3.57\% EER baseline down to a final EER of 2.51\%.
+    \item \textbf{Efficacy of CaVL-Doc (RL-Teacher):} We demonstrated the clear, additive benefit of our \texttt{ProjectionHead} trained via an RL Teacher-Student curriculum. Our CaVL-Doc Framework successfully improved a strong 3.57\% EER baseline down to a final EER of 2.51\%.
     
-    \item \textbf{SOTA Performance with Efficiency:} The final, crucial finding is that our lightweight 2B model, when adapted with our DAML framework, achieves a result (2.51\% EER) that significantly outperforms larger SOTA baselines like the InternVL3-14B (2.85\% EER) and ChatGPT-4o (2.75\% EER).
+    \item \textbf{SOTA Performance with Efficiency:} The final, crucial finding is that our lightweight 2B model, when adapted with our CaVL-Doc framework, achieves a result (2.51\% EER) that significantly outperforms larger SOTA baselines like the InternVL3-14B (2.85\% EER) and ChatGPT-4o (2.75\% EER).
 \end{itemize}
 
 Ultimately, this work provides a clear methodology for adapting and evolving smaller, sovereign models to achieve SOTA performance in specialized domains, using targeted human feedback as the primary catalyst for an automated training curriculum.
@@ -641,7 +658,7 @@ Ultimately, this work provides a clear methodology for adapting and evolving sma
 While our results are promising, this methodology opens several avenues for future research:
 \begin{itemize}
     
-    \item \textbf{Generalizability Evaluation:} We plan to conduct a full evaluation of the DAML framework on the RVL-CDIP dataset, using both EER and One-Shot Accuracy metrics. This will confirm whether the performance gains on LA-CDIP are generalizable across different large-scale document collections.
+    \item \textbf{Generalizability Evaluation:} We plan to conduct a full evaluation of the CaVL-Doc framework on the RVL-CDIP dataset, using both EER and One-Shot Accuracy metrics. This will confirm whether the performance gains on LA-CDIP are generalizable across different large-scale document collections.
     
     \item \textbf{Trainable Attention Pooling:} Currently, the LVLM's hidden states are compressed into a single vector using a simple \textit{mean pooling} operation. A promising direction is to replace this with a trainable \textit{Attention Pooling} layer. This layer would learn to assign higher weights to the most salient tokens or image patches, creating a more discriminative feature vector to be fed into the Student's \texttt{ProjectionHead}.
     
@@ -774,7 +791,7 @@ The source code for the framework and experiments described in this study is ava
 %% clutter, break up or be distracting to the text. Appendices can consist of sections, figures, 
 %% tables and equations etc.
 
-\end{appendices}
+% \end{appendices}
 
 %%===========================================================================================%%
 %% If you are submitting to one of the Nature Portfolio journals, using the eJP submission   %%
@@ -782,7 +799,6 @@ The source code for the framework and experiments described in this study is ava
 %% by copying the reference list from your .bbl file, paste it into the main manuscript .tex %%
 %% file, and delete the associated \verb+\bibliography+ commands.                            %%
 %%===========================================================================================%%
-\bibliographystyle{plainnat}
 \bibliography{sn-bibliography}
 %% if required, the content of .bbl file can be included here once bbl is generated
 % \input sn-article.bbl
