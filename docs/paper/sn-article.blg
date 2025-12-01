@@ -20,52 +20,50 @@ Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Database file #1: sn-bibliography.bib
-Warning--I didn't find a database entry for "chen2024internvl"
 sn-mathphys-num.bst [2024/07/19 v1.1  bibliography style]
 Reallocated wiz_functions (elt_size=4) to 9000 items from 6000.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
 Reallocated singl_function (elt_size=4) to 100 items from 50.
-You've used 18 entries,
+You've used 19 entries,
             7485 wiz_defined-function locations,
-            1312 strings with 15372 characters,
-and the built_in function-call counts, 909816 in all, are:
-= -- 176923
-> -- 782
-< -- 238
-+ -- 115579
-- -- 376
-* -- 16707
-:= -- 153517
-add.period$ -- 39
-call.type$ -- 18
-change.case$ -- 251
-chr.to.int$ -- 654
-cite$ -- 18
-duplicate$ -- 1008
-empty$ -- 6586
-format.name$ -- 721
-if$ -- 238008
+            1319 strings with 16141 characters,
+and the built_in function-call counts, 928406 in all, are:
+= -- 178990
+> -- 950
+< -- 240
++ -- 115733
+- -- 459
+* -- 18468
+:= -- 157340
+add.period$ -- 40
+call.type$ -- 19
+change.case$ -- 256
+chr.to.int$ -- 658
+cite$ -- 19
+duplicate$ -- 1188
+empty$ -- 8129
+format.name$ -- 965
+if$ -- 241810
 int.to.chr$ -- 1
-int.to.str$ -- 26
+int.to.str$ -- 27
 missing$ -- 0
-newline$ -- 367
-num.names$ -- 96
-pop$ -- 643
+newline$ -- 419
+num.names$ -- 101
+pop$ -- 813
 preamble$ -- 1
-purify$ -- 79
+purify$ -- 83
 quote$ -- 0
-skip$ -- 109307
+skip$ -- 110179
 stack$ -- 0
-substring$ -- 84933
-swap$ -- 542
-text.length$ -- 337
+substring$ -- 88266
+swap$ -- 625
+text.length$ -- 348
 text.prefix$ -- 0
 top$ -- 1
-type$ -- 797
+type$ -- 824
 warning$ -- 0
-while$ -- 782
+while$ -- 917
 width$ -- 0
-write$ -- 479
-(There was 1 warning)
+write$ -- 537

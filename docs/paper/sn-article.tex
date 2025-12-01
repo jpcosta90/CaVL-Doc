@@ -264,7 +264,15 @@ The methodology is based on learning a specialized, lightweight metric head on t
 
 \subsection{Multimodal Token Alignment with InternVL3}\label{sec:backbone}
 
-The foundation of our framework is the InternVL3-2B model \cite{chen2024internvl}, a state-of-the-art Large Vision-Language Model (LVLM). Unlike traditional CNNs or ViTs that process images in isolation, InternVL3 is trained to align visual features with linguistic concepts.
+The foundation of our framework is the InternVL3-2B model \cite{internvl2024}, a state-of-the-art Large Vision-Language Model (LVLM). Unlike traditional CNNs or ViTs that process images in isolation, InternVL3 is trained to align visual features with linguistic concepts.
+
+We specifically select a Multimodal LLM over traditional unimodal encoders (e.g., BERT for text or ResNet for images) due to four critical advantages for complex document processing:
+\begin{itemize}
+    \item \textbf{Holistic Visual Context:} Unlike text-only models that rely on OCR output—thereby losing layout information—multimodal models perceive visual cues such as font size (indicating hierarchy), spatial structure (e.g., tables), and color (e.g., stamps indicating urgency), which are often more discriminative than the text itself.
+    \item \textbf{Reasoning and World Knowledge:} Pre-trained on vast corpora, these models possess inherent "common sense." For instance, they can infer that "Ibuprofen" relates to "Pharmacy" or "Healthcare" without explicit training, generating semantically richer embeddings than simple keyword matching.
+    \item \textbf{Robustness to OCR Failures:} By processing raw pixels directly ("OCR-Free"), the model is resilient to scanning noise, crumples, or low-resolution inputs that would typically produce garbled text for standard OCR engines.
+    \item \textbf{Native Multimodal Alignment:} Instead of late fusion strategies that concatenate disparate vector spaces, the visual and textual processing occurs within a single Transformer, resulting in a deeply aligned and non-linear fusion of modalities.
+\end{itemize}
 
 Given an input document image $x$, the model processes it through a vision encoder and a cross-modal alignment stage. Instead of using the final pooled output (which compresses the entire document into a single vector), we extract the sequence of $N$ aligned multimodal tokens, $T = \{t_1, t_2, \dots, t_N\}$, from the last hidden layer of the language model component. These tokens represent rich, localized semantic features of the document (e.g., specific text blocks, layout elements, stamps) that are already aligned with the model's language understanding.
 
@@ -707,7 +715,7 @@ The source code for the framework and experiments described in this study is ava
 % InternVL                                & 2.5     & 8B     & --     & --      & 8.58     & 10.40     \\
 %                                & 3      & 2B     & --     & --      & 38.98    & --        \\
 %                                         & 3      & 8B     & --     & --      & 4.04     & --        \\
-%                                         & 3     & 14B    & --     & --      & 2.85     & --        \\ \midrule
+%                                         & 3     & 14B     & --     & --      & 2.85     & --        \\ \midrule
 % \multirow{3}{*}{Siamese InternVL3}      & 1B      & 2B     & --     & --      & 4.83     & --        \\
 %                                         & 2B      & 4B     & --     & --      & 2.79     & --        \\
 %                                         & 8B      & 16B     & --     & --      & 3.34     & --        \\ \midrule

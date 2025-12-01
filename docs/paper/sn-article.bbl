@@ -1,6 +1,6 @@
 %% BioMed_Central_Bib_Style_v1.01
 
-\begin{thebibliography}{18}
+\begin{thebibliography}{19}
 % BibTex style file: bmc-mathphys.bst (version 2.1), 2014-07-24
 \ifx \bisbn   \undefined \def \bisbn  #1{ISBN #1}\fi
 \ifx \binits  \undefined \def \binits#1{#1}\fi
@@ -312,6 +312,58 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML 202
 \endbibitem
 
 %%% 16
+\bibitem[\protect\citeauthoryear{Chen et~al.}{2024}]{internvl2024}
+\begin{botherref}
+\oauthor{\bsnm{Chen}, \binits{Z.}},
+\oauthor{\bsnm{Wang}, \binits{W.}},
+\oauthor{\bsnm{Cao}, \binits{Y.}},
+\oauthor{\bsnm{Liu}, \binits{Y.}},
+\oauthor{\bsnm{Gao}, \binits{Z.}},
+\oauthor{\bsnm{Cui}, \binits{E.}},
+\oauthor{\bsnm{Zhu}, \binits{J.}},
+\oauthor{\bsnm{Ye}, \binits{S.}},
+\oauthor{\bsnm{Tian}, \binits{H.}},
+\oauthor{\bsnm{Liu}, \binits{Z.}},
+\oauthor{\bsnm{Gu}, \binits{L.}},
+\oauthor{\bsnm{Wang}, \binits{X.}},
+\oauthor{\bsnm{Li}, \binits{Q.}},
+\oauthor{\bsnm{Ren}, \binits{Y.}},
+\oauthor{\bsnm{Chen}, \binits{Z.}},
+\oauthor{\bsnm{Luo}, \binits{J.}},
+\oauthor{\bsnm{Wang}, \binits{J.}},
+\oauthor{\bsnm{Jiang}, \binits{T.}},
+\oauthor{\bsnm{Wang}, \binits{B.}},
+\oauthor{\bsnm{He}, \binits{C.}},
+\oauthor{\bsnm{Shi}, \binits{B.}},
+\oauthor{\bsnm{Zhang}, \binits{X.}},
+\oauthor{\bsnm{Lv}, \binits{H.}},
+\oauthor{\bsnm{Wang}, \binits{Y.}},
+\oauthor{\bsnm{Shao}, \binits{W.}},
+\oauthor{\bsnm{Chu}, \binits{P.}},
+\oauthor{\bsnm{Tu}, \binits{Z.}},
+\oauthor{\bsnm{He}, \binits{T.}},
+\oauthor{\bsnm{Wu}, \binits{Z.}},
+\oauthor{\bsnm{Deng}, \binits{H.}},
+\oauthor{\bsnm{Ge}, \binits{J.}},
+\oauthor{\bsnm{Chen}, \binits{K.}},
+\oauthor{\bsnm{Dou}, \binits{M.}},
+\oauthor{\bsnm{Lu}, \binits{L.}},
+\oauthor{\bsnm{Zhu}, \binits{X.}},
+\oauthor{\bsnm{Lu}, \binits{T.}},
+\oauthor{\bsnm{Lin}, \binits{D.}},
+\oauthor{\bsnm{Qiao}, \binits{Y.}},
+\oauthor{\bsnm{Dai}, \binits{J.}},
+\oauthor{\bsnm{Wang}, \binits{W.}}:
+Expanding performance boundaries of open-source multimodal models with model, data, and test-time scaling.
+CoRR
+\textbf{abs/2412.05271}
+(2024)
+\doiurl{10.48550/ARXIV.2412.05271}
+{\href{https://arxiv.org/abs/2412.05271}{{2412.05271}}}
+\end{botherref}
+\endbibitem
+
+%%% 17
 \bibitem[\protect\citeauthoryear{Weigang and da~Silva}{1999}]{weigang1999study}
 \begin{bchapter}
 \bauthor{\bsnm{Weigang}, \binits{L.}},
@@ -325,7 +377,7 @@ pp. \bfpage{1113}--\blpage{1116}
 \end{bchapter}
 \endbibitem
 
-%%% 17
+%%% 18
 \bibitem[\protect\citeauthoryear{Harley et~al.}{2015}]{harley2015rvlcdip}
 \begin{bchapter}
 \bauthor{\bsnm{Harley}, \binits{A.W.}},
@@ -341,7 +393,7 @@ pp. \bfpage{991}--\blpage{995}.
 \end{bchapter}
 \endbibitem
 
-%%% 18
+%%% 19
 \bibitem[\protect\citeauthoryear{Sinha et~al.}{2024}]{sinha2024cica}
 \begin{bchapter}
 \bauthor{\bsnm{Sinha}, \binits{S.}},
