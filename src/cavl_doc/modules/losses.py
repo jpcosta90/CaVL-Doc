@@ -485,6 +485,160 @@ class ElasticCircleLoss(nn.Module):
         return 1.0 - sp
 
 # ==========================================
+# 7. ISO-ARCFACE (Isotropic / Cone-Corrected)
+# ==========================================
+class IsoArcFaceLoss(nn.Module):
+    """
+    IsoArcFace: Isotropic Angular Margin Loss.
+    
+    Projetada especificamente para Embeddings de Alta Dimensão (ViT/LLM) que sofrem do 
+    efeito de "Cone de Representação" (Anisotropia).
+    
+    Adaptação Matemática:
+    Em vez da similaridade de cosseno padrão cos(theta) = (x . w) / (|x||w|),
+    aplicamos uma Projeção Isotrópica P(x) = x - (x . u)u, onde u é a direção 
+    dominante do espaço de embeddings (o eixo do cone).
+    
+    Isso força a perda a discriminar baseada em diferenças semânticas reais, removendo
+    o componente de frequência/densidade comum que domina embeddings de Transformers.
+    """
+    def __init__(self, in_features=512, num_classes=16, s=64.0, m=0.50, momentum=0.9, **kwargs):
+        super(IsoArcFaceLoss, self).__init__()
+        self.in_features = in_features
+        self.num_classes = num_classes
+        self.s = s
+        self.m = m
+        self.momentum = momentum
+        
+        # Eixo do Cone (Média Global Móvel)
+        self.register_buffer('cone_axis', torch.zeros(in_features))
+        
+        self.weight = nn.Parameter(torch.FloatTensor(num_classes, in_features))
+        nn.init.xavier_uniform_(self.weight)
+
+        self.cos_m = math.cos(m)
+        self.sin_m = math.sin(m)
+        self.th = math.cos(math.pi - m)
+        self.mm = math.sin(math.pi - m) * m
+
+    def _update_cone(self, embeddings):
+        if self.training:
+            # Calcula média do batch atual
+            batch_mean = embeddings.mean(dim=0)
+            batch_dir = F.normalize(batch_mean, dim=0)
+            
+            # Inicialização ou Update com Momentum
+            if self.cone_axis.sum() == 0:
+                self.cone_axis = batch_dir
+            else:
+                self.cone_axis = self.momentum * self.cone_axis + (1 - self.momentum) * batch_dir
+            
+            self.cone_axis = F.normalize(self.cone_axis, dim=0)
+
+    def _get_logits(self, embeddings, labels):
+        # 1. Update Cone Axis
+        self._update_cone(embeddings)
+        
+        # 2. Isotropic Projection (Remove Cone Component)
+        # x_iso = x - (x . u)u
+        # Projeta os embeddings no complemento ortogonal do eixo do cone
+        cone_component = (embeddings @ self.cone_axis).unsqueeze(1) * self.cone_axis
+        embeddings_iso = embeddings - cone_component
+        
+        # 3. Standard ArcFace Logic on Isotropic Embeddings
+        embeddings_norm = F.normalize(embeddings_iso, dim=1)
+        weight_norm = F.normalize(self.weight, dim=1)
+        
+        cosine = F.linear(embeddings_norm, weight_norm)
+        sine = torch.sqrt((1.0 - torch.pow(cosine, 2)).clamp(0, 1))
+        
+        phi = cosine * self.cos_m - sine * self.sin_m
+        phi = torch.where(cosine > self.th, phi, cosine - self.mm)
+        
+        one_hot = torch.zeros(cosine.size(), device=embeddings.device)
+        one_hot.scatter_(1, labels.view(-1, 1).long(), 1)
+        
+        output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
+        output *= self.s
+        return output
+
+    def forward(self, embeddings, labels):
+        output = self._get_logits(embeddings, labels)
+        return F.cross_entropy(output, labels.long())
+
+    def forward_individual(self, embeddings, labels):
+        output = self._get_logits(embeddings, labels)
+        return F.cross_entropy(output, labels.long(), reduction='none')
+
+# ==========================================
+# 7.1 ISO-COSFACE
+# ==========================================
+class IsoCosFaceLoss(nn.Module):
+    """
+    IsoCosFace: Isotropic CosFace Loss.
+    
+    Aplica a mesma lógica de Projeção Isotrópica (Remoção do Cone) da IsoArcFace,
+    mas usando a margem aditiva de cosseno (CosFace) em vez da margem angular.
+    
+    Phi = Cosine - m
+    """
+    def __init__(self, in_features=512, num_classes=16, s=64.0, m=0.35, momentum=0.9, **kwargs):
+        super(IsoCosFaceLoss, self).__init__()
+        self.in_features = in_features
+        self.num_classes = num_classes
+        self.s = s
+        self.m = m
+        self.momentum = momentum
+        
+        # Eixo do Cone (Média Global Móvel)
+        self.register_buffer('cone_axis', torch.zeros(in_features))
+        
+        self.weight = nn.Parameter(torch.FloatTensor(num_classes, in_features))
+        nn.init.xavier_uniform_(self.weight)
+
+    def _update_cone(self, embeddings):
+        if self.training:
+            batch_mean = embeddings.mean(dim=0)
+            batch_dir = F.normalize(batch_mean, dim=0)
+            
+            if self.cone_axis.sum() == 0:
+                self.cone_axis = batch_dir
+            else:
+                self.cone_axis = self.momentum * self.cone_axis + (1 - self.momentum) * batch_dir
+            
+            self.cone_axis = F.normalize(self.cone_axis, dim=0)
+
+    def _get_logits(self, embeddings, labels):
+        # 1. Update Cone Axis
+        self._update_cone(embeddings)
+        
+        # 2. Isotropic Projection
+        cone_component = (embeddings @ self.cone_axis).unsqueeze(1) * self.cone_axis
+        embeddings_iso = embeddings - cone_component
+        
+        # 3. Standard CosFace Logic on Isotropic Embeddings
+        embeddings_norm = F.normalize(embeddings_iso, dim=1)
+        weight_norm = F.normalize(self.weight, dim=1)
+        
+        cosine = F.linear(embeddings_norm, weight_norm)
+        phi = cosine - self.m
+        
+        one_hot = torch.zeros(cosine.size(), device=embeddings.device)
+        one_hot.scatter_(1, labels.view(-1, 1).long(), 1)
+        
+        output = (one_hot * phi) + ((1.0 - one_hot) * cosine)
+        output *= self.s
+        return output
+
+    def forward(self, embeddings, labels):
+        output = self._get_logits(embeddings, labels)
+        return F.cross_entropy(output, labels.long())
+
+    def forward_individual(self, embeddings, labels):
+        output = self._get_logits(embeddings, labels)
+        return F.cross_entropy(output, labels.long(), reduction='none')
+
+# ==========================================
 # REGISTRY & BUILDER
 # ==========================================
 LOSS_REGISTRY = {
@@ -497,7 +651,9 @@ LOSS_REGISTRY = {
     "elastic_expface": ElasticExpFaceLoss,
     "subcenter_arcface": SubCenterArcFaceLoss,
     "circle": CircleLoss,
-    "elastic_circle": ElasticCircleLoss
+    "elastic_circle": ElasticCircleLoss,
+    "iso_arcface": IsoArcFaceLoss,
+    "iso_cosface": IsoCosFaceLoss
 }
 
 def build_loss(loss_type: str, **kwargs):
