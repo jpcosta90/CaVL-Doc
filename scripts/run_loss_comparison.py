@@ -3,6 +3,7 @@ import subprocess
 import sys
 import os
 import time
+import glob
 
 # ==============================================================================
 # CONFIGURAÇÃO DOS EXPERIMENTOS
@@ -91,9 +92,36 @@ def run_experiment(loss_type):
     print(f"🚀 Iniciando Experimento: {loss_type.upper()}")
     print(f"{'='*60}")
 
-    # Nome único para o run no WandB
-    timestamp = time.strftime("%Y%m%d-%H%M")
-    run_name = f"LACDIP_{PROTOCOL}_S{SPLIT_IDX}_{loss_type}_{timestamp}"
+    # Determina onde os checkpoints estão sendo salvos
+    base_ckpt_path = "/mnt/large/checkpoints" if os.path.exists("/mnt/large") else "checkpoints"
+    
+    # Nome base para busca
+    base_name = f"LACDIP_{PROTOCOL}_S{SPLIT_IDX}_{loss_type}"
+    
+    # Procura por runs anteriores
+    search_pattern = os.path.join(base_ckpt_path, f"{base_name}_*")
+    existing_runs = sorted(glob.glob(search_pattern))
+    
+    resume_path = None
+    run_name = None
+    
+    if existing_runs:
+        # Pega o mais recente
+        latest_run = existing_runs[-1]
+        ckpt_path = os.path.join(latest_run, "last_checkpoint.pt")
+        
+        if os.path.exists(ckpt_path):
+            print(f"⚠️  Encontrado run anterior: {os.path.basename(latest_run)}")
+            print(f"🔄 Retomando de: {ckpt_path}")
+            resume_path = ckpt_path
+            run_name = os.path.basename(latest_run)
+        else:
+            print(f"⚠️  Run anterior encontrado mas sem checkpoint válido: {os.path.basename(latest_run)}")
+            # Se não tem checkpoint, melhor criar um novo para não misturar logs quebrados
+    
+    if not run_name:
+        timestamp = time.strftime("%Y%m%d-%H%M")
+        run_name = f"{base_name}_{timestamp}"
 
     cmd = [
         sys.executable, SCRIPT_PATH,
@@ -103,6 +131,9 @@ def run_experiment(loss_type):
         "--wandb-project", WANDB_PROJECT,
         "--wandb-run-name", run_name,
     ] + COMMON_ARGS
+    
+    if resume_path:
+        cmd += ["--resume-from", resume_path]
 
     # Imprime o comando para debug
     print(f"Comando: {' '.join(cmd)}\n")

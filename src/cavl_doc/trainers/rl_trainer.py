@@ -168,7 +168,9 @@ def run_rl_siamese_loop(
     use_wandb=False,
     loss_type="contrastive", pooler_type="attention", head_type="mlp", num_classes=None, num_queries=1,
     # Novos argumentos para losses
-    margin=0.5, scale=64.0, num_sub_centers=3, std=0.05
+    margin=0.5, scale=64.0, num_sub_centers=3, std=0.05,
+    # Argumento para retomar treinamento
+    resume_checkpoint_path=None
 ):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -251,6 +253,39 @@ def run_rl_siamese_loop(
     student_optimizer = optim.Adam(trainable_params + loss_params, lr=student_lr * lr_reduce_factor)
     professor_optimizer = optim.Adam(professor_model.parameters(), lr=professor_lr * lr_reduce_factor)
 
+    # --- Lógica de Retomada (Resume) ---
+    start_epoch = 0
+    best_val_eer = 1.0
+    baseline = 0.0
+    global_batch_step = 0
+    
+    if resume_checkpoint_path and os.path.exists(resume_checkpoint_path):
+        print(f"🔄 Retomando treinamento do checkpoint: {resume_checkpoint_path}")
+        ckpt = torch.load(resume_checkpoint_path, map_location=device)
+        
+        # Carrega pesos dos modelos
+        siam.pool.load_state_dict(ckpt['siam_pool'])
+        siam.head.load_state_dict(ckpt['siam_head'])
+        professor_model.load_state_dict(ckpt['professor_state'])
+        
+        # Carrega backbone se houver pesos salvos
+        if 'backbone_trainable' in ckpt and ckpt['backbone_trainable']:
+            siam.backbone.load_state_dict(ckpt['backbone_trainable'], strict=False)
+            
+        # Carrega otimizadores (se disponíveis)
+        if 'student_optimizer' in ckpt:
+            student_optimizer.load_state_dict(ckpt['student_optimizer'])
+        if 'professor_optimizer' in ckpt:
+            professor_optimizer.load_state_dict(ckpt['professor_optimizer'])
+            
+        # Restaura estado do treinamento
+        start_epoch = ckpt.get('epoch', 0) + 1
+        best_val_eer = ckpt.get('metrics', {}).get('eer', 1.0)
+        baseline = ckpt.get('baseline', 0.0)
+        global_batch_step = ckpt.get('global_batch_step', 0)
+        
+        print(f"   -> Reiniciando na Época {start_epoch+1}. Best EER anterior: {best_val_eer:.4f}")
+
     if val_csv_path and os.path.exists(val_csv_path):
         print(f"Carregando validação: {val_csv_path}")
         val_dataset = DocumentPairDataset(val_csv_path, base_image_dir, 448, max_num_image_tokens, 'cpu')
@@ -272,14 +307,18 @@ def run_rl_siamese_loop(
 
     os.makedirs(output_dir, exist_ok=True)
     log_file_path = os.path.join(output_dir, "training_log.csv")
-    log_file = open(log_file_path, 'w', newline='')
+    
+    # Se estiver retomando, append; senão, write
+    mode = 'a' if (resume_checkpoint_path and os.path.exists(resume_checkpoint_path)) else 'w'
+    log_file = open(log_file_path, mode, newline='')
     log_writer = csv.writer(log_file)
-    log_writer.writerow(['epoch', 'batch', 'aluno_loss', 'prof_loss', 'reward', 'baseline', 'entropy', 'adv_std', 'val_mean_loss', 'val_eer'])
+    
+    if mode == 'w':
+        log_writer.writerow(['epoch', 'batch', 'aluno_loss', 'prof_loss', 'reward', 'baseline', 'entropy', 'adv_std', 'val_mean_loss', 'val_eer'])
 
-    best_val_eer = 1.0
+    # Variáveis de estado (já inicializadas acima se resume=True)
+    # best_val_eer, baseline, start_epoch, global_batch_step já definidos
     no_improve = 0
-    global_batch_step = 0
-    baseline = 0.0
 
     def student_forward_pass(pv_list_a, pv_list_b, train_student=True):
         if train_student: siam.train()
@@ -300,7 +339,7 @@ def run_rl_siamese_loop(
         return torch.cat(emb_a_list, dim=0), torch.cat(emb_b_list, dim=0)
 
     print("Iniciando treinamento...")
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, epochs):
         student_criterion.train()
         print(f"\n--- Época {epoch + 1}/{epochs} ---")
         avg_loss = AverageMeter(); avg_rew = AverageMeter(); avg_prof_loss = AverageMeter()
@@ -411,6 +450,24 @@ def run_rl_siamese_loop(
             if use_wandb and wandb: wandb.log({"val/best_eer": best_val_eer})
         else:
             no_improve += 1
+        
+        # --- Save Last Checkpoint (para Resume) ---
+        backbone_trainable = {n: p.detach().cpu() for n, p in siam.backbone.named_parameters() if p.requires_grad}
+        last_ckpt = {
+            'epoch': epoch, 
+            'metrics': {'eer': veer, 'loss': vloss}, 
+            'config': model_config,
+            'siam_pool': siam.pool.state_dict(), 
+            'siam_head': siam.head.state_dict(),
+            'backbone_trainable': backbone_trainable, 
+            'professor_state': professor_model.state_dict(),
+            'student_optimizer': student_optimizer.state_dict(),
+            'professor_optimizer': professor_optimizer.state_dict(),
+            'baseline': baseline,
+            'global_batch_step': global_batch_step
+        }
+        torch.save(last_ckpt, os.path.join(output_dir, "last_checkpoint.pt"))
+        print(f"Saved last_checkpoint.pt (Epoch {epoch+1})")
         
         if no_improve >= patience: break
 

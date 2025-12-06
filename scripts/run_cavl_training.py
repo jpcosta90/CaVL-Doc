@@ -278,16 +278,18 @@ def main(args):
             use_wandb=args.use_wandb,
             # Args Modulares
             loss_type=args.loss_type,
-        pooler_type=args.pooler_type,
-        head_type=args.head_type,
-        num_queries=args.num_queries,
-        num_classes=num_classes,
-        # Hiperparâmetros de Loss
-        margin=args.margin,
-        scale=args.scale,
-        num_sub_centers=args.num_sub_centers,
-        std=args.std
-    )
+            pooler_type=args.pooler_type,
+            head_type=args.head_type,
+            num_queries=args.num_queries,
+            num_classes=num_classes,
+            # Hiperparâmetros de Loss
+            margin=args.margin,
+            scale=args.scale,
+            num_sub_centers=args.num_sub_centers,
+            std=args.std,
+            # Resume
+            resume_checkpoint_path=args.resume_from
+        )
     
     if args.use_wandb:
         import wandb
@@ -353,6 +355,9 @@ def parse_args():
     p.add_argument("--lr-reduce-factor", type=float, default=0.5)
     
     p.add_argument("--seed", type=int, default=42)
+    
+    # Resume
+    p.add_argument("--resume-from", type=str, default=None, help="Path to checkpoint to resume from")
 
     return p.parse_args()
 
