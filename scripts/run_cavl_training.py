@@ -150,6 +150,21 @@ def main(args):
 
     # --- 5) Iniciar Treinamento ---
     if args.use_curriculum:
+        # Lógica de Fallback para Curriculum
+        if args.phase1_loss is None:
+            if args.loss_type != "contrastive":
+                print(f"Info: Usando --loss-type='{args.loss_type}' para Phase 1.")
+                args.phase1_loss = args.loss_type
+            else:
+                args.phase1_loss = "expface"
+
+        if args.phase2_loss is None:
+            if args.loss_type != "contrastive":
+                print(f"Info: Usando --loss-type='{args.loss_type}' para Phase 2.")
+                args.phase2_loss = args.loss_type
+            else:
+                args.phase2_loss = "elastic_expface"
+
         phases_str = f"{args.phase1_loss} -> {args.phase2_loss}"
         if args.phase3_loss:
             phases_str += f" -> {args.phase3_loss}"
@@ -303,8 +318,8 @@ def parse_args():
 
     # Curriculum Learning
     p.add_argument("--use-curriculum", action="store_true", help="Enable Two-Phase Curriculum Learning")
-    p.add_argument("--phase1-loss", type=str, default="expface", help="Loss for Phase 1 (GGA)")
-    p.add_argument("--phase2-loss", type=str, default="elastic_expface", help="Loss for Phase 2 (EHR)")
+    p.add_argument("--phase1-loss", type=str, default=None, help="Loss for Phase 1 (GGA). Defaults to 'expface' or --loss-type.")
+    p.add_argument("--phase2-loss", type=str, default=None, help="Loss for Phase 2 (EHR). Defaults to 'elastic_expface' or --loss-type.")
     p.add_argument("--phase3-loss", type=str, default=None, help="Optional Loss for Phase 3")
 
     # Dataset & Model

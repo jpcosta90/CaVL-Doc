@@ -73,6 +73,7 @@ def pairwise_eer_from_scores(labels: np.ndarray, scores: np.ndarray):
 
 def validate_siam_on_loader(siam, val_loader, device, student_criterion):
     siam.eval()
+    student_criterion.eval()
     losses = []
     all_scores = []
     all_labels = []
@@ -300,6 +301,7 @@ def run_rl_siamese_loop(
 
     print("Iniciando treinamento...")
     for epoch in range(epochs):
+        student_criterion.train()
         print(f"\n--- Época {epoch + 1}/{epochs} ---")
         avg_loss = AverageMeter(); avg_rew = AverageMeter(); avg_prof_loss = AverageMeter()
         
