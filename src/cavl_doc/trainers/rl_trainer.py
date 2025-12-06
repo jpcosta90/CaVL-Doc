@@ -267,8 +267,8 @@ def run_rl_siamese_loop(
         train_dataset = Subset(full_ds, train_indices)
         val_dataset = Subset(full_ds, val_indices)
 
-    train_loader = DataLoader(train_dataset, batch_size=candidate_pool_size, shuffle=True, num_workers=4, collate_fn=rl_full_collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, num_workers=2, collate_fn=rl_full_collate_fn)
+    train_loader = DataLoader(train_dataset, batch_size=candidate_pool_size, shuffle=True, num_workers=1, collate_fn=rl_full_collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, num_workers=1, collate_fn=rl_full_collate_fn)
 
     os.makedirs(output_dir, exist_ok=True)
     log_file_path = os.path.join(output_dir, "training_log.csv")
