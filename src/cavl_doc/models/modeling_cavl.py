@@ -168,7 +168,10 @@ class CaVLModel(PreTrainedModel):
             return za, zb
 
         if self.encode_fn is not None and images is not None:
-            tokens, mask = self._extract_tokens_via_encode_fn(images.to(device), device=device, **(encode_kwargs or {}))
+            # Se for tensor, move para device. Se for lista, deixa o encode_fn lidar.
+            if isinstance(images, torch.Tensor):
+                images = images.to(device)
+            tokens, mask = self._extract_tokens_via_encode_fn(images, device=device, **(encode_kwargs or {}))
         else:
             tokens, mask = self._extract_tokens_via_hidden_states(input_ids=input_ids, attention_mask=attention_mask, device=device, **(encode_kwargs or {}))
         

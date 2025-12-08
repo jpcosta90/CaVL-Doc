@@ -62,7 +62,26 @@ def prepare_experiment(args):
     
     experiment_name = args.wandb_run_name
     base_path = "/mnt/large/checkpoints" if os.path.exists("/mnt/large") else "checkpoints"
-    outdir = setup_experiment_dir(base_path, experiment_name)
+    
+    wandb_id = None
+    
+    # Se estiver retomando, usa o diretório do checkpoint
+    if args.resume_from and os.path.exists(args.resume_from):
+        # Assume que resume_from é .../run_name/last_checkpoint.pt
+        outdir = os.path.dirname(args.resume_from)
+        print(f"📂 Usando diretório existente para resume: {outdir}")
+        
+        # Tenta recuperar o ID do WandB do config
+        cfg_path = os.path.join(outdir, "training_config.json")
+        if os.path.exists(cfg_path):
+            try:
+                with open(cfg_path, 'r') as f:
+                    old_cfg = json.load(f)
+                    wandb_id = old_cfg.get('wandb_id')
+            except Exception as e:
+                print(f"⚠️ Erro ao ler config anterior: {e}")
+    else:
+        outdir = setup_experiment_dir(base_path, experiment_name)
     
     cfg = vars(args)
     cfg['timestamp'] = timestamp
@@ -71,24 +90,58 @@ def prepare_experiment(args):
     with open(os.path.join(outdir, "training_config.json"), "w") as f:
         json.dump(cfg, f, indent=2)
     
-    return outdir
+    return outdir, wandb_id
 
 def main(args):
-    outdir = prepare_experiment(args)
+    outdir, resume_wandb_id = prepare_experiment(args)
     
     if args.use_wandb:
         import wandb
-        wandb.init(
-            project=args.wandb_project,
-            name=args.wandb_run_name,
-            config=vars(args),
-            group="cavl-rl-training"
-        )
-        print(f"🚀 WandB Inicializado: Run {args.wandb_run_name}")
+        
+        init_kwargs = {
+            "project": args.wandb_project,
+            "name": args.wandb_run_name,
+            "config": vars(args),
+            "group": "cavl-rl-training",
+            "settings": wandb.Settings(init_timeout=300)
+        }
+        
+        if resume_wandb_id:
+            print(f"🔄 Resuming WandB Run ID: {resume_wandb_id}")
+            init_kwargs['id'] = resume_wandb_id
+            init_kwargs['resume'] = 'allow'
+            
+        try:
+            wandb.init(**init_kwargs)
+        except Exception as e:
+            print(f"❌ Erro crítico ao inicializar WandB (Resume ID: {resume_wandb_id}): {e}")
+            if resume_wandb_id:
+                print("⚠️ Falha ao retomar. Iniciando um NOVO run para garantir a continuidade do treino...")
+                # Remove ID e Resume para forçar um run novo
+                init_kwargs.pop('id', None)
+                init_kwargs.pop('resume', None)
+                # Tenta novamente como um run limpo
+                wandb.init(**init_kwargs)
+            else:
+                # Se não era resume e falhou, então é erro de conexão/api mesmo
+                raise e
+
+        print(f"🚀 WandB Inicializado: Run {wandb.run.name} (ID: {wandb.run.id})")
+        
         if wandb.run:
+            # Salva o ID no args para persistência futura
+            args.wandb_id = wandb.run.id
+            
             for k, v in wandb.config.items():
                 if hasattr(args, k):
                     setattr(args, k, v)
+        
+        # Atualiza o arquivo de configuração com o ID do WandB
+        # Isso garante que futuros resumes possam encontrar o ID correto
+        cfg = vars(args)
+        cfg['outdir'] = str(outdir)
+        with open(os.path.join(outdir, "training_config.json"), "w") as f:
+            json.dump(cfg, f, indent=2)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -187,20 +240,60 @@ def main(args):
             train_dataset = Subset(full_ds, train_indices)
             val_dataset = Subset(full_ds, val_indices)
 
-        train_loader = DataLoader(train_dataset, batch_size=args.candidate_pool_size, shuffle=True, num_workers=4, collate_fn=rl_full_collate_fn)
-        val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, num_workers=2, collate_fn=rl_full_collate_fn)
+        train_loader = DataLoader(train_dataset, batch_size=args.candidate_pool_size, shuffle=True, num_workers=0, collate_fn=rl_full_collate_fn)
+        val_loader = DataLoader(val_dataset, batch_size=96, shuffle=False, num_workers=0, collate_fn=rl_full_collate_fn)
 
         # 5.2 Build Full Model
-        def _encode_fn(backbone, pv_tensor, cut_layer=args.cut_layer, **kwargs):
-            if pv_tensor.dim() == 5:
-                b, n, c, h, w = pv_tensor.shape
-                pv_tensor = pv_tensor.view(b * n, c, h, w)
-            inputs = prepare_inputs_for_multimodal_embedding(backbone, tokenizer, pv_tensor, EMBEDDING_PROMPT)
+        def _encode_fn(backbone, images, cut_layer=args.cut_layer, **kwargs):
+            # images: Tensor [B, N, C, H, W] ou List[Tensor [Ni, C, H, W]]
+            
+            input_ids_list = []
+            pixel_values_list = []
+            image_flags_list = []
+            
+            # Normaliza entrada para lista
+            if isinstance(images, torch.Tensor):
+                if images.dim() == 5:
+                    images_list = [images[i] for i in range(images.shape[0])]
+                else:
+                    images_list = [images]
+            else:
+                images_list = images
+
+            # Prepara inputs individualmente (para lidar com N variável e gerar input_ids corretos)
+            for img in images_list:
+                # img: [N, C, H, W]
+                out = prepare_inputs_for_multimodal_embedding(backbone, tokenizer, img, EMBEDDING_PROMPT)
+                input_ids_list.append(out['input_ids'][0]) # [L]
+                pixel_values_list.append(out['pixel_values']) # [N, C, H, W]
+                image_flags_list.append(out['image_flags']) # [N]
+
+            # Padding manual dos input_ids
+            max_len = max(len(ids) for ids in input_ids_list)
+            pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+            
+            padded_input_ids = []
+            padded_attention_mask = []
+            
+            for ids in input_ids_list:
+                pad_len = max_len - len(ids)
+                # Right padding
+                p_ids = torch.cat([ids, torch.full((pad_len,), pad_id, device=ids.device, dtype=ids.dtype)])
+                p_mask = torch.cat([torch.ones_like(ids), torch.zeros((pad_len,), device=ids.device, dtype=ids.dtype)])
+                padded_input_ids.append(p_ids)
+                padded_attention_mask.append(p_mask)
+
+            # Batch final
+            batch_input_ids = torch.stack(padded_input_ids).to(device)
+            batch_attention_mask = torch.stack(padded_attention_mask).to(device)
+            batch_pixel_values = torch.cat(pixel_values_list, dim=0).to(device, dtype=torch.bfloat16)
+            batch_image_flags = torch.cat(image_flags_list, dim=0).to(device)
+
             out = backbone(
-                input_ids=inputs['input_ids'].to(device),
-                attention_mask=inputs['attention_mask'].to(device),
-                pixel_values=inputs['pixel_values'].to(device, dtype=torch.bfloat16),
-                image_flags=inputs['image_flags'].to(device),
+                input_ids=batch_input_ids,
+                attention_mask=batch_attention_mask,
+                pixel_values=batch_pixel_values,
+                image_flags=batch_image_flags,
                 output_hidden_states=True,
                 return_dict=True
             )
@@ -305,7 +398,7 @@ def parse_args():
 
     # Modular Arguments
     p.add_argument("--loss-type", type=str, default="contrastive", 
-                   choices=["contrastive", "arcface", "elastic_arcface", "cosface", "elastic_cosface", "expface", "elastic_expface", "subcenter_arcface", "circle", "elastic_circle", "subcenter_circle", "angular", "iso_arcface", "iso_cosface"],
+                   choices=["contrastive", "triplet", "arcface", "elastic_arcface", "cosface", "elastic_cosface", "expface", "elastic_expface", "subcenter_arcface", "circle", "elastic_circle", "subcenter_circle", "angular", "iso_arcface", "iso_cosface"],
                    help="Type of loss function")
     p.add_argument("--pooler-type", type=str, default="attention", choices=["attention", "mean", "gem", "netvlad"])
     p.add_argument("--head-type", type=str, default="mlp", choices=["mlp", "simple_mlp", "residual"])

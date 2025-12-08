@@ -6,6 +6,7 @@ import math
 from tqdm import tqdm
 import random
 import time
+import gc
 
 import numpy as np
 from sklearn.metrics import roc_curve
@@ -71,7 +72,7 @@ def pairwise_eer_from_scores(labels: np.ndarray, scores: np.ndarray):
     idx = np.argmin(np.abs(fpr - fnr))
     return (fpr[idx] + fnr[idx]) / 2.0, thresholds[idx]
 
-def validate_siam_on_loader(siam, val_loader, device, student_criterion):
+def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_batches=None):
     siam.eval()
     student_criterion.eval()
     losses = []
@@ -83,32 +84,40 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion):
     knn_classes = []
 
     with torch.no_grad():
-        for img_a_list, img_b_list, labels, cls_a, cls_b in val_loader:
-            emb_a_list = []
-            emb_b_list = []
+        # Ajusta o total da barra de progresso para refletir o limite
+        total_batches = len(val_loader)
+        if limit_batches:
+            total_batches = min(total_batches, limit_batches)
             
-            for i in range(len(img_a_list)):
-                pv_a = img_a_list[i].unsqueeze(0).to(device)
-                pv_b = img_b_list[i].unsqueeze(0).to(device)
-                
-                # Inferência
-                try:
-                    za = siam(images=pv_a)
-                    zb = siam(images=pv_b)
-                except Exception:
-                    # Fallback legado
-                    if hasattr(siam, '_extract_tokens_via_encode_fn'):
-                        tok_a, m_a = siam._extract_tokens_via_encode_fn(pv_a, device=device)
-                        tok_b, m_b = siam._extract_tokens_via_encode_fn(pv_b, device=device)
-                        za = siam.head(siam.pool(tok_a, m_a))
-                        zb = siam.head(siam.pool(tok_b, m_b))
-                    else: raise
-                
-                emb_a_list.append(za)
-                emb_b_list.append(zb)
+        pbar_val = tqdm(val_loader, desc="Validating", ncols=100, leave=False, total=total_batches)
+        batch_count = 0
+        for img_a_list, img_b_list, labels, cls_a, cls_b in pbar_val:
+            if limit_batches and batch_count >= limit_batches:
+                pbar_val.close()
+                break
+            batch_count += 1
             
-            za = torch.cat(emb_a_list, dim=0)
-            zb = torch.cat(emb_b_list, dim=0)
+            # Processamento em chunks para evitar OOM se o batch for grande (ex: 96)
+            # InternVL consome muita VRAM, então processamos em mini-batches
+            chunk_size = 12 
+            emb_a_chunks = []
+            emb_b_chunks = []
+            
+            for i in range(0, len(img_a_list), chunk_size):
+                chunk_a = img_a_list[i:i+chunk_size]
+                chunk_b = img_b_list[i:i+chunk_size]
+                
+                # Inferência Batched (Otimizada)
+                # Passamos a lista de tensores diretamente para o modelo.
+                # O _encode_fn atualizado no script de treino lida com o batching e padding.
+                za = siam(images=chunk_a)
+                zb = siam(images=chunk_b)
+                
+                emb_a_chunks.append(za)
+                emb_b_chunks.append(zb)
+            
+            za = torch.cat(emb_a_chunks, dim=0)
+            zb = torch.cat(emb_b_chunks, dim=0)
             labels = labels.to(device)
             
             # --- [DIAGNÓSTICO DA LOSS] ---
@@ -193,20 +202,55 @@ def run_rl_siamese_loop(
         'std': std
     }
 
-    # Define encode_fn (COM CORREÇÃO DE FLATTENING 5D)
-    def _encode_fn(backbone, pv_tensor, cut_layer=cut_layer, **kwargs):
-        # --- CORREÇÃO CRÍTICA ---
-        if pv_tensor.dim() == 5:
-            b, n, c, h, w = pv_tensor.shape
-            pv_tensor = pv_tensor.view(b * n, c, h, w)
-        # ------------------------
+    # Define encode_fn (COM CORREÇÃO DE FLATTENING 5D E SUPORTE A LISTAS)
+    def _encode_fn(backbone, images, cut_layer=cut_layer, **kwargs):
+        # images: Tensor [B, N, C, H, W] ou List[Tensor [Ni, C, H, W]]
+        
+        input_ids_list = []
+        pixel_values_list = []
+        image_flags_list = []
+        
+        # Normaliza entrada para lista
+        if isinstance(images, torch.Tensor):
+            if images.dim() == 5:
+                images_list = [images[i] for i in range(images.shape[0])]
+            else:
+                images_list = [images]
+        else:
+            images_list = images
 
-        inputs = prepare_inputs_for_multimodal_embedding(backbone, tokenizer, pv_tensor, EMBEDDING_PROMPT)
+        # Prepara inputs individualmente
+        for img in images_list:
+            out = prepare_inputs_for_multimodal_embedding(backbone, tokenizer, img, EMBEDDING_PROMPT)
+            input_ids_list.append(out['input_ids'][0]) 
+            pixel_values_list.append(out['pixel_values']) 
+            image_flags_list.append(out['image_flags']) 
+
+        # Padding manual dos input_ids
+        max_len = max(len(ids) for ids in input_ids_list)
+        pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+        
+        padded_input_ids = []
+        padded_attention_mask = []
+        
+        for ids in input_ids_list:
+            pad_len = max_len - len(ids)
+            p_ids = torch.cat([ids, torch.full((pad_len,), pad_id, device=ids.device, dtype=ids.dtype)])
+            p_mask = torch.cat([torch.ones_like(ids), torch.zeros((pad_len,), device=ids.device, dtype=ids.dtype)])
+            padded_input_ids.append(p_ids)
+            padded_attention_mask.append(p_mask)
+
+        # Batch final
+        batch_input_ids = torch.stack(padded_input_ids).to(device)
+        batch_attention_mask = torch.stack(padded_attention_mask).to(device)
+        batch_pixel_values = torch.cat(pixel_values_list, dim=0).to(device, dtype=torch.bfloat16)
+        batch_image_flags = torch.cat(image_flags_list, dim=0).to(device)
+
         out = backbone(
-            input_ids=inputs['input_ids'].to(device),
-            attention_mask=inputs['attention_mask'].to(device),
-            pixel_values=inputs['pixel_values'].to(device, dtype=torch.bfloat16),
-            image_flags=inputs['image_flags'].to(device),
+            input_ids=batch_input_ids,
+            attention_mask=batch_attention_mask,
+            pixel_values=batch_pixel_values,
+            image_flags=batch_image_flags,
             output_hidden_states=True,
             return_dict=True
         )
@@ -253,6 +297,11 @@ def run_rl_siamese_loop(
     student_optimizer = optim.Adam(trainable_params + loss_params, lr=student_lr * lr_reduce_factor)
     professor_optimizer = optim.Adam(professor_model.parameters(), lr=professor_lr * lr_reduce_factor)
 
+    # Debug Resume Path
+    print(f"DEBUG: resume_checkpoint_path received: '{resume_checkpoint_path}'")
+    if resume_checkpoint_path:
+        print(f"DEBUG: Exists? {os.path.exists(resume_checkpoint_path)}")
+
     # --- Lógica de Retomada (Resume) ---
     start_epoch = 0
     best_val_eer = 1.0
@@ -284,6 +333,21 @@ def run_rl_siamese_loop(
         baseline = ckpt.get('baseline', 0.0)
         global_batch_step = ckpt.get('global_batch_step', 0)
         
+        # Verifica se o checkpoint foi salvo ANTES da validação (Pre-Validation)
+        # Se sim, precisamos rodar a validação daquela época antes de prosseguir.
+        stage = ckpt.get('stage', 'post_validation')
+        
+        if stage == 'pre_validation':
+            print(f"⚠️ Retomando de checkpoint PRE-VALIDATION (Época {start_epoch}).")
+            print("   -> A validação da época anterior não foi concluída. Ajustando start_epoch para repetir a validação.")
+            # Recua o start_epoch para que o loop comece na época correta, mas precisamos pular o treino?
+            # Não dá para pular o treino facilmente dentro do loop for.
+            # Solução: Rodar a validação AGORA, salvar o checkpoint pós-validação, e seguir o baile.
+            start_epoch -= 1 # Volta para a época que terminou o treino
+            run_immediate_validation = True
+        else:
+            run_immediate_validation = False
+        
         print(f"   -> Reiniciando na Época {start_epoch+1}. Best EER anterior: {best_val_eer:.4f}")
 
     if val_csv_path and os.path.exists(val_csv_path):
@@ -294,16 +358,71 @@ def run_rl_siamese_loop(
         print("Split automático treino/val.")
         if isinstance(dataset, Subset): full_ds, ds_indices = dataset.dataset, list(dataset.indices)
         else: full_ds, ds_indices = dataset, list(range(len(dataset)))
+        
+        # Garante que o split seja aleatório para evitar viés de classe (ex: pegar só as últimas classes)
+        random.shuffle(ds_indices)
+        
         val_size = min(max(val_min_size, int(len(ds_indices) * val_fraction)), len(ds_indices)//10)
         if val_size <= 0: val_size = min(val_min_size, len(ds_indices)//10)
         val_indices = ds_indices[-val_size:]; train_indices = ds_indices[:-val_size]
-        if not train_indices:
-            random.shuffle(ds_indices); val_indices = ds_indices[:val_size]; train_indices = ds_indices[val_size:]
+        
         train_dataset = Subset(full_ds, train_indices)
         val_dataset = Subset(full_ds, val_indices)
 
-    train_loader = DataLoader(train_dataset, batch_size=candidate_pool_size, shuffle=True, num_workers=1, collate_fn=rl_full_collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False, num_workers=1, collate_fn=rl_full_collate_fn)
+    # Validação com shuffle=True para garantir que os 20 batches limitados sejam uma amostra aleatória (balanceada estatisticamente)
+    # num_workers=0 para evitar crash por falta de RAM (16GB é pouco para InternVL + Workers)
+    train_loader = DataLoader(train_dataset, batch_size=candidate_pool_size, shuffle=True, num_workers=0, collate_fn=rl_full_collate_fn)
+    
+    # --- BALANCED VALIDATION SUBSET ---
+    # Cria um subset de validação balanceado e reduzido para avaliação rápida entre épocas
+    # Garante que todas as classes presentes na validação sejam avaliadas.
+    balanced_val_indices = []
+    samples_per_class = 20 # Configuração: 20 pares por classe
+    
+    # Identifica o dataset base e os índices da validação
+    if isinstance(val_dataset, Subset):
+        val_source_ds = val_dataset.dataset
+        current_val_indices = list(val_dataset.indices)
+    else:
+        val_source_ds = val_dataset
+        current_val_indices = list(range(len(val_dataset)))
+
+    if hasattr(val_source_ds, 'df') and 'class_a_name' in val_source_ds.df.columns:
+        print(f"Criando subset de validação balanceado ({samples_per_class} pares/classe)...")
+        subset_df = val_source_ds.df.iloc[current_val_indices]
+        classes = subset_df['class_a_name'].tolist()
+        
+        class_map = {}
+        for i, cls_name in enumerate(classes):
+            real_idx = current_val_indices[i]
+            if cls_name not in class_map: class_map[cls_name] = []
+            class_map[cls_name].append(real_idx)
+            
+        under_populated = []
+        for cls_name, idxs in class_map.items():
+            if len(idxs) > samples_per_class:
+                balanced_val_indices.extend(random.sample(idxs, samples_per_class))
+            else:
+                balanced_val_indices.extend(idxs)
+                under_populated.append(f"{cls_name}: {len(idxs)}")
+        
+        if under_populated:
+            print(f"⚠️  {len(under_populated)} classes têm menos de {samples_per_class} amostras na validação:")
+            print(f"   -> {', '.join(under_populated[:10])}..." if len(under_populated) > 10 else f"   -> {', '.join(under_populated)}")
+        
+        print(f"Subset balanceado criado: {len(balanced_val_indices)} amostras (de {len(current_val_indices)} originais). Classes: {len(class_map)}")
+        val_dataset_balanced = Subset(val_source_ds, balanced_val_indices)
+    else:
+        # Fallback se não tiver info de classe
+        print("Aviso: 'class_a_name' não encontrado. Usando subset aleatório de 1000 amostras.")
+        n_samples = min(len(current_val_indices), 1000)
+        balanced_val_indices = random.sample(current_val_indices, n_samples)
+        val_dataset_balanced = Subset(val_source_ds, balanced_val_indices)
+
+    # num_workers=0 para estabilidade
+    val_loader = DataLoader(val_dataset_balanced, batch_size=24, shuffle=False, num_workers=0, collate_fn=rl_full_collate_fn)
+    
+    print(f"Dataset Sizes: Train={len(train_dataset)} | Val (Balanced Subset)={len(val_dataset_balanced)}")
 
     os.makedirs(output_dir, exist_ok=True)
     log_file_path = os.path.join(output_dir, "training_log.csv")
@@ -338,8 +457,67 @@ def run_rl_siamese_loop(
             emb_b_list.append(z)
         return torch.cat(emb_a_list, dim=0), torch.cat(emb_b_list, dim=0)
 
+    # --- VALIDAÇÃO IMEDIATA (RESUME FIX) ---
+    if resume_checkpoint_path and run_immediate_validation:
+        print(f"🚨 Executando validação pendente da Época {start_epoch+1}...")
+        # Validação no subset balanceado (sem limite de batches, pois o subset já é pequeno)
+        vloss, veer, vthr, vr1 = validate_siam_on_loader(siam, val_loader, device, student_criterion)
+        print(f"Val (Recovered): EER={veer*100:.2f}% | R@1={vr1*100:.2f}% | Loss={vloss:.4f}")
+        
+        if use_wandb and wandb:
+            wandb.log({"val/eer": veer, "val/loss": vloss, "val/recall_at_1": vr1, "epoch": start_epoch + 1})
+        
+        log_writer.writerow([start_epoch+1, "end", "", "", "", "", "", "", f"{vloss:.4f}", f"{veer:.4f}"])
+        
+        if veer < best_val_eer:
+            best_val_eer = veer
+            no_improve = 0
+            backbone_trainable = {n: p.detach().cpu() for n, p in siam.backbone.named_parameters() if p.requires_grad}
+            ckpt = {
+                'epoch': start_epoch, 'metrics': {'eer': veer, 'loss': vloss}, 'config': model_config,
+                'siam_pool': siam.pool.state_dict(), 'siam_head': siam.head.state_dict(),
+                'backbone_trainable': backbone_trainable, 'professor_state': professor_model.state_dict()
+            }
+            os.makedirs(output_dir, exist_ok=True)
+            torch.save(ckpt, os.path.join(output_dir, "best_siam.pt"))
+            print("Saved best_siam.pt (Recovered)")
+            if use_wandb and wandb: wandb.log({"val/best_eer": best_val_eer})
+        
+        # --- SAVE RECOVERED STATE ---
+        # Salva o checkpoint atualizado para evitar loop infinito se houver crash em seguida
+        # Isso garante que, se o script morrer por OOM ao iniciar o treino, ele não repetirá a validação.
+        backbone_trainable = {n: p.detach().cpu() for n, p in siam.backbone.named_parameters() if p.requires_grad}
+        recovered_ckpt = {
+            'epoch': start_epoch, 
+            'metrics': {'eer': veer, 'loss': vloss}, 
+            'config': model_config,
+            'siam_pool': siam.pool.state_dict(), 
+            'siam_head': siam.head.state_dict(),
+            'backbone_trainable': backbone_trainable, 
+            'professor_state': professor_model.state_dict(),
+            'student_optimizer': student_optimizer.state_dict(),
+            'professor_optimizer': professor_optimizer.state_dict(),
+            'baseline': baseline,
+            'global_batch_step': global_batch_step,
+            'stage': 'post_validation' # Marcamos como concluído!
+        }
+        torch.save(recovered_ckpt, os.path.join(output_dir, "last_checkpoint.pt"))
+        print(f"💾 Checkpoint de recuperação salvo: last_checkpoint.pt (Stage: post_validation)")
+
+        # Avança para a próxima época agora que validamos
+        start_epoch += 1
+        print(f"✅ Validação recuperada. Continuando treino na Época {start_epoch+1}...")
+        
+        # Limpeza de memória após validação recuperada
+        gc.collect()
+        torch.cuda.empty_cache()
+
     print("Iniciando treinamento...")
     for epoch in range(start_epoch, epochs):
+        # Limpeza preventiva antes de iniciar o loop de treino
+        gc.collect()
+        torch.cuda.empty_cache()
+        
         student_criterion.train()
         print(f"\n--- Época {epoch + 1}/{epochs} ---")
         avg_loss = AverageMeter(); avg_rew = AverageMeter(); avg_prof_loss = AverageMeter()
@@ -359,6 +537,18 @@ def run_rl_siamese_loop(
                 
                 if loss_type in ['contrastive', 'angular']:
                     sl = student_criterion.forward_individual(ea, eb, labels)
+                elif loss_type == 'triplet':
+                    # Triplet precisa de batch com múltiplas amostras da mesma classe.
+                    # Concatenamos A e B para aumentar a chance de encontrar positivos/negativos.
+                    # ea: [B, D], eb: [B, D] -> full: [2B, D]
+                    full_emb = torch.cat([ea, eb], dim=0)
+                    full_cls = torch.cat([cls_a, cls_b], dim=0)
+                    
+                    # Calcula loss para todos
+                    full_loss = student_criterion.forward_individual(full_emb, full_cls)
+                    # full_loss: [2B]. Precisamos retornar [B] para o Professor.
+                    # Tiramos a média do par (i, i+B)
+                    sl = (full_loss[:len(ea)] + full_loss[len(ea):]) / 2.0
                 else:
                     # Para ArcFace/CosFace, calculamos a loss individual de cada braço e tiramos a média
                     loss_a = student_criterion.forward_individual(ea, cls_a)
@@ -385,6 +575,11 @@ def run_rl_siamese_loop(
             
             if loss_type in ['contrastive', 'angular']:
                 loss = student_criterion(sea, seb, slbs)
+            elif loss_type == 'triplet':
+                # Triplet: Concatenar A e B para formar um batch maior
+                full_emb = torch.cat([sea, seb], dim=0)
+                full_cls = torch.cat([s_cls_a, s_cls_b], dim=0)
+                loss = student_criterion(full_emb, full_cls)
             else:
                 loss = student_criterion(sea, s_cls_a) + student_criterion(seb, s_cls_b)
             
@@ -428,6 +623,31 @@ def run_rl_siamese_loop(
             log_writer.writerow([epoch+1, global_batch_step, f"{loss.item():.4f}", f"{ploss.item():.4f}", f"{avg_r:.4f}", "", "", "", "", ""])
 
         pbar.close()
+
+        # --- Save Checkpoint PRE-VALIDATION (Safety) ---
+        # Salva o estado logo após o treino, antes da validação (que pode demorar ou falhar).
+        # Se o script for interrompido na validação, ao retomar, ele pulará a validação desta época
+        # e irá para a próxima, mas pelo menos o treino da época não é perdido.
+        backbone_trainable = {n: p.detach().cpu() for n, p in siam.backbone.named_parameters() if p.requires_grad}
+        pre_val_ckpt = {
+            'epoch': epoch, 
+            'metrics': {'eer': best_val_eer, 'loss': 0.0}, # Usa best anterior como placeholder
+            'config': model_config,
+            'siam_pool': siam.pool.state_dict(), 
+            'siam_head': siam.head.state_dict(),
+            'backbone_trainable': backbone_trainable, 
+            'professor_state': professor_model.state_dict(),
+            'student_optimizer': student_optimizer.state_dict(),
+            'professor_optimizer': professor_optimizer.state_dict(),
+            'baseline': baseline,
+            'global_batch_step': global_batch_step,
+            'stage': 'pre_validation' # Flag para indicar que validação ainda não ocorreu
+        }
+        os.makedirs(output_dir, exist_ok=True)
+        torch.save(pre_val_ckpt, os.path.join(output_dir, "last_checkpoint.pt"))
+        print(f"Saved last_checkpoint.pt (Epoch {epoch+1} - Pre-Validation)")
+
+        # Validação no subset balanceado
         vloss, veer, vthr, vr1 = validate_siam_on_loader(siam, val_loader, device, student_criterion)
         print(f"Val: EER={veer*100:.2f}% | R@1={vr1*100:.2f}% | Loss={vloss:.4f}")
         
@@ -445,8 +665,12 @@ def run_rl_siamese_loop(
                 'siam_pool': siam.pool.state_dict(), 'siam_head': siam.head.state_dict(),
                 'backbone_trainable': backbone_trainable, 'professor_state': professor_model.state_dict()
             }
+            
+            # Garante que o diretório existe antes de salvar (defensivo contra falhas de FS)
+            os.makedirs(output_dir, exist_ok=True)
             torch.save(ckpt, os.path.join(output_dir, "best_siam.pt"))
             print("Saved best_siam.pt")
+            
             if use_wandb and wandb: wandb.log({"val/best_eer": best_val_eer})
         else:
             no_improve += 1
@@ -464,8 +688,11 @@ def run_rl_siamese_loop(
             'student_optimizer': student_optimizer.state_dict(),
             'professor_optimizer': professor_optimizer.state_dict(),
             'baseline': baseline,
-            'global_batch_step': global_batch_step
+            'global_batch_step': global_batch_step,
+            'stage': 'post_validation' # Flag para indicar que validação já ocorreu
         }
+        
+        os.makedirs(output_dir, exist_ok=True)
         torch.save(last_ckpt, os.path.join(output_dir, "last_checkpoint.pt"))
         print(f"Saved last_checkpoint.pt (Epoch {epoch+1})")
         

@@ -180,7 +180,7 @@ class ElasticCosFaceLoss(nn.Module):
     Aplica a aleatoriedade na margem de cosseno m.
     m ~ N(mean_m, std)
     """
-    def __init__(self, in_features=512, num_classes=16, s=64.0, m=0.35, std=0.05, **kwargs):
+    def __init__(self, in_features=512, num_classes=16, s=64.0, m=0.4, std=0.05, **kwargs):
         super(ElasticCosFaceLoss, self).__init__()
         self.in_features = in_features
         self.num_classes = num_classes
@@ -639,10 +639,76 @@ class IsoCosFaceLoss(nn.Module):
         return F.cross_entropy(output, labels.long(), reduction='none')
 
 # ==========================================
+# 8. ONLINE TRIPLET LOSS (Batch Hard)
+# ==========================================
+class OnlineTripletLoss(nn.Module):
+    """
+    Online Triplet Loss com mineração 'Batch Hard'.
+    Para cada âncora no batch, seleciona o positivo mais difícil (maior distância)
+    e o negativo mais difícil (menor distância).
+    
+    Requer que o batch tenha múltiplas amostras por classe (P > 1).
+    """
+    def __init__(self, margin=0.3, **kwargs):
+        super(OnlineTripletLoss, self).__init__()
+        self.margin = margin
+
+    def _pairwise_distance(self, x):
+        # x: [N, D]
+        # dist[i, j] = ||x[i] - x[j]||^2
+        #            = ||x[i]||^2 + ||x[j]||^2 - 2 <x[i], x[j]>
+        dot_product = torch.matmul(x, x.t())
+        square_norm = torch.diag(dot_product)
+        distances = square_norm.unsqueeze(1) - 2.0 * dot_product + square_norm.unsqueeze(0)
+        # Garante não-negatividade e evita NaN no sqrt
+        distances = torch.clamp(distances, min=1e-16)
+        return torch.sqrt(distances)
+
+    def _get_triplet_mask(self, labels):
+        # Retorna máscara [N, N] onde mask[i, j] é True se i e j são distintos e têm mesma label
+        indices_equal = torch.eye(labels.size(0), device=labels.device).bool()
+        indices_not_equal = ~indices_equal
+        i_equal_j = labels.unsqueeze(0) == labels.unsqueeze(1)
+        return indices_not_equal & i_equal_j
+
+    def _get_negative_mask(self, labels):
+        # Retorna máscara [N, N] onde mask[i, j] é True se i e j têm labels diferentes
+        return labels.unsqueeze(0) != labels.unsqueeze(1)
+
+    def forward_individual(self, embeddings, labels):
+        # embeddings: [N, D]
+        # labels: [N]
+        
+        dist_mat = self._pairwise_distance(embeddings)
+        
+        # Hardest Positive: max(dist(a, p))
+        mask_pos = self._get_triplet_mask(labels)
+        # Preenche inválidos com 0 para não afetar o max
+        # (mas se não houver positivos, max será 0, o que é ok)
+        hardest_positive_dist, _ = torch.max(dist_mat * mask_pos.float(), dim=1)
+        
+        # Hardest Negative: min(dist(a, n))
+        mask_neg = self._get_negative_mask(labels)
+        # Preenche inválidos com infinito para não afetar o min
+        max_dist = dist_mat.max().detach()
+        dist_mat_neg = dist_mat + max_dist * (~mask_neg).float()
+        hardest_negative_dist, _ = torch.min(dist_mat_neg, dim=1)
+        
+        # Loss = max(0, dp - dn + margin)
+        triplet_loss = torch.clamp(hardest_positive_dist - hardest_negative_dist + self.margin, min=0.0)
+        
+        return triplet_loss
+
+    def forward(self, embeddings, labels):
+        losses = self.forward_individual(embeddings, labels)
+        return losses.mean()
+
+# ==========================================
 # REGISTRY & BUILDER
 # ==========================================
 LOSS_REGISTRY = {
     "contrastive": ContrastiveLoss,
+    "triplet": OnlineTripletLoss, # Adicionado
     "arcface": ArcFaceLoss,
     "elastic_arcface": ElasticArcFaceLoss,
     "cosface": CosFaceLoss,

@@ -1,5 +1,6 @@
 # Logs do Weights & Biases
 wandb/
+wandb_backup_20251207_194327/
 *.wandb
 
 # Byte-compiled / optimized / DLL files

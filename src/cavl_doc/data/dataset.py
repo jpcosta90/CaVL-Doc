@@ -49,12 +49,12 @@ class DocumentPairDataset(Dataset):
             image = Image.open(img_path).convert("RGB")
             blocks = dynamic_preprocess(image, image_size=self.input_size, use_thumbnail=True, max_num=self.max_num)
             tensor = [self.transform(b) for b in blocks]
-            # Retorna [N, 3, H, W]
-            return torch.stack(tensor).to(torch.bfloat16).to(self.device)
+            # Retorna [N, 3, H, W] - Mantém float32 na CPU para estabilidade dos workers
+            return torch.stack(tensor)
         except Exception as e:
             print(f"Erro carregando imagem {img_path}: {e}")
             # Retorna tensor vazio para não quebrar o batch
-            return torch.zeros((1, 3, self.input_size, self.input_size), dtype=torch.bfloat16).to(self.device)
+            return torch.zeros((1, 3, self.input_size, self.input_size))
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]

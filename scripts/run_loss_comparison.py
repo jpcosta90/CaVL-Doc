@@ -33,6 +33,7 @@ WANDB_PROJECT = f"CaVL-Loss-Comparison-LACDIP-{PROTOCOL.upper()}-S{SPLIT_IDX}"
 # Lista de Losses para Comparar
 LOSSES_TO_TEST = [
     "contrastive",      # Baseline
+    "triplet",          # Baseline Metric Learning
     "arcface",          # SOTA Clássico
     "cosface",          # SOTA Clássico
     "expface",          # Foco em exemplos limpos
@@ -47,21 +48,21 @@ COMMON_ARGS = [
     "--model-name", "InternVL3-2B",
     "--dataset-name", "LA-CDIP",
     "--epochs", "5",
-    "--student-batch-size", "6",
-    "--candidate-pool-size", "25",
+    "--student-batch-size", "8",
+    "--candidate-pool-size", "64",
     "--use-wandb",
     "--patience", "3",
-    
+    "--lr-reduce-factor", "0.5",
     # Parâmetros do experimento de referência
-    "--student-lr", "0.0001",
-    "--professor-lr", "0.001",
+    "--student-lr", "1e-5",
+    "--professor-lr", "1e-4",
     "--cut-layer", "27",
     "--projection-output-dim", "1536",
     "--max-num-image-tokens", "12",
-    "--num-queries", "12",
+    "--num-queries", "4",
     "--pooler-type", "attention",
     "--head-type", "mlp",
-    "--baseline-alpha", "0.01",
+    "--baseline-alpha", "0.05",
     "--entropy-coeff", "0.01"
 ]
 
