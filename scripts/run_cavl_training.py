@@ -95,6 +95,9 @@ def prepare_experiment(args):
 def main(args):
     outdir, resume_wandb_id = prepare_experiment(args)
     
+    # Prioridade: Argumento CLI > Config do Checkpoint
+    final_wandb_id = args.wandb_id if args.wandb_id else resume_wandb_id
+
     if args.use_wandb:
         import wandb
         
@@ -106,16 +109,16 @@ def main(args):
             "settings": wandb.Settings(init_timeout=300)
         }
         
-        if resume_wandb_id:
-            print(f"🔄 Resuming WandB Run ID: {resume_wandb_id}")
-            init_kwargs['id'] = resume_wandb_id
+        if final_wandb_id:
+            print(f"🔄 Resuming WandB Run ID: {final_wandb_id}")
+            init_kwargs['id'] = final_wandb_id
             init_kwargs['resume'] = 'allow'
             
         try:
             wandb.init(**init_kwargs)
         except Exception as e:
-            print(f"❌ Erro crítico ao inicializar WandB (Resume ID: {resume_wandb_id}): {e}")
-            if resume_wandb_id:
+            print(f"❌ Erro crítico ao inicializar WandB (Resume ID: {final_wandb_id}): {e}")
+            if final_wandb_id:
                 print("⚠️ Falha ao retomar. Iniciando um NOVO run para garantir a continuidade do treino...")
                 # Remove ID e Resume para forçar um run novo
                 init_kwargs.pop('id', None)
@@ -375,6 +378,7 @@ def main(args):
             head_type=args.head_type,
             num_queries=args.num_queries,
             num_classes=num_classes,
+            val_samples_per_class=args.val_samples_per_class,
             # Hiperparâmetros de Loss
             margin=args.margin,
             scale=args.scale,
@@ -395,10 +399,11 @@ def parse_args():
     p.add_argument("--use-wandb", action="store_true")
     p.add_argument("--wandb-project", type=str, default="CaVL-Doc")
     p.add_argument("--wandb-run-name", type=str, default=None)
+    p.add_argument("--wandb-id", type=str, default=None, help="Explicit WandB Run ID for resuming")
 
     # Modular Arguments
     p.add_argument("--loss-type", type=str, default="contrastive", 
-                   choices=["contrastive", "triplet", "arcface", "elastic_arcface", "cosface", "elastic_cosface", "expface", "elastic_expface", "subcenter_arcface", "circle", "elastic_circle", "subcenter_circle", "angular", "iso_arcface", "iso_cosface"],
+                   choices=["contrastive", "triplet", "arcface", "elastic_arcface", "cosface", "elastic_cosface", "expface", "elastic_expface", "subcenter_arcface", "circle", "elastic_circle", "subcenter_circle", "angular", "iso_arcface", "iso_cosface", "iso_circle"],
                    help="Type of loss function")
     p.add_argument("--pooler-type", type=str, default="attention", choices=["attention", "mean", "gem", "netvlad"])
     p.add_argument("--head-type", type=str, default="mlp", choices=["mlp", "simple_mlp", "residual"])
@@ -441,6 +446,7 @@ def parse_args():
     
     p.add_argument("--val-fraction", type=float, default=0.05)
     p.add_argument("--val-min-size", type=int, default=200)
+    p.add_argument("--val-samples-per-class", type=int, default=20, help="Number of samples per class for balanced validation subset")
     p.add_argument("--patience", type=int, default=3)
     
     p.add_argument("--baseline-alpha", type=float, default=0.01)

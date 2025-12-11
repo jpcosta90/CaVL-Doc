@@ -639,6 +639,83 @@ class IsoCosFaceLoss(nn.Module):
         return F.cross_entropy(output, labels.long(), reduction='none')
 
 # ==========================================
+# 7.2 ISO-CIRCLE LOSS
+# ==========================================
+class IsoCircleLoss(nn.Module):
+    """
+    IsoCircleLoss: Isotropic Circle Loss.
+    
+    Combina a Projeção Isotrópica (para remover anisotropia/cone effect)
+    com a Circle Loss (ponderação dinâmica para hard mining).
+    """
+    def __init__(self, in_features=512, num_classes=16, m=0.25, gamma=256, momentum=0.9, **kwargs):
+        super(IsoCircleLoss, self).__init__()
+        self.m = m
+        self.gamma = gamma
+        self.momentum = momentum
+        
+        # Eixo do Cone (Média Global Móvel)
+        self.register_buffer('cone_axis', torch.zeros(in_features))
+        
+        self.weight = nn.Parameter(torch.FloatTensor(num_classes, in_features))
+        nn.init.xavier_uniform_(self.weight)
+
+    def _update_cone(self, embeddings):
+        if self.training:
+            batch_mean = embeddings.mean(dim=0)
+            batch_dir = F.normalize(batch_mean, dim=0)
+            
+            if self.cone_axis.sum() == 0:
+                self.cone_axis = batch_dir
+            else:
+                self.cone_axis = self.momentum * self.cone_axis + (1 - self.momentum) * batch_dir
+            
+            self.cone_axis = F.normalize(self.cone_axis, dim=0)
+
+    def _get_sim(self, embeddings):
+        # 1. Update Cone Axis
+        self._update_cone(embeddings)
+        
+        # 2. Isotropic Projection
+        cone_component = (embeddings @ self.cone_axis).unsqueeze(1) * self.cone_axis
+        embeddings_iso = embeddings - cone_component
+        
+        # 3. Standard Circle Loss Logic on Isotropic Embeddings
+        embeddings_norm = F.normalize(embeddings_iso, dim=1)
+        weight_norm = F.normalize(self.weight, dim=1)
+        
+        sim = F.linear(embeddings_norm, weight_norm)
+        return sim
+
+    def forward(self, embeddings, labels):
+        sim = self._get_sim(embeddings)
+        
+        one_hot = torch.zeros_like(sim)
+        one_hot.scatter_(1, labels.view(-1, 1).long(), 1)
+        
+        sp = sim[one_hot == 1]
+        sn = sim[one_hot == 0]
+
+        ap = torch.clamp(1 + self.m - sp.detach(), min=0.0)
+        an = torch.clamp(sn.detach() + self.m, min=0.0)
+        
+        delta_p = 1 - self.m
+        delta_n = self.m
+        
+        logit_p = - self.gamma * ap * (sp - delta_p)
+        logit_n = self.gamma * an * (sn - delta_n)
+        
+        loss = F.softplus(torch.logsumexp(logit_n, dim=0) + torch.logsumexp(logit_p, dim=0))
+        return loss
+
+    def forward_individual(self, embeddings, labels):
+        sim = self._get_sim(embeddings)
+        one_hot = torch.zeros_like(sim)
+        one_hot.scatter_(1, labels.view(-1, 1).long(), 1)
+        sp = (sim * one_hot).sum(dim=1)
+        return 1.0 - sp
+
+# ==========================================
 # 8. ONLINE TRIPLET LOSS (Batch Hard)
 # ==========================================
 class OnlineTripletLoss(nn.Module):
@@ -719,7 +796,8 @@ LOSS_REGISTRY = {
     "circle": CircleLoss,
     "elastic_circle": ElasticCircleLoss,
     "iso_arcface": IsoArcFaceLoss,
-    "iso_cosface": IsoCosFaceLoss
+    "iso_cosface": IsoCosFaceLoss,
+    "iso_circle": IsoCircleLoss
 }
 
 def build_loss(loss_type: str, **kwargs):

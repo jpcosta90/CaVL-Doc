@@ -176,6 +176,7 @@ def run_rl_siamese_loop(
     patience=3, lr_reduce_factor=0.5, baseline_alpha=0.01, entropy_coeff=0.01, seed=42,
     use_wandb=False,
     loss_type="contrastive", pooler_type="attention", head_type="mlp", num_classes=None, num_queries=1,
+    val_samples_per_class=20, # Novo argumento com default
     # Novos argumentos para losses
     margin=0.5, scale=64.0, num_sub_centers=3, std=0.05,
     # Argumento para retomar treinamento
@@ -282,9 +283,9 @@ def run_rl_siamese_loop(
     student_criterion = build_loss(
         loss_type, 
         margin=margin, 
-        m=margin, # ArcFace/CosFace/Circle usam 'm'
+        m=margin, # ArcFace/CosFace/Circle/IsoCircle usam 'm'
         s=scale,
-        gamma=scale, # Circle usa gamma
+        gamma=scale, # Circle/IsoCircle usa gamma
         num_classes=num_classes, 
         k=num_sub_centers,
         std=std,
@@ -377,7 +378,8 @@ def run_rl_siamese_loop(
     # Cria um subset de validação balanceado e reduzido para avaliação rápida entre épocas
     # Garante que todas as classes presentes na validação sejam avaliadas.
     balanced_val_indices = []
-    samples_per_class = 20 # Configuração: 20 pares por classe
+    # Usa o valor parametrizado
+    samples_per_class = val_samples_per_class 
     
     # Identifica o dataset base e os índices da validação
     if isinstance(val_dataset, Subset):
