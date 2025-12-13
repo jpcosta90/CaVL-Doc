@@ -446,7 +446,7 @@ The summary of our results on the LA-CDIP dataset is presented in Table \ref{tab
 \multicolumn{3}{l}{\textit{Baselines}} \\
 \addlinespace[2pt]
 Pixel-Baseline (Reference)\tnote{1} & Cosine & 9.07 \\
-ResNet-34\tnote{1} & Learned (VDM) & 4.13 \\
+ResNet-34\tnote{1} & Embedded (VDM) & 4.13 \\
 Qwen-VL 2.5\tnote{1} & Prompt-Based & 6.61 \\
 ChatGPT-4o (SOTA Target)\tnote{1} & Prompt-Based & 2.75 \\
 InternVL3-14B\tnote{2} & Prompt-Based & 2.85 \\
@@ -459,13 +459,14 @@ InternVL3-2B (Base Model) & Cosine & 5.86 \\
 InternVL3-2B (Base Model) & Euclidean & 3.57 \\
 \addlinespace[2pt]
 \multicolumn{3}{l}{\textit{CaVL-Doc (Multi-Query Attention + Residual Head)}} \\
-Ours (w/ Contrastive Loss) & Learned & -- \\
-Ours (w/ ArcFace) & Learned & -- \\
-Ours (w/ ElasticArcFace) & Learned & \textbf{--} \\
-Ours (w/ ElasticCosFace) & Learned & -- \\
-Ours (w/ ElasticCircle) & Learned & -- \\
-Ours (w/ ElasticExpFace) & Learned & -- \\
-\textbf{Ours (CaVL-Doc w/ Curriculum)} & \textbf{Learned} & \textbf{--} \\
+Ours (w/ Contrastive Loss) & Embedded & 1.98 \\
+Ours (w/ Triplet Loss) & Embedded & 2.27 \\
+Ours (w/ ArcFace) & Embedded & 3.73 \\
+Ours (w/ CosFace) & Embedded & 3.73 \\
+Ours (w/ ExpFace) & Embedded & 4.59 \\
+Ours (w/ Circle) & Embedded & 3.73 \\
+Ours (w/ Subcenter ArcFace) & Embedded & 3.15 \\
+% \textbf{Ours (CaVL-Doc w/ Curriculum)} & \textbf{Embedded} & \textbf{--} \\
 \bottomrule
 \end{tabularx}
 
@@ -508,13 +509,14 @@ InternVL3-2B (Base Model) & Cosine & 36.70 \\
 InternVL3-2B (Base Model) & Euclidean & 34.80 \\
 \addlinespace[2pt]
 \multicolumn{3}{l}{\textit{CaVL-Doc (Multi-Query Attention + Residual Head)}} \\
-Ours (w/ Contrastive Loss) & Learned & -- \\
-Ours (w/ ArcFace) & Learned & -- \\
-Ours (w/ ElasticArcFace) & Learned & \textbf{--} \\
-Ours (w/ ElasticCosFace) & Learned & -- \\
-Ours (w/ ElasticCircle) & Learned & -- \\
-Ours (w/ ElasticExpFace) & Learned & -- \\
-\textbf{Ours (CaVL-Doc w/ Curriculum)} & \textbf{Learned} & \textbf{--} \\
+Ours (w/ Contrastive Loss) & Embedded & 27.99 \\
+Ours (w/ Triplet Loss) & Embedded & 22.99 \\
+Ours (w/ ArcFace) & Embedded & 29.50 \\
+Ours (w/ CosFace) & Embedded & 25.49 \\
+Ours (w/ ExpFace) & Embedded & 28.50 \\
+Ours (w/ Circle) & Embedded & 32.74 \\
+Ours (w/ Subcenter ArcFace) & Embedded & -- \\
+% \textbf{Ours (CaVL-Doc w/ Curriculum)} & \textbf{Embedded} & \textbf{--} \\
 \bottomrule
 % --- MUDANÇA AQUI ---
 \end{tabularx}

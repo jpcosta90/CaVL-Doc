@@ -1,18 +1,18 @@
 # Fdb version 4
-["bibtex sn-article"] 1764557348.54149 "sn-article.aux" "sn-article.bbl" "sn-article" 1764557350.80713 0
+["bibtex sn-article"] 1765491014.76354 "sn-article.aux" "sn-article.bbl" "sn-article" 1765491016.87802 0
   "./sn-bibliography.bib" 1764466311.75162 56827 bbd01249779cd75d52f6e0d8cabb53cf ""
   "./sn-mathphys-num.bst" 1764466312.01562 64166 9adad5d5c1e00c8b866e91fad1a03aa0 ""
-  "sn-article.aux" 1764557350.37157 12639 3c6aa2a8638af7594ed2d451df402a48 "pdflatex"
+  "sn-article.aux" 1765491016.46227 12639 3c6aa2a8638af7594ed2d451df402a48 "pdflatex"
   (generated)
   "sn-article.bbl"
   "sn-article.blg"
   (rewritten before read)
-["pdflatex"] 1764557348.77694 "/home/joaopaulo/Projects/CaVL-Doc/docs/paper/sn-article.tex" "sn-article.pdf" "sn-article" 1764557350.80762 0
+["pdflatex"] 1765491014.98867 "/home/joaopaulo/Projects/CaVL-Doc/docs/paper/sn-article.tex" "sn-article.pdf" "sn-article" 1765491016.87857 0
   "../../results/plots/LA-CDIP_performance_vs_parameters.png" 1763830696.9655 322945 86e0ef2488c35a62d8e301a7e10af4d7 ""
   "../assets/CAVL_structure.png" 1763837552.47877 1033301 d5a3b03ba8a04bb94955014b596fb8ff ""
   "../assets/problema pesquisa DAML.png" 1764467319.95211 25983 a9fdc258a799e6850e2fcaa78bdaf663 ""
   "/etc/texmf/web2c/texmf.cnf" 1762826628.54764 475 c0e671620eb5563b2130f56340a5fde8 ""
-  "/home/joaopaulo/Projects/CaVL-Doc/docs/paper/sn-article.tex" 1764557343.46599 59735 8c83a8a4db8b39504f44cdf58e8c2c97 ""
+  "/home/joaopaulo/Projects/CaVL-Doc/docs/paper/sn-article.tex" 1765491012.22288 59816 9f35f0a270aec06b0b0241bde94691e5 ""
   "/usr/share/texlive/texmf-dist/fonts/map/fontname/texfonts.map" 1577235249 3524 cb3e574dea2d1052e39280babc910dc8 ""
   "/usr/share/texlive/texmf-dist/fonts/tfm/jknappen/ec/ecbi1000.tfm" 1136768653 3072 e6fe53b666f9cbd66cb135c6fdea66d3 ""
   "/usr/share/texlive/texmf-dist/fonts/tfm/jknappen/ec/ecbx0800.tfm" 1136768653 3584 269b66e921ba58750c12f7f1c8ea3ebd ""
@@ -197,10 +197,10 @@
   "/usr/share/texmf/web2c/texmf.cnf" 1707919699 40399 f2c302f7d2af602abb742093540a5834 ""
   "/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map" 1762826651.02718 5472669 54eaf61a88b6b7896ebd0dac973cb29c ""
   "/var/lib/texmf/web2c/pdftex/pdflatex.fmt" 1762826679 8213535 bd13190d91c5723e24b554d1ee1a2f46 ""
-  "sn-article.aux" 1764557350.37157 12639 3c6aa2a8638af7594ed2d451df402a48 "pdflatex"
-  "sn-article.bbl" 1764557348.76358 15384 4baa21f0aaa60b589374a92d381ea255 "bibtex sn-article"
-  "sn-article.out" 1764557350.37357 8053 619b8ca3fa15ec7c2778b02aabe39069 "pdflatex"
-  "sn-article.tex" 1764557343.46599 59735 8c83a8a4db8b39504f44cdf58e8c2c97 ""
+  "sn-article.aux" 1765491016.46227 12639 3c6aa2a8638af7594ed2d451df402a48 "pdflatex"
+  "sn-article.bbl" 1765491014.97529 15384 4baa21f0aaa60b589374a92d381ea255 "bibtex sn-article"
+  "sn-article.out" 1765491016.46427 8053 619b8ca3fa15ec7c2778b02aabe39069 "pdflatex"
+  "sn-article.tex" 1765491012.22288 59816 9f35f0a270aec06b0b0241bde94691e5 ""
   "sn-jnl.cls" 1764466311.85362 55857 7d4515312123fd1744517a7415d792ff ""
   (generated)
   "sn-article.aux"
