@@ -368,6 +368,57 @@ class SubCenterArcFaceLoss(nn.Module):
         return F.cross_entropy(output, labels.long(), reduction='none')
 
 # ==========================================
+# 5.1 SUB-CENTER COSFACE
+# ==========================================
+class SubCenterCosFaceLoss(nn.Module):
+    """
+    SubCenter CosFace.
+    Mesma lógica de múltiplos centros (K) para lidar com variância intra-classe,
+    mas usando a margem aditiva de cosseno (CosFace) em vez da angular.
+    
+    Geralmente mais estável que ArcFace em datasets muito ruidosos.
+    """
+    def __init__(self, in_features=512, num_classes=16, k=3, s=64.0, m=0.35, **kwargs):
+        super(SubCenterCosFaceLoss, self).__init__()
+        self.num_classes = num_classes
+        self.k = k
+        self.s = s
+        self.m = m
+        
+        # Pesos expandidos: [num_classes * k, in_features]
+        self.weight = nn.Parameter(torch.FloatTensor(num_classes * k, in_features))
+        nn.init.xavier_uniform_(self.weight)
+
+    def _get_logits(self, embeddings, labels):
+        embeddings = F.normalize(embeddings, dim=1)
+        weight = F.normalize(self.weight, dim=1)
+        
+        # Cosseno com todos os sub-centros: [Batch, Class*K]
+        cosine_all = F.linear(embeddings, weight)
+        # Reshape para [Batch, Class, K]
+        cosine_all = cosine_all.view(-1, self.num_classes, self.k)
+        # Max-pooling: seleciona o melhor sub-centro para cada classe
+        cosine_best, _ = torch.max(cosine_all, dim=2)
+        
+        # CosFace: phi = cosine - m
+        phi = cosine_best - self.m
+        
+        one_hot = torch.zeros(cosine_best.size(), device=embeddings.device)
+        one_hot.scatter_(1, labels.view(-1, 1).long(), 1)
+        
+        output = (one_hot * phi) + ((1.0 - one_hot) * cosine_best)
+        output *= self.s
+        return output
+
+    def forward(self, embeddings, labels):
+        output = self._get_logits(embeddings, labels)
+        return F.cross_entropy(output, labels.long())
+
+    def forward_individual(self, embeddings, labels):
+        output = self._get_logits(embeddings, labels)
+        return F.cross_entropy(output, labels.long(), reduction='none')
+
+# ==========================================
 # 6. CIRCLE LOSS (Reciprocity)
 # ==========================================
 class CircleLoss(nn.Module):
@@ -716,7 +767,73 @@ class IsoCircleLoss(nn.Module):
         return 1.0 - sp
 
 # ==========================================
-# 8. ONLINE TRIPLET LOSS (Batch Hard)
+# 6.2 SUB-CENTER CIRCLE LOSS
+# ==========================================
+class SubCenterCircleLoss(nn.Module):
+    """
+    SubCenter Circle Loss.
+    Combina K sub-centros (para lidar com variância de layout/posição intra-classe)
+    com a ponderação dinâmica da Circle Loss.
+    
+    Ideal para datasets onde a mesma classe pode ter layouts muito distintos 
+    (ex: "Invoice" pode ser uma tabela ou um texto corrido).
+    """
+    def __init__(self, in_features=512, num_classes=16, k=3, m=0.25, gamma=256, **kwargs):
+        super(SubCenterCircleLoss, self).__init__()
+        self.num_classes = num_classes
+        self.k = k
+        self.m = m
+        self.gamma = gamma
+        
+        # Pesos expandidos: [num_classes * k, in_features]
+        self.weight = nn.Parameter(torch.FloatTensor(num_classes * k, in_features))
+        nn.init.xavier_uniform_(self.weight)
+
+    def forward(self, embeddings, labels):
+        embeddings = F.normalize(embeddings, dim=1)
+        weight = F.normalize(self.weight, dim=1)
+        
+        # Similaridade com todos os sub-centros: [Batch, Class*K]
+        sim_all = F.linear(embeddings, weight)
+        # Reshape para [Batch, Class, K]
+        sim_all = sim_all.view(-1, self.num_classes, self.k)
+        # Max-pooling: seleciona o melhor sub-centro para cada classe
+        sim_best, _ = torch.max(sim_all, dim=2)
+        
+        # Máscaras
+        one_hot = torch.zeros_like(sim_best)
+        one_hot.scatter_(1, labels.view(-1, 1).long(), 1)
+        
+        sp = sim_best[one_hot == 1]
+        sn = sim_best[one_hot == 0]
+
+        # Pesos Dinâmicos (alpha)
+        ap = torch.clamp(1 + self.m - sp.detach(), min=0.0)
+        an = torch.clamp(sn.detach() + self.m, min=0.0)
+        
+        delta_p = 1 - self.m
+        delta_n = self.m
+        
+        logit_p = - self.gamma * ap * (sp - delta_p)
+        logit_n = self.gamma * an * (sn - delta_n)
+        
+        loss = F.softplus(torch.logsumexp(logit_n, dim=0) + torch.logsumexp(logit_p, dim=0))
+        return loss
+
+    def forward_individual(self, embeddings, labels):
+        embeddings = F.normalize(embeddings, dim=1)
+        weight = F.normalize(self.weight, dim=1)
+        sim_all = F.linear(embeddings, weight)
+        sim_all = sim_all.view(-1, self.num_classes, self.k)
+        sim_best, _ = torch.max(sim_all, dim=2)
+        
+        one_hot = torch.zeros_like(sim_best)
+        one_hot.scatter_(1, labels.view(-1, 1).long(), 1)
+        sp = (sim_best * one_hot).sum(dim=1)
+        return 1.0 - sp
+
+# ==========================================
+# ONLINE TRIPLET LOSS (Batch Hard)
 # ==========================================
 class OnlineTripletLoss(nn.Module):
     """
@@ -793,11 +910,14 @@ LOSS_REGISTRY = {
     "expface": ExpFaceLoss,
     "elastic_expface": ElasticExpFaceLoss,
     "subcenter_arcface": SubCenterArcFaceLoss,
+    "subcenter_cosface": SubCenterCosFaceLoss,
     "circle": CircleLoss,
     "elastic_circle": ElasticCircleLoss,
+    "subcenter_circle": SubCenterCircleLoss,
     "iso_arcface": IsoArcFaceLoss,
     "iso_cosface": IsoCosFaceLoss,
-    "iso_circle": IsoCircleLoss
+    "iso_circle": IsoCircleLoss,
+    "subcenter_circle": SubCenterCircleLoss
 }
 
 def build_loss(loss_type: str, **kwargs):

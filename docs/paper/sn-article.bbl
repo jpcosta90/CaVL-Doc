@@ -1,6 +1,6 @@
 %% BioMed_Central_Bib_Style_v1.01
 
-\begin{thebibliography}{19}
+\begin{thebibliography}{18}
 % BibTex style file: bmc-mathphys.bst (version 2.1), 2014-07-24
 \ifx \bisbn   \undefined \def \bisbn  #1{ISBN #1}\fi
 \ifx \binits  \undefined \def \binits#1{#1}\fi
@@ -227,24 +227,6 @@ In: \bbtitle{The Thirty-Ninth AAAI Conference on Artificial Intelligence (AAAI-2
 \endbibitem
 
 %%% 11
-\bibitem[\protect\citeauthoryear{Floridi et~al.}{2025}]{floridi2025open}
-\begin{barticle}
-\bauthor{\bsnm{Floridi}, \binits{L.}},
-\bauthor{\bsnm{Buttaboni}, \binits{C.}},
-\bauthor{\bsnm{Hine}, \binits{E.}},
-\bauthor{\bsnm{Novelli}, \binits{C.}},
-\bauthor{\bsnm{Schroder}, \binits{T.}},
-\bauthor{\bsnm{Shanklin}, \binits{G.}}:
-\batitle{Open-source {AI} made in the {EU:} why it is a good idea}.
-\bjtitle{Minds and Machines}
-\bvolume{35},
-\bfpage{23}
-(\byear{2025})
-\doiurl{10.1007/s11023-025-0972}
-\end{barticle}
-\endbibitem
-
-%%% 12
 \bibitem[\protect\citeauthoryear{Liu et~al.}{2021}]{liu_document_2021}
 \begin{barticle}
 \bauthor{\bsnm{Liu}, \binits{L.}},
@@ -262,7 +244,7 @@ In: \bbtitle{The Thirty-Ninth AAAI Conference on Artificial Intelligence (AAAI-2
 \end{barticle}
 \endbibitem
 
-%%% 13
+%%% 12
 \bibitem[\protect\citeauthoryear{Macedo et~al.}{2026}]{macedo2026vdm}
 \begin{bchapter}
 \bauthor{\bsnm{Macedo}, \binits{L.D.A.B.}},
@@ -278,7 +260,7 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML 202
 \end{bchapter}
 \endbibitem
 
-%%% 14
+%%% 13
 \bibitem[\protect\citeauthoryear{Shu et~al.}{2024}]{shu2024dsncl}
 \begin{barticle}
 \bauthor{\bsnm{Shu}, \binits{Z.}},
@@ -294,7 +276,7 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML 202
 \end{barticle}
 \endbibitem
 
-%%% 15
+%%% 14
 \bibitem[\protect\citeauthoryear{Yan et~al.}{2024}]{yan2024lmmetric}
 \begin{barticle}
 \bauthor{\bsnm{Yan}, \binits{S.}},
@@ -311,7 +293,7 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML 202
 \end{barticle}
 \endbibitem
 
-%%% 16
+%%% 15
 \bibitem[\protect\citeauthoryear{Chen et~al.}{2024}]{internvl2024}
 \begin{botherref}
 \oauthor{\bsnm{Chen}, \binits{Z.}},
@@ -363,7 +345,7 @@ CoRR
 \end{botherref}
 \endbibitem
 
-%%% 17
+%%% 16
 \bibitem[\protect\citeauthoryear{Weigang and da~Silva}{1999}]{weigang1999study}
 \begin{bchapter}
 \bauthor{\bsnm{Weigang}, \binits{L.}},
@@ -377,7 +359,7 @@ pp. \bfpage{1113}--\blpage{1116}
 \end{bchapter}
 \endbibitem
 
-%%% 18
+%%% 17
 \bibitem[\protect\citeauthoryear{Harley et~al.}{2015}]{harley2015rvlcdip}
 \begin{bchapter}
 \bauthor{\bsnm{Harley}, \binits{A.W.}},
@@ -393,7 +375,7 @@ pp. \bfpage{991}--\blpage{995}.
 \end{bchapter}
 \endbibitem
 
-%%% 19
+%%% 18
 \bibitem[\protect\citeauthoryear{Sinha et~al.}{2024}]{sinha2024cica}
 \begin{bchapter}
 \bauthor{\bsnm{Sinha}, \binits{S.}},

@@ -7,19 +7,19 @@
 \citation{macedo2025vdm}
 \citation{macedo2025vdm,voerman2025optimizing,bakkali2025globaldoc}
 \citation{scius2024zeroshot}
+\citation{scius2024zeroshot}
+\citation{patel2024characterizing,cruz2025innovating}
+\citation{patterson2022carbon}
+\citation{wiest2024privacy,strong2025trustworthy}
 \providecommand\@newglossary[4]{}
 \@newglossary{main}{glg}{gls}{glo}
 \providecommand\@glsxtr@savepreloctag[2]{}
 \@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
 \newlabel{sec:introduction}{{1}{1}{Introduction}{section.1}{}}
-\citation{scius2024zeroshot}
-\citation{patel2024characterizing,cruz2025innovating,patterson2022carbon}
-\citation{wiest2024privacy,strong2025trustworthy}
-\citation{floridi2025open}
-\citation{voerman2025optimizing,bakkali2025globaldoc}
+\citation{voerman2025optimizing}
 \citation{macedo2025vdm}
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces The conceptual problem of metric adaptation. An initial baseline metric is used for classification (green). The model's performance is evaluated (red), and the results feed an adaptation loop (purple) to continually improve the classification metric.}}{2}{figure.1}\protected@file@percent }
-\newlabel{fig:daml-loop}{{1}{2}{The conceptual problem of metric adaptation. An initial baseline metric is used for classification (green). The model's performance is evaluated (red), and the results feed an adaptation loop (purple) to continually improve the classification metric}{figure.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Conceptual visualization of the Zero-Shot learning objective. The figure illustrates the goal of constructing a metric space using seen classes that maintains discriminative power for unseen classes, allowing new document types to form distinct, separable classes without additional training.}}{2}{figure.1}\protected@file@percent }
+\newlabel{fig:metric-space-concept}{{1}{2}{Conceptual visualization of the Zero-Shot learning objective. The figure illustrates the goal of constructing a metric space using seen classes that maintains discriminative power for unseen classes, allowing new document types to form distinct, separable classes without additional training}{figure.1}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {1.1}The main contributions}{2}{subsection.1.1}\protected@file@percent }
 \citation{liu_document_2021}
 \citation{scius2024zeroshot}
@@ -33,99 +33,112 @@
 \citation{bakkali2025globaldoc}
 \citation{macedo2025vdm}
 \citation{voerman2025optimizing}
-\citation{shu2024dsncl,yan2024lmmetric}
-\citation{shu2024dsncl}
-\citation{yan2024lmmetric}
 \@writefile{toc}{\contentsline {section}{\numberline {2}Related Work}{3}{section.2}\protected@file@percent }
 \newlabel{sec:related-work}{{2}{3}{Related Work}{section.2}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Document Classification: From ZS-DIC to Few-Shot Adaptation}{3}{subsection.2.1}\protected@file@percent }
 \newlabel{sec:rw_dic}{{2.1}{3}{Document Classification: From ZS-DIC to Few-Shot Adaptation}{subsection.2.1}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Metric Learning for FSL Document Classification}{3}{subsection.2.2}\protected@file@percent }
 \newlabel{sec:rw_dml}{{2.2}{3}{Metric Learning for FSL Document Classification}{subsection.2.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Robust Loss Functions for Metric Learning}{3}{subsection.2.3}\protected@file@percent }
-\newlabel{sec:rw_cl}{{2.3}{3}{Robust Loss Functions for Metric Learning}{subsection.2.3}{}}
+\citation{shu2024dsncl,yan2024lmmetric}
+\citation{shu2024dsncl}
+\citation{yan2024lmmetric}
 \citation{internvl2024}
+\citation{weigang1999study}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Robust Loss Functions for Metric Learning}{4}{subsection.2.3}\protected@file@percent }
+\newlabel{sec:rw_cl}{{2.3}{4}{Robust Loss Functions for Metric Learning}{subsection.2.3}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {3}The CaVL-Doc Framework}{4}{section.3}\protected@file@percent }
 \newlabel{sec:methodology}{{3}{4}{The CaVL-Doc Framework}{section.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Multimodal Token Alignment with InternVL3}{4}{subsection.3.1}\protected@file@percent }
-\newlabel{sec:backbone}{{3.1}{4}{Multimodal Token Alignment with InternVL3}{subsection.3.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Architecture: Multi-Query Attention and Residual Head}{4}{subsection.3.2}\protected@file@percent }
-\newlabel{sec:architecture}{{3.2}{4}{Architecture: Multi-Query Attention and Residual Head}{subsection.3.2}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.1}Multi-Query Attention Pooling}{4}{subsubsection.3.2.1}\protected@file@percent }
-\citation{weigang1999study}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.2}Residual Projection Head}{5}{subsubsection.3.2.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.3}Efficiency: Once Learning vs. Autoregressive Decoding}{5}{subsubsection.3.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Architecture: Multi-Query Attention and Residual Head}{4}{subsection.3.1}\protected@file@percent }
+\newlabel{sec:architecture}{{3.1}{4}{Architecture: Multi-Query Attention and Residual Head}{subsection.3.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.1.1}Multi-Query Attention Pooling}{4}{subsubsection.3.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.1.2}Residual Projection Head}{4}{subsubsection.3.1.2}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Overview of the CaVL-Doc framework. The architecture leverages aligned multimodal tokens from the frozen InternVL3 backbone. These tokens are aggregated via Multi-Query Attention Pooling and processed by a Residual Projection Head, which is trained using Elastic Margin Losses to ensure a robust embedding space.}}{5}{figure.2}\protected@file@percent }
 \newlabel{fig:cavl-structure}{{2}{5}{Overview of the CaVL-Doc framework. The architecture leverages aligned multimodal tokens from the frozen InternVL3 backbone. These tokens are aggregated via Multi-Query Attention Pooling and processed by a Residual Projection Head, which is trained using Elastic Margin Losses to ensure a robust embedding space}{figure.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Robust Metric Learning with Elastic Losses}{5}{subsection.3.3}\protected@file@percent }
-\newlabel{sec:losses}{{3.3}{5}{Robust Metric Learning with Elastic Losses}{subsection.3.3}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.3.1}Angular Margin Losses}{5}{subsubsection.3.3.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.3.2}Elastic Margins for Few-Shot Robustness}{6}{subsubsection.3.3.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Optimization Strategy: A Hybrid Curriculum-RL Approach}{6}{subsection.3.4}\protected@file@percent }
-\newlabel{sec:curriculum}{{3.4}{6}{Optimization Strategy: A Hybrid Curriculum-RL Approach}{subsection.3.4}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.4.1}Macro-Level: Three-Phase Loss Schedule}{6}{subsubsection.3.4.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.4.2}Micro-Level: RL-Based Data Selection (The Professor)}{6}{subsubsection.3.4.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4}Experimental Setup}{6}{section.4}\protected@file@percent }
-\newlabel{sec:experiments}{{4}{6}{Experimental Setup}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}The "Professor": Active Data Selection Agent}{5}{subsection.3.2}\protected@file@percent }
+\newlabel{sec:professor}{{3.2}{5}{The "Professor": Active Data Selection Agent}{subsection.3.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Objective Functions for Metric Alignment}{5}{subsection.3.3}\protected@file@percent }
+\newlabel{sec:losses}{{3.3}{5}{Objective Functions for Metric Alignment}{subsection.3.3}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.3.1}Euclidean Distance Constraints}{5}{subsubsection.3.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.3.2}Angular Margin Constraints}{5}{subsubsection.3.3.2}\protected@file@percent }
 \citation{macedo2025vdm}
 \citation{harley2015rvlcdip}
 \citation{sinha2024cica}
 \citation{scius2024zeroshot}
-\citation{scius2024zeroshot,sinha2024cica}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Datasets and Evaluation Metrics}{7}{subsection.4.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.1.1}Datasets: LA-CDIP and RVL-CDIP}{7}{subsubsection.4.1.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Evaluation Metrics}{7}{subsection.4.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.1}Pair-wise Verification (EER)}{7}{subsubsection.4.2.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.2}One-Shot Classification Accuracy (Top-1 Acc.)}{7}{subsubsection.4.2.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Implementation Details and Hyperparameters}{7}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.3.3}Stochastic Margins for Robustness (Elasticity)}{6}{subsubsection.3.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}Experimental Setup}{6}{section.4}\protected@file@percent }
+\newlabel{sec:experiments}{{4}{6}{Experimental Setup}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Datasets and Evaluation Metrics}{6}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.1.1}Datasets: LA-CDIP and RVL-CDIP}{6}{subsubsection.4.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Evaluation Metrics}{6}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.1}Pair-wise Verification (EER)}{6}{subsubsection.4.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.2}One-Shot Classification Accuracy (Top-1 Acc.)}{6}{subsubsection.4.2.2}\protected@file@percent }
 \citation{macedo2026vdm}
+\citation{scius2024zeroshot,sinha2024cica}
 \citation{macedo2025vdm}
-\citation{macedo2025vdm}
-\citation{scius2024zeroshot}
-\citation{sinha2024cica}
-\citation{sinha2024cica}
-\citation{scius2024zeroshot}
-\citation{sinha2024cica}
-\citation{sinha2024cica}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Baseline and Comparison Methods}{8}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Implementation Details}{7}{subsection.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Baselines and Comparison Methods}{7}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Experimental Protocol}{7}{subsection.4.5}\protected@file@percent }
+\newlabel{sec:protocol}{{4.5}{7}{Experimental Protocol}{subsection.4.5}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.1}Objective Function Benchmarking}{7}{subsubsection.4.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.2}Sampling Strategy Ablation}{8}{subsubsection.4.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.3}Architectural Capacity Analysis}{8}{subsubsection.4.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.4}Geometric Constraint Optimization}{8}{subsubsection.4.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.5}Curriculum Optimization Strategy}{8}{subsubsection.4.5.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {5}Results and Discussion}{8}{section.5}\protected@file@percent }
 \newlabel{sec:results}{{5}{8}{Results and Discussion}{section.5}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Ablation Study: Architecture and Loss Functions}{8}{subsection.5.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Impact of Architecture}{8}{section*.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Impact of Elastic Losses}{8}{section*.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Proposed Ablation Study: Curriculum Learning Strategy}{8}{subsection.5.2}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Framework performance on the \textbf  {LA-CDIP} dataset. Performance is measured by Equal Error Rate (EER). A lower EER indicates better performance. We compare standard baselines against our CaVL-Doc architecture trained with different loss functions.}}{9}{table.1}\protected@file@percent }
-\newlabel{tab:results-la-cdip}{{1}{9}{Framework performance on the \textbf {LA-CDIP} dataset. Performance is measured by Equal Error Rate (EER). A lower EER indicates better performance. We compare standard baselines against our CaVL-Doc architecture trained with different loss functions}{table.1}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Comparison with State-of-the-Art}{9}{subsection.5.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{9}{section.6}\protected@file@percent }
-\newlabel{sec:conclusion}{{6}{9}{Conclusion}{section.6}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Summary of Findings}{9}{subsection.6.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Future Work}{9}{subsection.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Step-by-Step Ablation Analysis}{9}{subsection.5.1}\protected@file@percent }
+\newlabel{sec:ablation}{{5.1}{9}{Step-by-Step Ablation Analysis}{subsection.5.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.1}Objective Function Benchmarking}{9}{subsubsection.5.1.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces \textbf  {Results (Loss Ablation):} Comparison of different metric learning objectives trained with the CaVL-Doc architecture. We observe that the optimal loss is dataset-dependent.}}{9}{table.1}\protected@file@percent }
+\newlabel{tab:ablation-loss}{{1}{9}{\textbf {Results (Loss Ablation):} Comparison of different metric learning objectives trained with the CaVL-Doc architecture. We observe that the optimal loss is dataset-dependent}{table.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{Analysis}{9}{section*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.2}Sampling Strategy (The "Professor")}{9}{subsubsection.5.1.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces \textbf  {Results:} Impact of the Active Hard Mining strategy (Professor Agent) versus uniform random sampling.}}{9}{table.2}\protected@file@percent }
+\newlabel{tab:ablation-professor}{{2}{9}{\textbf {Results:} Impact of the Active Hard Mining strategy (Professor Agent) versus uniform random sampling}{table.2}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.3}Architecture Capacity ($Q$)}{9}{subsubsection.5.1.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces \textbf  {Results:} Evaluation of the number of attention queries ($Q$). $Q=1$ represents the global attention baseline.}}{9}{table.3}\protected@file@percent }
+\newlabel{tab:ablation-capacity}{{3}{9}{\textbf {Results:} Evaluation of the number of attention queries ($Q$). $Q=1$ represents the global attention baseline}{table.3}{}}
+\citation{macedo2025vdm}
+\citation{macedo2025vdm}
+\citation{scius2024zeroshot}
+\citation{sinha2024cica}
+\citation{sinha2024cica}
+\citation{sinha2024cica}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.4}Geometric Constraints}{10}{subsubsection.5.1.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces \textbf  {Results:} Step-wise optimization of geometric constraints. We evaluate Margin Magnitude ($m$), Sub-centers ($k$), and Stochasticity (Elasticity).}}{10}{table.4}\protected@file@percent }
+\newlabel{tab:ablation-geometry}{{4}{10}{\textbf {Results:} Step-wise optimization of geometric constraints. We evaluate Margin Magnitude ($m$), Sub-centers ($k$), and Stochasticity (Elasticity)}{table.4}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.5}Curriculum Learning Strategy}{10}{subsubsection.5.1.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Efficiency vs. Performance}{10}{subsection.5.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces \textbf  {Results:} Comparison of training schedules. The proposed curriculum combines global organization (Triplet) with local refinement (Angular).}}{10}{table.5}\protected@file@percent }
+\newlabel{tab:ablation-curriculum}{{5}{10}{\textbf {Results:} Comparison of training schedules. The proposed curriculum combines global organization (Triplet) with local refinement (Angular)}{table.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{10}{section.6}\protected@file@percent }
+\newlabel{sec:conclusion}{{6}{10}{Conclusion}{section.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Summary of Findings}{10}{subsection.6.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces \textbf  {Main Results Comparison.} Performance (EER \%) on LA-CDIP and RVL-CDIP datasets. We compare standard baselines, large-scale SOTA models, and our proposed CaVL-Doc framework using its optimal configuration for each domain.}}{11}{table.6}\protected@file@percent }
+\newlabel{tab:main-results}{{6}{11}{\textbf {Main Results Comparison.} Performance (EER \%) on LA-CDIP and RVL-CDIP datasets. We compare standard baselines, large-scale SOTA models, and our proposed CaVL-Doc framework using its optimal configuration for each domain}{table.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces One-Shot Top-1 Classification Accuracy (\%) on the \textbf  {RVL-CDIP} dataset. This evaluates a one-shot (1:N) classification task using the \textbf  {ZSL/GZSL Split A}\TPToverlap {\textsuperscript  {1}} protocol.}}{11}{table.7}\protected@file@percent }
+\newlabel{tab:results-rvl-cdip-accuracy}{{7}{11}{One-Shot Top-1 Classification Accuracy (\%) on the \textbf {RVL-CDIP} dataset. This evaluates a one-shot (1:N) classification task using the \textbf {ZSL/GZSL Split A}\tnote {1} protocol}{table.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Future Work}{11}{subsection.6.2}\protected@file@percent }
 \citation{macedo2026vdm}
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Framework performance on the \textbf  {RVL-CDIP} dataset. Performance is measured by Equal Error Rate (EER). A lower EER indicates better performance.}}{10}{table.2}\protected@file@percent }
-\newlabel{tab:results-rvl-cdip}{{2}{10}{Framework performance on the \textbf {RVL-CDIP} dataset. Performance is measured by Equal Error Rate (EER). A lower EER indicates better performance}{table.2}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces One-Shot Top-1 Classification Accuracy (\%) on the \textbf  {RVL-CDIP} dataset. This evaluates a one-shot (1:N) classification task using the \textbf  {ZSL/GZSL Split A}\TPToverlap {\textsuperscript  {1}} protocol.}}{10}{table.3}\protected@file@percent }
-\newlabel{tab:results-rvl-cdip-accuracy}{{3}{10}{One-Shot Top-1 Classification Accuracy (\%) on the \textbf {RVL-CDIP} dataset. This evaluates a one-shot (1:N) classification task using the \textbf {ZSL/GZSL Split A}\tnote {1} protocol}{table.3}{}}
 \bibdata{sn-bibliography}
 \bibcite{formUnderstandingSurvey}{{1}{2024}{{Abdallah et~al.}}{{}}}
 \bibcite{macedo2025vdm}{{2}{2025}{{Macedo et~al.}}{{}}}
 \bibcite{voerman2025optimizing}{{3}{2025}{{Voerman et~al.}}{{}}}
 \bibcite{bakkali2025globaldoc}{{4}{2025}{{Bakkali et~al.}}{{}}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Performance (EER \%) vs. Model Parameters (Log Scale) on the LA-CDIP dataset. Lower EER (y-axis) is better. Our final CaVL-Doc-adapted model achieves the best performance while remaining in the low-parameter (high-efficiency) quadrant.}}{12}{figure.3}\protected@file@percent }
+\newlabel{fig:param-plot}{{3}{12}{Performance (EER \%) vs. Model Parameters (Log Scale) on the LA-CDIP dataset. Lower EER (y-axis) is better. Our final CaVL-Doc-adapted model achieves the best performance while remaining in the low-parameter (high-efficiency) quadrant}{figure.3}{}}
 \bibcite{scius2024zeroshot}{{5}{2024}{{Scius{-}Bertrand et~al.}}{{}}}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Performance (EER \%) vs. Model Parameters (Log Scale) on the LA-CDIP dataset. Lower EER (y-axis) is better. Our final CaVL-Doc-adapted model achieves the best performance while remaining in the low-parameter (high-efficiency) quadrant.}}{11}{figure.3}\protected@file@percent }
-\newlabel{fig:param-plot}{{3}{11}{Performance (EER \%) vs. Model Parameters (Log Scale) on the LA-CDIP dataset. Lower EER (y-axis) is better. Our final CaVL-Doc-adapted model achieves the best performance while remaining in the low-parameter (high-efficiency) quadrant}{figure.3}{}}
 \bibcite{patel2024characterizing}{{6}{2024}{{Patel et~al.}}{{}}}
 \bibcite{cruz2025innovating}{{7}{2025}{{Cruz et~al.}}{{}}}
 \bibcite{patterson2022carbon}{{8}{2022}{{Patterson et~al.}}{{}}}
 \bibcite{wiest2024privacy}{{9}{2024}{{Wiest et~al.}}{{}}}
 \bibcite{strong2025trustworthy}{{10}{2025}{{Strong et~al.}}{{}}}
-\bibcite{floridi2025open}{{11}{2025}{{Floridi et~al.}}{{}}}
-\bibcite{liu_document_2021}{{12}{2021}{{Liu et~al.}}{{}}}
-\bibcite{macedo2026vdm}{{13}{2026}{{Macedo et~al.}}{{}}}
-\bibcite{shu2024dsncl}{{14}{2024}{{Shu et~al.}}{{}}}
-\bibcite{yan2024lmmetric}{{15}{2024}{{Yan et~al.}}{{}}}
-\bibcite{internvl2024}{{16}{2024}{{Chen et~al.}}{{}}}
-\bibcite{weigang1999study}{{17}{1999}{{Weigang and da~Silva}}{{}}}
-\bibcite{harley2015rvlcdip}{{18}{2015}{{Harley et~al.}}{{}}}
-\bibcite{sinha2024cica}{{19}{2024}{{Sinha et~al.}}{{}}}
-\gdef \@abspage@last{13}
+\bibcite{liu_document_2021}{{11}{2021}{{Liu et~al.}}{{}}}
+\bibcite{macedo2026vdm}{{12}{2026}{{Macedo et~al.}}{{}}}
+\bibcite{shu2024dsncl}{{13}{2024}{{Shu et~al.}}{{}}}
+\bibcite{yan2024lmmetric}{{14}{2024}{{Yan et~al.}}{{}}}
+\bibcite{internvl2024}{{15}{2024}{{Chen et~al.}}{{}}}
+\bibcite{weigang1999study}{{16}{1999}{{Weigang and da~Silva}}{{}}}
+\bibcite{harley2015rvlcdip}{{17}{2015}{{Harley et~al.}}{{}}}
+\bibcite{sinha2024cica}{{18}{2024}{{Sinha et~al.}}{{}}}
+\gdef \@abspage@last{14}

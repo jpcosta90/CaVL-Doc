@@ -20,7 +20,7 @@ RAW_IMAGES_DIR = os.path.join(RAW_DATA_ROOT, "data") # Imagens estão em /mnt/da
 
 # Onde salvar os CSVs gerados para o experimento
 PROTOCOL = "zsl"
-SPLITS_TO_RUN = [1, 2, 3, 4, 5] # Split 1 já concluído
+SPLITS_TO_RUN = [0, 1, 2, 3, 4] # Split 1 já concluído
 
 BASE_IMAGE_DIR = RAW_IMAGES_DIR 
 
@@ -32,10 +32,10 @@ LOSSES_TO_TEST = [
     "cosface",          # SOTA Clássico
     "expface",          # Foco em exemplos limpos
     "circle",           # Ponderação dinâmica
-    "subcenter_arcface", # Multi-Centro para classes grandes
-    "iso_arcface",      # Nossa Proposta (Angular)
-    "iso_cosface",      # Nossa Proposta (Aditiva)
-    "iso_circle"        # Nossa Proposta (Circle + Iso)
+    "subcenter_arcface" # Multi-Centro para classes grandes
+    # "iso_arcface",      # Nossa Proposta (Angular)
+    # "iso_cosface",      # Nossa Proposta (Aditiva)
+    # "iso_circle"        # Nossa Proposta (Circle + Iso)
 ]
 
 # Argumentos Comuns para todos os experimentos
