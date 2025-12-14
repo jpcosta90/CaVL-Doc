@@ -30,9 +30,9 @@ LOSSES_TO_TEST = [
     "triplet",          # Baseline Metric Learning
     "arcface",          # SOTA Clássico
     "cosface",          # SOTA Clássico
-    "expface",          # Foco em exemplos limpos
-    "circle",           # Ponderação dinâmica
-    "subcenter_arcface" # Multi-Centro para classes grandes
+    # "expface",          # Foco em exemplos limpos
+    # "circle",           # Ponderação dinâmica
+    # "subcenter_arcface" # Multi-Centro para classes grandes
     # "iso_arcface",      # Nossa Proposta (Angular)
     # "iso_cosface",      # Nossa Proposta (Aditiva)
     # "iso_circle"        # Nossa Proposta (Circle + Iso)
