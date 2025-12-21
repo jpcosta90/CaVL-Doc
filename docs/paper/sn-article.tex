@@ -419,7 +419,7 @@ To validate the effectiveness of CaVL-Doc, we benchmark it against a hierarchy o
 
 \subsection{Experimental Protocol}\label{sec:protocol}
 
-To systematically validate the components of our framework and identify the optimal configuration for few-shot document classification, we designed a five-phase experimental protocol. This structured approach allows us to isolate the contribution of each module—from the loss function to the sampling strategy—ensuring that the final performance is a result of informed design choices rather than random hyperparameter tuning.
+To systematically validate the components of our framework and identify the optimal configuration for few-shot document classification, we designed a six-phase experimental protocol. This structured approach allows us to isolate the contribution of each module—from the loss function to the sampling strategy—ensuring that the final performance is a result of informed design choices rather than random hyperparameter tuning.
 
 \subsubsection{Objective Function Benchmarking}
 \textbf{Objective:} Identify the loss formulation that yields the most stable optimization landscape and highest zero-shot generalization for the InternVL backbone.
@@ -469,6 +469,16 @@ To systematically validate the components of our framework and identify the opti
     \end{itemize}
 \end{itemize}
 
+\subsubsection{Sample Size Analysis}
+\textbf{Objective:} Evaluate the data efficiency of the framework and determine the minimum number of samples required for robust adaptation.
+
+\textbf{Setup:} Using the optimal configuration ($Q_{BEST}$, Professor, Elastic Margin), we train the model on subsets of the LA-CDIP dataset with varying sizes.
+
+\textbf{Experiments:} We test training set sizes of $N \in \{2500, 5000, 10000\}$ documents.
+\begin{itemize}
+    \item \textbf{Hypothesis:} While performance is expected to improve with more data, we aim to identify the point of diminishing returns to validate the few-shot efficiency of our approach.
+\end{itemize}
+
 \subsubsection{Curriculum Optimization Strategy}
 \textbf{Objective:} Validate the proposed two-stage hybrid training curriculum against single-stage training.
 
@@ -489,7 +499,7 @@ In this section, we present the empirical evaluation of the CaVL-Doc framework. 
 % =========================================================================================
 \subsection{Step-by-Step Ablation Analysis}\label{sec:ablation}
 
-To determine the optimal configuration for the CaVL-Doc framework, we conducted the five-phase protocol described in Section \ref{sec:protocol}.
+To determine the optimal configuration for the CaVL-Doc framework, we conducted the six-phase protocol described in Section \ref{sec:protocol}.
 
 % --- FASE 1: LOSS FUNCTION ---
 \subsubsection{Objective Function Benchmarking}
@@ -604,7 +614,30 @@ With the architecture fixed, we fine-tuned the geometric properties in three ste
 
 Results demonstrate that while increasing class centers ($k>1$) helps with layout variance (LA-CDIP), the introduction of \textbf{Elasticity} provides the most universal gain in robustness, preventing overfitting to the few-shot support set across both datasets.
 
-% --- FASE 5: CURRICULUM ---
+% --- FASE 5: SAMPLE SIZE ---
+\subsubsection{Sample Size Analysis}
+We evaluated the impact of training set size on model performance to assess data efficiency.
+
+\begin{table}[h]
+    \centering
+    \caption{\textbf{Results:} Performance vs. Training Set Size (Number of Documents).}
+    \label{tab:ablation-sample-size}
+    \begin{tabular}{lcc}
+    \toprule
+    \multirow{2}{*}{\textbf{Training Size}} & \multicolumn{2}{c}{\textbf{Avg. EER (\%)}} \\
+    \cmidrule(lr){2-3}
+     & \textbf{LA-CDIP} & \textbf{RVL-CDIP} \\
+    \midrule
+    $N = 2,500$ & -- & -- \\
+    $N = 5,000$ & -- & -- \\
+    $N = 10,000$ & -- & -- \\
+    \bottomrule
+    \end{tabular}
+\end{table}
+
+The results indicate that our framework achieves competitive performance with as few as 2,500 documents. While scaling to 5,000 and 10,000 samples yields improvements, the gains diminish, highlighting the few-shot efficiency of the CaVL-Doc adaptation.
+
+% --- FASE 6: CURRICULUM ---
 \subsubsection{Curriculum Learning Strategy}
 Finally, Table \ref{tab:ablation-curriculum} validates the effectiveness of the two-stage training curriculum.
 

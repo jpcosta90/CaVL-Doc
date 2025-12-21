@@ -83,50 +83,54 @@
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.2}Sampling Strategy Ablation}{8}{subsubsection.4.5.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.3}Architectural Capacity Analysis}{8}{subsubsection.4.5.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.4}Geometric Constraint Optimization}{8}{subsubsection.4.5.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.5}Curriculum Optimization Strategy}{8}{subsubsection.4.5.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {5}Results and Discussion}{8}{section.5}\protected@file@percent }
-\newlabel{sec:results}{{5}{8}{Results and Discussion}{section.5}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.5}Sample Size Analysis}{8}{subsubsection.4.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.5.6}Curriculum Optimization Strategy}{8}{subsubsection.4.5.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Results and Discussion}{9}{section.5}\protected@file@percent }
+\newlabel{sec:results}{{5}{9}{Results and Discussion}{section.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Step-by-Step Ablation Analysis}{9}{subsection.5.1}\protected@file@percent }
 \newlabel{sec:ablation}{{5.1}{9}{Step-by-Step Ablation Analysis}{subsection.5.1}{}}
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.1}Objective Function Benchmarking}{9}{subsubsection.5.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Analysis}{9}{section*.3}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces \textbf  {Results (Loss Ablation):} Comparison of different metric learning objectives trained with the CaVL-Doc architecture. We observe that the optimal loss is dataset-dependent.}}{9}{table.1}\protected@file@percent }
 \newlabel{tab:ablation-loss}{{1}{9}{\textbf {Results (Loss Ablation):} Comparison of different metric learning objectives trained with the CaVL-Doc architecture. We observe that the optimal loss is dataset-dependent}{table.1}{}}
-\@writefile{toc}{\contentsline {paragraph}{Analysis}{9}{section*.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.2}Sampling Strategy (The "Professor")}{9}{subsubsection.5.1.2}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces \textbf  {Results:} Impact of the Active Hard Mining strategy (Professor Agent) versus uniform random sampling.}}{9}{table.2}\protected@file@percent }
 \newlabel{tab:ablation-professor}{{2}{9}{\textbf {Results:} Impact of the Active Hard Mining strategy (Professor Agent) versus uniform random sampling}{table.2}{}}
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.3}Architecture Capacity ($Q$)}{9}{subsubsection.5.1.3}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces \textbf  {Results:} Evaluation of the number of attention queries ($Q$). $Q=1$ represents the global attention baseline.}}{9}{table.3}\protected@file@percent }
-\newlabel{tab:ablation-capacity}{{3}{9}{\textbf {Results:} Evaluation of the number of attention queries ($Q$). $Q=1$ represents the global attention baseline}{table.3}{}}
 \citation{macedo2025vdm}
 \citation{macedo2025vdm}
 \citation{scius2024zeroshot}
 \citation{sinha2024cica}
 \citation{sinha2024cica}
 \citation{sinha2024cica}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces \textbf  {Results:} Evaluation of the number of attention queries ($Q$). $Q=1$ represents the global attention baseline.}}{10}{table.3}\protected@file@percent }
+\newlabel{tab:ablation-capacity}{{3}{10}{\textbf {Results:} Evaluation of the number of attention queries ($Q$). $Q=1$ represents the global attention baseline}{table.3}{}}
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.4}Geometric Constraints}{10}{subsubsection.5.1.4}\protected@file@percent }
 \@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces \textbf  {Results:} Step-wise optimization of geometric constraints. We evaluate Margin Magnitude ($m$), Sub-centers ($k$), and Stochasticity (Elasticity).}}{10}{table.4}\protected@file@percent }
 \newlabel{tab:ablation-geometry}{{4}{10}{\textbf {Results:} Step-wise optimization of geometric constraints. We evaluate Margin Magnitude ($m$), Sub-centers ($k$), and Stochasticity (Elasticity)}{table.4}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.5}Curriculum Learning Strategy}{10}{subsubsection.5.1.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.5}Sample Size Analysis}{10}{subsubsection.5.1.5}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces \textbf  {Results:} Performance vs. Training Set Size (Number of Documents).}}{10}{table.5}\protected@file@percent }
+\newlabel{tab:ablation-sample-size}{{5}{10}{\textbf {Results:} Performance vs. Training Set Size (Number of Documents)}{table.5}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.6}Curriculum Learning Strategy}{10}{subsubsection.5.1.6}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces \textbf  {Results:} Comparison of training schedules. The proposed curriculum combines global organization (Triplet) with local refinement (Angular).}}{10}{table.6}\protected@file@percent }
+\newlabel{tab:ablation-curriculum}{{6}{10}{\textbf {Results:} Comparison of training schedules. The proposed curriculum combines global organization (Triplet) with local refinement (Angular)}{table.6}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Efficiency vs. Performance}{10}{subsection.5.2}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces \textbf  {Results:} Comparison of training schedules. The proposed curriculum combines global organization (Triplet) with local refinement (Angular).}}{10}{table.5}\protected@file@percent }
-\newlabel{tab:ablation-curriculum}{{5}{10}{\textbf {Results:} Comparison of training schedules. The proposed curriculum combines global organization (Triplet) with local refinement (Angular)}{table.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{10}{section.6}\protected@file@percent }
-\newlabel{sec:conclusion}{{6}{10}{Conclusion}{section.6}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Summary of Findings}{10}{subsection.6.1}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces \textbf  {Main Results Comparison.} Performance (EER \%) on LA-CDIP and RVL-CDIP datasets. We compare standard baselines, large-scale SOTA models, and our proposed CaVL-Doc framework using its optimal configuration for each domain.}}{11}{table.6}\protected@file@percent }
-\newlabel{tab:main-results}{{6}{11}{\textbf {Main Results Comparison.} Performance (EER \%) on LA-CDIP and RVL-CDIP datasets. We compare standard baselines, large-scale SOTA models, and our proposed CaVL-Doc framework using its optimal configuration for each domain}{table.6}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces One-Shot Top-1 Classification Accuracy (\%) on the \textbf  {RVL-CDIP} dataset. This evaluates a one-shot (1:N) classification task using the \textbf  {ZSL/GZSL Split A}\TPToverlap {\textsuperscript  {1}} protocol.}}{11}{table.7}\protected@file@percent }
-\newlabel{tab:results-rvl-cdip-accuracy}{{7}{11}{One-Shot Top-1 Classification Accuracy (\%) on the \textbf {RVL-CDIP} dataset. This evaluates a one-shot (1:N) classification task using the \textbf {ZSL/GZSL Split A}\tnote {1} protocol}{table.7}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Future Work}{11}{subsection.6.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces \textbf  {Main Results Comparison.} Performance (EER \%) on LA-CDIP and RVL-CDIP datasets. We compare standard baselines, large-scale SOTA models, and our proposed CaVL-Doc framework using its optimal configuration for each domain.}}{11}{table.7}\protected@file@percent }
+\newlabel{tab:main-results}{{7}{11}{\textbf {Main Results Comparison.} Performance (EER \%) on LA-CDIP and RVL-CDIP datasets. We compare standard baselines, large-scale SOTA models, and our proposed CaVL-Doc framework using its optimal configuration for each domain}{table.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces One-Shot Top-1 Classification Accuracy (\%) on the \textbf  {RVL-CDIP} dataset. This evaluates a one-shot (1:N) classification task using the \textbf  {ZSL/GZSL Split A}\TPToverlap {\textsuperscript  {1}} protocol.}}{11}{table.8}\protected@file@percent }
+\newlabel{tab:results-rvl-cdip-accuracy}{{8}{11}{One-Shot Top-1 Classification Accuracy (\%) on the \textbf {RVL-CDIP} dataset. This evaluates a one-shot (1:N) classification task using the \textbf {ZSL/GZSL Split A}\tnote {1} protocol}{table.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Conclusion}{11}{section.6}\protected@file@percent }
+\newlabel{sec:conclusion}{{6}{11}{Conclusion}{section.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Summary of Findings}{11}{subsection.6.1}\protected@file@percent }
 \citation{macedo2026vdm}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Performance (EER \%) vs. Model Parameters (Log Scale) on the LA-CDIP dataset. Lower EER (y-axis) is better. Our final CaVL-Doc-adapted model achieves the best performance while remaining in the low-parameter (high-efficiency) quadrant.}}{12}{figure.3}\protected@file@percent }
+\newlabel{fig:param-plot}{{3}{12}{Performance (EER \%) vs. Model Parameters (Log Scale) on the LA-CDIP dataset. Lower EER (y-axis) is better. Our final CaVL-Doc-adapted model achieves the best performance while remaining in the low-parameter (high-efficiency) quadrant}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Future Work}{12}{subsection.6.2}\protected@file@percent }
 \bibdata{sn-bibliography}
 \bibcite{formUnderstandingSurvey}{{1}{2024}{{Abdallah et~al.}}{{}}}
 \bibcite{macedo2025vdm}{{2}{2025}{{Macedo et~al.}}{{}}}
 \bibcite{voerman2025optimizing}{{3}{2025}{{Voerman et~al.}}{{}}}
 \bibcite{bakkali2025globaldoc}{{4}{2025}{{Bakkali et~al.}}{{}}}
-\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Performance (EER \%) vs. Model Parameters (Log Scale) on the LA-CDIP dataset. Lower EER (y-axis) is better. Our final CaVL-Doc-adapted model achieves the best performance while remaining in the low-parameter (high-efficiency) quadrant.}}{12}{figure.3}\protected@file@percent }
-\newlabel{fig:param-plot}{{3}{12}{Performance (EER \%) vs. Model Parameters (Log Scale) on the LA-CDIP dataset. Lower EER (y-axis) is better. Our final CaVL-Doc-adapted model achieves the best performance while remaining in the low-parameter (high-efficiency) quadrant}{figure.3}{}}
 \bibcite{scius2024zeroshot}{{5}{2024}{{Scius{-}Bertrand et~al.}}{{}}}
 \bibcite{patel2024characterizing}{{6}{2024}{{Patel et~al.}}{{}}}
 \bibcite{cruz2025innovating}{{7}{2025}{{Cruz et~al.}}{{}}}

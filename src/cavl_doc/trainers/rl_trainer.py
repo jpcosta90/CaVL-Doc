@@ -333,6 +333,7 @@ def run_rl_siamese_loop(
         best_val_eer = ckpt.get('metrics', {}).get('eer', 1.0)
         baseline = ckpt.get('baseline', 0.0)
         global_batch_step = ckpt.get('global_batch_step', 0)
+        no_improve = ckpt.get('no_improve', 0)
         
         # Verifica se o checkpoint foi salvo ANTES da validação (Pre-Validation)
         # Se sim, precisamos rodar a validação daquela época antes de prosseguir.
@@ -348,8 +349,13 @@ def run_rl_siamese_loop(
             run_immediate_validation = True
         else:
             run_immediate_validation = False
-        
-        print(f"   -> Reiniciando na Época {start_epoch+1}. Best EER anterior: {best_val_eer:.4f}")
+            # Se já validou e atingiu paciência, para aqui.
+            if no_improve >= patience:
+                print(f"⏹️ Treinamento já finalizado anteriormente por critério de paciência ({no_improve} >= {patience}).")
+                print("   -> Ignorando execução.")
+                return
+
+        print(f"   -> Reiniciando na Época {start_epoch+1}. Best EER anterior: {best_val_eer:.4f}. Patience Counter: {no_improve}/{patience}")
 
     if val_csv_path and os.path.exists(val_csv_path):
         print(f"Carregando validação: {val_csv_path}")
@@ -501,6 +507,7 @@ def run_rl_siamese_loop(
             'professor_optimizer': professor_optimizer.state_dict(),
             'baseline': baseline,
             'global_batch_step': global_batch_step,
+            'no_improve': no_improve, # Salva estado da paciência
             'stage': 'post_validation' # Marcamos como concluído!
         }
         torch.save(recovered_ckpt, os.path.join(output_dir, "last_checkpoint.pt"))
@@ -643,6 +650,7 @@ def run_rl_siamese_loop(
             'professor_optimizer': professor_optimizer.state_dict(),
             'baseline': baseline,
             'global_batch_step': global_batch_step,
+            'no_improve': no_improve, # Salva estado da paciência
             'stage': 'pre_validation' # Flag para indicar que validação ainda não ocorreu
         }
         os.makedirs(output_dir, exist_ok=True)
@@ -676,7 +684,6 @@ def run_rl_siamese_loop(
             if use_wandb and wandb: wandb.log({"val/best_eer": best_val_eer})
         else:
             no_improve += 1
-        
         # --- Save Last Checkpoint (para Resume) ---
         backbone_trainable = {n: p.detach().cpu() for n, p in siam.backbone.named_parameters() if p.requires_grad}
         last_ckpt = {
@@ -691,6 +698,7 @@ def run_rl_siamese_loop(
             'professor_optimizer': professor_optimizer.state_dict(),
             'baseline': baseline,
             'global_batch_step': global_batch_step,
+            'no_improve': no_improve, # Salva estado da paciência
             'stage': 'post_validation' # Flag para indicar que validação já ocorreu
         }
         

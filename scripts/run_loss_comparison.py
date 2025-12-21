@@ -20,7 +20,7 @@ RAW_IMAGES_DIR = os.path.join(RAW_DATA_ROOT, "data") # Imagens estão em /mnt/da
 
 # Onde salvar os CSVs gerados para o experimento
 PROTOCOL = "zsl"
-SPLITS_TO_RUN = [0, 1, 2, 3, 4] # Split 1 já concluído
+SPLITS_TO_RUN = [5]#[0, 1, 2, 3, 4] # Split 1 já concluído
 
 BASE_IMAGE_DIR = RAW_IMAGES_DIR 
 
