@@ -516,25 +516,25 @@ The choice of the objective function is critical for shaping the metric space. T
      & \textbf{LA-CDIP} & \textbf{RVL-CDIP} \\
     \midrule
     \textit{Euclidean} \\
-    Contrastive Loss & \textbf{1.98} & 27.99 \\
-    Triplet Loss & 2.27 & \textbf{22.99} \\
+    Contrastive Loss & 2.58 & 27.99 \\
+    Triplet Loss & \textbf{1.48} & \textbf{22.99} \\
     \addlinespace
     \textit{Angular Margin} \\
-    ArcFace & 3.73 & 29.50 \\
-    CosFace & 3.73 & 25.49 \\
-    ExpFace & 4.59 & 28.50 \\
-    Circle Loss & 3.73 & 32.74 \\
-    Subcenter ArcFace & 3.15 & 28.74 \\
+    ArcFace & 3.41 & 29.50 \\
+    CosFace & 3.53 & 25.49 \\
+    % ExpFace & 4.59 & 28.50 \\
+    % Circle Loss & 3.73 & 32.74 \\
+    % Subcenter ArcFace & 3.15 & 28.74 \\
     \bottomrule
     \end{tabular}
 \end{table}
 
 \paragraph{Analysis} 
-The results reveal a divergence based on domain complexity. On \textbf{LA-CDIP}, which focuses on structural layout variance, the \textbf{Contrastive Loss} (Euclidean) achieved the best performance (1.98\% EER). Conversely, on \textbf{RVL-CDIP}, which contains higher semantic noise, the \textbf{Triplet Loss} proved superior (22.99\% EER), likely due to its ability to model relative distances more effectively in a crowded embedding space. 
+The results reveal a divergence based on domain complexity. On \textbf{LA-CDIP}, which focuses on structural layout variance, the \textbf{Triplet Loss} achieved the best performance (1.48\% EER). Similarly, on \textbf{RVL-CDIP}, using \textbf{Triplet Loss} also proved superior (22.99\% EER), likely due to its ability to model relative distances more effectively in a crowded embedding space. 
 
-Based on this, we select \textbf{Contrastive Loss} as the engine for LA-CDIP and \textbf{Triplet Loss} for RVL-CDIP in the final comparison.
+Based on this, we select \textbf{Triplet Loss} as the engine for both LA-CDIP and RVL-CDIP in the final comparison.
 
-The results indicate a divergence in optimal baselines depending on the dataset complexity. However, \textbf{[BEST LOSS]} provided the most consistent stability across both domains and was selected as the fixed engine.
+
 
 % --- FASE 2: PROFESSOR (SAMPLER) ---
 \subsubsection{Sampling Strategy (The "Professor")}
@@ -697,7 +697,7 @@ InternVL3-2B (Zero-Shot) & Euclidean & 3.57 & 34.80 \\
 
 % --- Bloco 4: OURS ---
 \multicolumn{4}{l}{\textit{Ours (Proposed Framework)}} \\
-\textbf{CaVL-Doc (Best Configuration)} & \textbf{Embedded} & \textbf{1.98} & \textbf{22.99} \\
+\textbf{CaVL-Doc (Best Configuration)} & \textbf{Embedded} & \textbf{1.48} & \textbf{22.99} \\
 \bottomrule
 \end{tabularx}
 

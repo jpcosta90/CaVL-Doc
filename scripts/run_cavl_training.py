@@ -403,7 +403,7 @@ def parse_args():
 
     # Modular Arguments
     p.add_argument("--loss-type", type=str, default="contrastive", 
-                   choices=["contrastive", "triplet", "arcface", "elastic_arcface", "cosface", "elastic_cosface", "expface", "elastic_expface", "subcenter_arcface", "circle", "elastic_circle", "subcenter_circle", "angular", "iso_arcface", "iso_cosface", "iso_circle"],
+                   choices=["contrastive", "triplet", "arcface", "elastic_arcface", "cosface", "elastic_cosface", "expface", "elastic_expface", "subcenter_arcface", "subcenter_cosface", "circle", "elastic_circle", "subcenter_circle", "angular", "iso_arcface", "iso_cosface", "iso_circle"],
                    help="Type of loss function")
     p.add_argument("--pooler-type", type=str, default="attention", choices=["attention", "mean", "gem", "netvlad"])
     p.add_argument("--head-type", type=str, default="mlp", choices=["mlp", "simple_mlp", "residual"])
