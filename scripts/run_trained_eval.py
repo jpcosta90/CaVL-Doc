@@ -132,21 +132,6 @@ def load_trained_model(ckpt_path, device, tokenizer, backbone):
         idx = cut_layer + 1 if len(hidden_states) == (len(lm.layers) + 1) else cut_layer
         return hidden_states[idx], None
 
-        # 5. Forward no Backbone
-        out = backbone(
-            input_ids=batch_input_ids,
-            attention_mask=batch_attention_mask,
-            pixel_values=batch_pixel_values,
-            image_flags=batch_image_flags,
-            output_hidden_states=True,
-            return_dict=True
-        )
-        hidden_states = out.hidden_states
-        lm = backbone.language_model.model
-        # Pega a camada correta (cut_layer)
-        idx = cut_layer + 1 if len(hidden_states) == (len(lm.layers) + 1) else cut_layer
-        return hidden_states[idx], None
-
     siam = build_cavl_model(
         backbone=backbone, 
         cut_layer=config['cut_layer'], 
@@ -209,6 +194,13 @@ def main():
         projection_output_dim=1536
     )
     backbone.requires_grad_(False)
+
+    # --- FIX: Ensure pad_token_id does not collide with <IMG_CONTEXT> ---
+    img_context_id = tokenizer.convert_tokens_to_ids("<IMG_CONTEXT>")
+    if tokenizer.pad_token_id is None or tokenizer.pad_token_id == img_context_id:
+        print(f"⚠️  [FIX] Pad ID collision detected ({tokenizer.pad_token_id}). Switching pad_id to EOS token.")
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    # --------------------------------------------------------------------
     
     # IMPORTANTE: Warm up do modelo para inicializar buffers lazy
     print("🔥 Executando Warm-up...")
