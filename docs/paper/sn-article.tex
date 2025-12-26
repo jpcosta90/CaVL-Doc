@@ -516,12 +516,12 @@ The choice of the objective function is critical for shaping the metric space. T
      & \textbf{LA-CDIP} & \textbf{RVL-CDIP} \\
     \midrule
     \textit{Euclidean} \\
-    Contrastive Loss & 2.58 & 27.99 \\
-    Triplet Loss & \textbf{1.48} & \textbf{22.99} \\
+    Contrastive Loss & 2.58 & 30.12 \\
+    Triplet Loss & \textbf{1.48} & \textbf{26.28} \\
     \addlinespace
     \textit{Angular Margin} \\
-    ArcFace & 3.41 & 29.50 \\
-    CosFace & 3.53 & 25.49 \\
+    ArcFace & 3.41 & 29.39 \\
+    CosFace & 3.97 & 28.86 \\
     % ExpFace & 4.59 & 28.50 \\
     % Circle Loss & 3.73 & 32.74 \\
     % Subcenter ArcFace & 3.15 & 28.74 \\
@@ -530,7 +530,7 @@ The choice of the objective function is critical for shaping the metric space. T
 \end{table}
 
 \paragraph{Analysis} 
-The results reveal a divergence based on domain complexity. On \textbf{LA-CDIP}, which focuses on structural layout variance, the \textbf{Triplet Loss} achieved the best performance (1.48\% EER). Similarly, on \textbf{RVL-CDIP}, using \textbf{Triplet Loss} also proved superior (22.99\% EER), likely due to its ability to model relative distances more effectively in a crowded embedding space. 
+The results reveal a divergence based on domain complexity. On \textbf{LA-CDIP}, which focuses on structural layout variance, the \textbf{Triplet Loss} achieved the best performance (1.48\% EER). Similarly, on \textbf{RVL-CDIP}, using \textbf{Triplet Loss} also proved superior (26.28\% EER), likely due to its ability to model relative distances more effectively in a crowded embedding space. 
 
 Based on this, we select \textbf{Triplet Loss} as the engine for both LA-CDIP and RVL-CDIP in the final comparison.
 
@@ -697,7 +697,7 @@ InternVL3-2B (Zero-Shot) & Euclidean & 3.57 & 34.80 \\
 
 % --- Bloco 4: OURS ---
 \multicolumn{4}{l}{\textit{Ours (Proposed Framework)}} \\
-\textbf{CaVL-Doc (Best Configuration)} & \textbf{Embedded} & \textbf{1.48} & \textbf{22.99} \\
+\textbf{CaVL-Doc (Best Configuration)} & \textbf{Embedded} & \textbf{1.48} & \textbf{26.28} \\
 \bottomrule
 \end{tabularx}
 

@@ -13,7 +13,7 @@ def get_run_command(config, target_project):
     """
     # 1. Mapeamento de Argumentos Fixos para o RVL-CDIP
     cmd = [
-        sys.executable, "scripts/run_cavl_training.py",
+        sys.executable, "scripts/training/run_cavl_training.py",
         "--dataset-name", "RVL-CDIP",
         "--pairs-csv", "data/RVL-CDIP/train_pairs.csv",
         "--base-image-dir", "/mnt/data/rvl-cdip-small-200",

@@ -6,28 +6,28 @@ import time
 import glob
 
 # ==============================================================================
-# CONFIGURAÇÃO: ABLATION STUDY - GEOMETRY (RVL-CDIP)
+# CONFIGURAÇÃO: ABLATION STUDY - GEOMETRY (LA-CDIP)
 # ==============================================================================
 # Objetivo: Analisar restrições geométricas (Margem e Elasticidade) para CosFace.
 
 # Caminhos
 WORKSPACE_ROOT = "/home/joaopaulo/Projects/CaVL-Doc"
-SCRIPT_PATH = os.path.join(WORKSPACE_ROOT, "scripts/run_cavl_training.py")
-PREP_SCRIPT_PATH = os.path.join(WORKSPACE_ROOT, "scripts/prepare_splits.py")
+SCRIPT_PATH = os.path.join(WORKSPACE_ROOT, "scripts/training/run_cavl_training.py")
+PREP_SCRIPT_PATH = os.path.join(WORKSPACE_ROOT, "scripts/utils/prepare_splits.py")
 
 # Dados
-RAW_DATA_ROOT = "/mnt/data/zs_rvl_cdip"
+RAW_DATA_ROOT = "/mnt/data/la-cdip"
 RAW_IMAGES_DIR = os.path.join(RAW_DATA_ROOT, "data") 
 BASE_IMAGE_DIR = RAW_IMAGES_DIR 
 
 # Experimento
 PROTOCOL = "zsl"
-SPLITS_TO_RUN = [0, 1, 2, 3]
+SPLITS_TO_RUN = [1, 2, 3, 4, 5]
 
 # BASE CONFIGURATION ("Ours" default for other params)
 COMMON_ARGS = [
     "--model-name", "InternVL3-2B",
-    "--dataset-name", "RVL-CDIP",
+    "--dataset-name", "LA-CDIP",
     "--epochs", "5",
     "--student-batch-size", "8",
     "--candidate-pool-size", "64",     # Professor ativado
@@ -44,23 +44,28 @@ COMMON_ARGS = [
     "--head-type", "mlp",
     "--baseline-alpha", "0.05",
     "--entropy-coeff", "0.01",
-    "--val-samples-per-class", "100",   # RVL Specific
+    "--val-samples-per-class", "20",
 ]
 
 # === ABLATION STAGES (Sequential) ===
+# O User sugeriu uma abordagem sequencial:
 # 1. Testar Margins -> Achar Best M
 # 2. Testar SubCenters (fixando Best M) -> Achar Best K
 # 3. Testar Elasticity (fixando Best M e K=1) -> Comparar com Static
 
+# Variáveis "Best" (A serem atualizadas conforme resultados da etapa anterior)
+# Por padrão, assumimos valores centrais para rodar tudo de uma vez se desejado,
+# ou o usuário pode comentar as fases.
 BEST_M_DEFAULT = 0.45 
 
-RUN_STAGES = [1, 2] # 1=Margin, 2=SubCenter, 3=Elasticity (Disabled)
+RUN_STAGES = [1, 2, 3] # 1=Margin, 2=SubCenter, 3=Elasticity
 
 # Stage 1: Margins
 MARGINS_TO_TEST = [0.35, 0.45, 0.55]
 
-# Stage 2: SubCenters
-SUBCENTERS_TO_TEST = [1, 3, 5] 
+# Stage 2: SubCenters (Uses BEST_M_DEFAULT)
+SUBCENTERS_TO_TEST = [1, 3, 5] # k=1 é redundante com etapa 1, mas serve de baseline.
+# Nota: Implementação usa subcenter_cosface
 
 # Stage 3: Elasticity (Disabled for now)
 # ELASTIC_SIGMA_LIST = [0.0125, 0.05, 0.1]
@@ -70,7 +75,7 @@ SUBCENTERS_TO_TEST = [1, 3, 5]
 # ==============================================================================
 
 def get_paths(split_idx):
-    generated_data_dir = os.path.join(WORKSPACE_ROOT, f"data/generated_splits/RVL-CDIP_{PROTOCOL}_split_{split_idx}")
+    generated_data_dir = os.path.join(WORKSPACE_ROOT, f"data/generated_splits/{PROTOCOL}_split_{split_idx}")
     pairs_csv = os.path.join(generated_data_dir, "train_pairs.csv")
     return generated_data_dir, pairs_csv
 
@@ -80,7 +85,7 @@ def prepare_data(split_idx, generated_data_dir):
         return
 
     print(f"\n{'='*60}")
-    print(f"🛠️  Preparando Dados para Split {split_idx} (RVL-CDIP)")
+    print(f"🛠️  Preparando Dados para Split {split_idx}")
     print(f"{'='*60}")
     
     cmd = [
@@ -89,7 +94,7 @@ def prepare_data(split_idx, generated_data_dir):
         "--output-dir", generated_data_dir,
         "--split-idx", str(split_idx),
         "--protocol", PROTOCOL,
-        "--pairs-per-class", "100"
+        "--pairs-per-class", "10"
     ]
     subprocess.run(cmd, check=True)
 
@@ -105,9 +110,9 @@ def run_experiment(loss_name, margin, subcenters, split_idx, pairs_csv):
     base_ckpt_path = "/mnt/large/checkpoints" if os.path.exists("/mnt/large") else "checkpoints"
     
     # Nome único (Elasticity removido)
-    base_name = f"RVL_ABLATION_GEO_{loss_name}_m{margin}_k{subcenters}_S{split_idx}"
+    base_name = f"ABLATION_GEO_{loss_name}_m{margin}_k{subcenters}_S{split_idx}"
         
-    wandb_project = "CaVL-Ablation-Geometry-RVL"
+    wandb_project = "CaVL-Ablation-Geometry"
     
     # Resume Logic
     search_pattern = os.path.join(base_ckpt_path, f"{base_name}_*")
@@ -153,7 +158,7 @@ def run_experiment(loss_name, margin, subcenters, split_idx, pairs_csv):
         print(f"\n❌ Erro. Exit code: {e.returncode}")
 
 def main():
-    print(f"Iniciando Ablation Sequencial de Geometria (RVL-CDIP)")
+    print(f"Iniciando Ablation Sequencial de Geometria (LA-CDIP)")
     print(f"Splits: {SPLITS_TO_RUN}")
     
     for split_idx in SPLITS_TO_RUN:
