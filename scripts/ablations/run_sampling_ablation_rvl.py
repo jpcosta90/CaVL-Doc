@@ -19,31 +19,29 @@ PREP_SCRIPT_PATH = os.path.join(WORKSPACE_ROOT, "scripts/utils/prepare_splits.py
 # Dados Originais (RVL-CDIP)
 RAW_DATA_ROOT = "/mnt/data/zs_rvl_cdip"
 RAW_IMAGES_DIR = os.path.join(RAW_DATA_ROOT, "data") 
+BASE_IMAGE_DIR = RAW_IMAGES_DIR 
 
 # Configuração do Experimento
 PROTOCOL = "zsl"
-SPLITS_TO_RUN = [0, 1, 2, 3]  # Todos os splits do RVL-CDIP (CICA)
-BASE_IMAGE_DIR = RAW_IMAGES_DIR 
+SPLITS_TO_RUN = [0, 1, 2, 3] # Splits padrão RVL
 
 # === 1. Escolha das Losses ===
 LOSSES_TO_TEST = ["triplet", "cosface"]
 
 # === 2. Definição das Estratégias ===
-# Batch Size fixo para o Student
 STUDENT_BATCH_SIZE = 8
 
 STRATEGIES = {
     "random_sampling": {
-        "description": "Baseline: Sem seleção ativa (Pool = Batch Size)",
+        "description": "Baseline: Random Sampling (Pool=64, Select=8)",
         "args": [
             "--professor-lr", "0.0",                 # Desliga o treino do Professor
-            "--candidate-pool-size", str(STUDENT_BATCH_SIZE) # Pool == Batch -> Seleção aleatória/sequencial do DataLoader
+            "--candidate-pool-size", "64"            # Pool 64 -> Seleciona 8
         ]
     }
-    # "professor_agent": JÁ REALIZADO NO SCRIPT run_loss_comparison_rvl.py
 }
 
-# Argumentos Comuns (Baseado em run_loss_comparison_rvl.py)
+# Argumentos Comuns
 COMMON_ARGS = [
     "--model-name", "InternVL3-2B",
     "--dataset-name", "RVL-CDIP",
@@ -61,12 +59,8 @@ COMMON_ARGS = [
     "--head-type", "mlp",
     "--baseline-alpha", "0.05",
     "--entropy-coeff", "0.01",
-    "--val-samples-per-class", "100" # Específico do RVL
+    "--val-samples-per-class", "100" # Maior para RVL
 ]
-
-# ==============================================================================
-# EXECUÇÃO
-# ==============================================================================
 
 def get_paths(split_idx):
     generated_data_dir = os.path.join(WORKSPACE_ROOT, f"data/generated_splits/RVL-CDIP_{PROTOCOL}_split_{split_idx}")
@@ -79,7 +73,7 @@ def prepare_data(split_idx, generated_data_dir):
         return
 
     print(f"\n{'='*60}")
-    print(f"🛠️  Preparando Dados para Split {split_idx} ({PROTOCOL.upper()}) - RVL-CDIP")
+    print(f"🛠️  Preparando Dados para Split {split_idx} (RVL-CDIP)")
     print(f"{'='*60}")
     
     cmd = [
@@ -88,7 +82,7 @@ def prepare_data(split_idx, generated_data_dir):
         "--output-dir", generated_data_dir,
         "--split-idx", str(split_idx),
         "--protocol", PROTOCOL,
-        "--pairs-per-class", "100" # Específico do RVL
+        "--pairs-per-class", "100" 
     ]
     
     subprocess.run(cmd, check=True)
@@ -96,7 +90,7 @@ def prepare_data(split_idx, generated_data_dir):
 def run_strategy(strategy_name, split_idx, pairs_csv, loss_type):
     config = STRATEGIES[strategy_name]
     print(f"\n{'='*60}")
-    print(f"🚀 Iniciando: {strategy_name.upper()} - Loss: {loss_type.upper()} (RVL-CDIP)")
+    print(f"🚀 Iniciando: {strategy_name.upper()} - Loss: {loss_type.upper()}")
     print(f"Descrição: {config['description']}")
     print(f"{'='*60}")
 
@@ -150,7 +144,7 @@ def run_strategy(strategy_name, split_idx, pairs_csv, loss_type):
         print(f"\n❌ Erro em {strategy_name} ({loss_type}). Exit code: {e.returncode}")
 
 def main():
-    print(f"Iniciando Ablation de Sampling RVL-CDIP: {list(STRATEGIES.keys())}")
+    print(f"Iniciando Ablation de Sampling (RVL-CDIP): {list(STRATEGIES.keys())}")
     print(f"Losses: {LOSSES_TO_TEST}")
     print(f"Splits: {SPLITS_TO_RUN}")
     
@@ -159,13 +153,13 @@ def main():
         generated_data_dir, pairs_csv = get_paths(split_idx)
         prepare_data(split_idx, generated_data_dir)
         
-        # Apenas Random Sampling (Professor Agent nos scripts principais)
+        # Apenas Random Sampling
         for loss in LOSSES_TO_TEST:
             for strategy in STRATEGIES.keys():
                 run_strategy(strategy, split_idx, pairs_csv, loss)
                 time.sleep(5)
 
-    print("\n🎉 Ablation study RVL-CDIP concluído!")
+    print("\n🎉 Ablation study concluído!")
 
 if __name__ == "__main__":
     main()

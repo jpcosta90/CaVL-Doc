@@ -1,6 +1,6 @@
 %% BioMed_Central_Bib_Style_v1.01
 
-\begin{thebibliography}{18}
+\begin{thebibliography}{17}
 % BibTex style file: bmc-mathphys.bst (version 2.1), 2014-07-24
 \ifx \bisbn   \undefined \def \bisbn  #1{ISBN #1}\fi
 \ifx \binits  \undefined \def \binits#1{#1}\fi
@@ -44,71 +44,24 @@
 \csname PreBibitemsHook\endcsname
 
 %%% 1
-\bibitem[\protect\citeauthoryear{Abdallah et~al.}{2024}]{formUnderstandingSurvey}
-\begin{botherref}
-\oauthor{\bsnm{Abdallah}, \binits{A.}},
-\oauthor{\bsnm{Eberharter}, \binits{D.}},
-\oauthor{\bsnm{Pfister}, \binits{Z.}},
-\oauthor{\bsnm{Jatowt}, \binits{A.}}:
-A survey of recent approaches to form understanding in scanned documents.
-Artificial Intelligence Review
-\textbf{57}(12)
-(2024)
-\doiurl{10.1007/s10462-024-11000-0}
-\end{botherref}
-\endbibitem
-
-%%% 2
-\bibitem[\protect\citeauthoryear{Macedo et~al.}{2025}]{macedo2025vdm}
-\begin{bchapter}
-\bauthor{\bsnm{Macedo}, \binits{L.D.A.B.}},
-\bauthor{\bsnm{Costa}, \binits{J.P.V.}},
-\bauthor{\bsnm{Almeida}, \binits{J.P.F.D.}},
-\bauthor{\bsnm{Freitas}, \binits{P.G.}},
-\bauthor{\bsnm{Weigang}, \binits{L.}}:
-\bctitle{Visual document matching for zero-shot document classification}.
-In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (WML)}.
-\bsertitle{Lecture Notes in Computer Science (LNCS)}.
-\bpublisher{Springer}, \blocation{???}
-(\byear{2025})
-\end{bchapter}
-\endbibitem
-
-%%% 3
-\bibitem[\protect\citeauthoryear{Voerman et~al.}{2025}]{voerman2025optimizing}
+\bibitem[\protect\citeauthoryear{Liu et~al.}{2021}]{liu_document_2021}
 \begin{barticle}
-\bauthor{\bsnm{Voerman}, \binits{J.}},
-\bauthor{\bsnm{Al-Ghadi}, \binits{M.}},
-\bauthor{\bsnm{Sidere}, \binits{N.}},
-\bauthor{\bsnm{Coustaty}, \binits{M.}},
-\bauthor{\bsnm{Lessard}, \binits{O.}}:
-\batitle{Optimizing identity documents classification in online systems: A comparative analysis}.
-\bjtitle{International Journal on Document Analysis and Recognition (IJDAR)}
-(\byear{2025})
-\doiurl{10.1007/s10032-025-00555-5} .
-\bcomment{Referenciado do arquivo: s10032-025-00555-5.pdf}
+\bauthor{\bsnm{Liu}, \binits{L.}},
+\bauthor{\bsnm{Wang}, \binits{Z.}},
+\bauthor{\bsnm{Qiu}, \binits{T.}},
+\bauthor{\bsnm{Chen}, \binits{Q.}},
+\bauthor{\bsnm{Lu}, \binits{Y.}},
+\bauthor{\bsnm{Suen}, \binits{C.Y.}}:
+\batitle{Document image classification: Progress over two decades}.
+\bjtitle{Neurocomputing}
+\bvolume{453},
+\bfpage{223}--\blpage{240}
+(\byear{2021})
+\doiurl{10.1016/J.NEUCOM.2021.04.114}
 \end{barticle}
 \endbibitem
 
-%%% 4
-\bibitem[\protect\citeauthoryear{Bakkali et~al.}{2025}]{bakkali2025globaldoc}
-\begin{bchapter}
-\bauthor{\bsnm{Bakkali}, \binits{S.}},
-\bauthor{\bsnm{Biswas}, \binits{S.}},
-\bauthor{\bsnm{Ming}, \binits{Z.}},
-\bauthor{\bsnm{Coustaty}, \binits{M.}},
-\bauthor{\bsnm{Rusi{\~n}ol}, \binits{M.}},
-\bauthor{\bsnm{Terrades}, \binits{O.R.}},
-\bauthor{\bsnm{Llad{\'o}s}, \binits{J.}}:
-\bctitle{Globaldoc: A cross-modal vision-language framework for real-world document image retrieval and classification}.
-In: \bbtitle{2025 IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)}
-(\byear{2025}).
-\doiurl{10.1109/WACV61041.2025.00147} .
-\bcomment{Referenciado do arquivo: GlobalDoc...pdf}
-\end{bchapter}
-\endbibitem
-
-%%% 5
+%%% 2
 \bibitem[\protect\citeauthoryear{Scius{-}Bertrand et~al.}{2024}]{scius2024zeroshot}
 \begin{bchapter}
 \bauthor{\bsnm{Scius{-}Bertrand}, \binits{A.}},
@@ -134,7 +87,23 @@ pp. \bfpage{152}--\blpage{166}.
 \end{bchapter}
 \endbibitem
 
-%%% 6
+%%% 3
+\bibitem[\protect\citeauthoryear{Macedo et~al.}{2025}]{macedo2025vdm}
+\begin{bchapter}
+\bauthor{\bsnm{Macedo}, \binits{L.D.A.B.}},
+\bauthor{\bsnm{Costa}, \binits{J.P.V.}},
+\bauthor{\bsnm{Almeida}, \binits{J.P.F.D.}},
+\bauthor{\bsnm{Freitas}, \binits{P.G.}},
+\bauthor{\bsnm{Weigang}, \binits{L.}}:
+\bctitle{Visual document matching for zero-shot document classification}.
+In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (WML)}.
+\bsertitle{Lecture Notes in Computer Science (LNCS)}.
+\bpublisher{Springer}, \blocation{???}
+(\byear{2025})
+\end{bchapter}
+\endbibitem
+
+%%% 4
 \bibitem[\protect\citeauthoryear{Patel et~al.}{2024}]{patel2024characterizing}
 \begin{bchapter}
 \bauthor{\bsnm{Patel}, \binits{P.}},
@@ -153,7 +122,7 @@ pp. \bfpage{207}--\blpage{222}.
 \end{bchapter}
 \endbibitem
 
-%%% 7
+%%% 5
 \bibitem[\protect\citeauthoryear{Cruz et~al.}{2025}]{cruz2025innovating}
 \begin{barticle}
 \bauthor{\bsnm{Cruz}, \binits{L.}},
@@ -168,7 +137,7 @@ pp. \bfpage{207}--\blpage{222}.
 \end{barticle}
 \endbibitem
 
-%%% 8
+%%% 6
 \bibitem[\protect\citeauthoryear{Patterson et~al.}{2022}]{patterson2022carbon}
 \begin{barticle}
 \bauthor{\bsnm{Patterson}, \binits{D.}},
@@ -190,7 +159,7 @@ pp. \bfpage{207}--\blpage{222}.
 \end{barticle}
 \endbibitem
 
-%%% 9
+%%% 7
 \bibitem[\protect\citeauthoryear{Wiest et~al.}{2024}]{wiest2024privacy}
 \begin{barticle}
 \bauthor{\bsnm{Wiest}, \binits{I.C.}},
@@ -214,7 +183,7 @@ pp. \bfpage{207}--\blpage{222}.
 \end{barticle}
 \endbibitem
 
-%%% 10
+%%% 8
 \bibitem[\protect\citeauthoryear{Strong et~al.}{2025}]{strong2025trustworthy}
 \begin{bchapter}
 \bauthor{\bsnm{Strong}, \binits{J.}},
@@ -226,25 +195,41 @@ In: \bbtitle{The Thirty-Ninth AAAI Conference on Artificial Intelligence (AAAI-2
 \end{bchapter}
 \endbibitem
 
-%%% 11
-\bibitem[\protect\citeauthoryear{Liu et~al.}{2021}]{liu_document_2021}
+%%% 9
+\bibitem[\protect\citeauthoryear{Bakkali et~al.}{2025}]{bakkali2025globaldoc}
+\begin{bchapter}
+\bauthor{\bsnm{Bakkali}, \binits{S.}},
+\bauthor{\bsnm{Biswas}, \binits{S.}},
+\bauthor{\bsnm{Ming}, \binits{Z.}},
+\bauthor{\bsnm{Coustaty}, \binits{M.}},
+\bauthor{\bsnm{Rusi{\~n}ol}, \binits{M.}},
+\bauthor{\bsnm{Terrades}, \binits{O.R.}},
+\bauthor{\bsnm{Llad{\'o}s}, \binits{J.}}:
+\bctitle{Globaldoc: A cross-modal vision-language framework for real-world document image retrieval and classification}.
+In: \bbtitle{2025 IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)}
+(\byear{2025}).
+\doiurl{10.1109/WACV61041.2025.00147} .
+\bcomment{Referenciado do arquivo: GlobalDoc...pdf}
+\end{bchapter}
+\endbibitem
+
+%%% 10
+\bibitem[\protect\citeauthoryear{Voerman et~al.}{2025}]{voerman2025optimizing}
 \begin{barticle}
-\bauthor{\bsnm{Liu}, \binits{L.}},
-\bauthor{\bsnm{Wang}, \binits{Z.}},
-\bauthor{\bsnm{Qiu}, \binits{T.}},
-\bauthor{\bsnm{Chen}, \binits{Q.}},
-\bauthor{\bsnm{Lu}, \binits{Y.}},
-\bauthor{\bsnm{Suen}, \binits{C.Y.}}:
-\batitle{Document image classification: Progress over two decades}.
-\bjtitle{Neurocomputing}
-\bvolume{453},
-\bfpage{223}--\blpage{240}
-(\byear{2021})
-\doiurl{10.1016/J.NEUCOM.2021.04.114}
+\bauthor{\bsnm{Voerman}, \binits{J.}},
+\bauthor{\bsnm{Al-Ghadi}, \binits{M.}},
+\bauthor{\bsnm{Sidere}, \binits{N.}},
+\bauthor{\bsnm{Coustaty}, \binits{M.}},
+\bauthor{\bsnm{Lessard}, \binits{O.}}:
+\batitle{Optimizing identity documents classification in online systems: A comparative analysis}.
+\bjtitle{International Journal on Document Analysis and Recognition (IJDAR)}
+(\byear{2025})
+\doiurl{10.1007/s10032-025-00555-5} .
+\bcomment{Referenciado do arquivo: s10032-025-00555-5.pdf}
 \end{barticle}
 \endbibitem
 
-%%% 12
+%%% 11
 \bibitem[\protect\citeauthoryear{Macedo et~al.}{2026}]{macedo2026vdm}
 \begin{bchapter}
 \bauthor{\bsnm{Macedo}, \binits{L.D.A.B.}},
@@ -260,7 +245,7 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML 202
 \end{bchapter}
 \endbibitem
 
-%%% 13
+%%% 12
 \bibitem[\protect\citeauthoryear{Shu et~al.}{2024}]{shu2024dsncl}
 \begin{barticle}
 \bauthor{\bsnm{Shu}, \binits{Z.}},
@@ -276,7 +261,7 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML 202
 \end{barticle}
 \endbibitem
 
-%%% 14
+%%% 13
 \bibitem[\protect\citeauthoryear{Yan et~al.}{2024}]{yan2024lmmetric}
 \begin{barticle}
 \bauthor{\bsnm{Yan}, \binits{S.}},
@@ -293,7 +278,7 @@ In: \bbtitle{Proceedings of the ICDAR Workshop on Machine Learning (ICDARWML 202
 \end{barticle}
 \endbibitem
 
-%%% 15
+%%% 14
 \bibitem[\protect\citeauthoryear{Chen et~al.}{2024}]{internvl2024}
 \begin{botherref}
 \oauthor{\bsnm{Chen}, \binits{Z.}},
@@ -345,7 +330,7 @@ CoRR
 \end{botherref}
 \endbibitem
 
-%%% 16
+%%% 15
 \bibitem[\protect\citeauthoryear{Weigang and da~Silva}{1999}]{weigang1999study}
 \begin{bchapter}
 \bauthor{\bsnm{Weigang}, \binits{L.}},
@@ -359,7 +344,7 @@ pp. \bfpage{1113}--\blpage{1116}
 \end{bchapter}
 \endbibitem
 
-%%% 17
+%%% 16
 \bibitem[\protect\citeauthoryear{Harley et~al.}{2015}]{harley2015rvlcdip}
 \begin{bchapter}
 \bauthor{\bsnm{Harley}, \binits{A.W.}},
@@ -375,7 +360,7 @@ pp. \bfpage{991}--\blpage{995}.
 \end{bchapter}
 \endbibitem
 
-%%% 18
+%%% 17
 \bibitem[\protect\citeauthoryear{Sinha et~al.}{2024}]{sinha2024cica}
 \begin{bchapter}
 \bauthor{\bsnm{Sinha}, \binits{S.}},

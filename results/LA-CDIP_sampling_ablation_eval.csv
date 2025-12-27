@@ -1,0 +1,11 @@
+dataset,split,strategy,loss,eer,status
+LA-CDIP,1,random_sampling,triplet,0.6160164271047227,success
+LA-CDIP,1,random_sampling,cosface,1.1806981519507167,success
+LA-CDIP,2,random_sampling,triplet,0.4177109440267335,success
+LA-CDIP,2,random_sampling,cosface,3.341687552213868,success
+LA-CDIP,3,random_sampling,triplet,4.761904761904762,success
+LA-CDIP,3,random_sampling,cosface,6.952380952380954,success
+LA-CDIP,4,random_sampling,triplet,0.7731958762886585,success
+LA-CDIP,4,random_sampling,cosface,4.38144329896907,success
+LA-CDIP,5,random_sampling,triplet,0.9270704573547591,success
+LA-CDIP,5,random_sampling,cosface,1.6069221260815825,success

@@ -187,49 +187,39 @@ Large Vision-Language Models (LVLMs) have demonstrated impressive zero-shot capa
 
 \section{Introduction}\label{sec:introduction}
 
-The field of Document Understanding encompasses the analysis of content and structure across diverse formats, including text, images, tables, and graphics \cite{formUnderstandingSurvey}. Within this spectrum, accurate \glsfirst{DIC} is fundamental for organizations to ensure compliance and automate high-volume workflows. However, the complexity of \gls{DIC} is exacerbated by the dynamic nature of real-world documents: layouts evolve, new templates emerge, and traditional classification models frequently become obsolete, necessitating costly retraining cycles to maintain relevance \cite{macedo2025vdm}.
+The landscape of Document Image Classification (DIC) is undergoing a fundamental paradigm shift. Historically dominated by specialized visual backbones \cite{liu_document_2021}, the field has recently been disrupted by the advent of Large Vision-Language Models (LVLMs). These models, trained on massive web-scale corpora, offer impressive zero-shot capabilities, allowing users to classify documents via natural language prompts \cite{scius2024zeroshot}. However, as the initial excitement settles, a critical disconnect—which we term the \textbf{``Generative Paradox''}—has emerged in the literature \cite{faysse2025colpali, vaiani2025kieprompter}.
 
-Historically, \gls{DIC} evolved from structure-based heuristics to deep visual methods and, more recently, to hybrid multimodal approaches. Currently, the field is addressing the critical challenge of learning from scarce data, with \glsfirst{ZS-DIC} (Zero-Shot) and \glsfirst{FS-DIC} (Few-Shot) emerging as essential paradigms to handle the rapid turnover of document types \cite{macedo2025vdm,voerman2025optimizing,bakkali2025globaldoc}.
+The paradox lies in the mismatch between architecture and objective: relying on massive autoregressive models to generate textual labels for a purely discriminative task is inherently inefficient. As noted by \citet{faysse2025colpali} with ColPali, and \citet{vaiani2025kieprompter} with KIEPrompter, the computational cost and latency of decoding tokens for high-volume enterprise workflows are prohibitive. Furthermore, standard prompt-based approaches suffer from a \textbf{``Visual-Semantic Gap''} \cite{nacson2025docvlm}. While LVLMs excel at reading text, they often struggle to capture fine-grained layout nuances in a zero-shot setting, treating visually distinct administrative forms as identical if their textual content overlaps \cite{nacson2025docvlm,macedo2025vdm}.
 
-The advent of multimodal \glsfirst{LVLM} has provided a powerful mechanism for these low-data scenarios. By leveraging vast pre-training knowledge, LVLMs can achieve competitive performance with simple textual prompts \cite{scius2024zeroshot}, shifting the paradigm from ``training from scratch'' to ``efficient adaptation.'' However, despite this potential, two barriers limit the deployment of LVLMs in enterprise-grade pipelines:
+Compounding these technical challenges is the issue of \textbf{Operational Sovereignty and Efficiency:} The reliance on large proprietary models raises concerns regarding financial sustainability \cite{patel2024characterizing,cruz2025innovating}, energy footprint \cite{patterson2022carbon}, and data privacy. Regulatory landscapes increasingly demand solutions that ensure technological autonomy and can be deployed on-premise \cite{wiest2024privacy,strong2025trustworthy}. This reflects a natural trend towards efficiency and the adoption of specialized tasks within specific corporate contexts, prioritizing optimized adaptation over generalized scale.
+
+In this work, we argue that the solution is not better prompting, but \textbf{Better Representation Learning}. We introduce \textbf{CaVL-Doc} (Comparative Aligned Vision-Language Document Embeddings), a framework that repurposes the powerful aligned encoder of a frozen LVLM to construct a robust metric space. Instead of asking the model to ``speak'', we teach it to ``compare''.
+
+Our approach aligns with the emerging trend of Universal Multimodal Embeddings \cite{faysse2025colpali}, but introduces three specialized innovations tailored for the high intra-class variance of document layouts:
 
 \begin{enumerate}
-    \item \textbf{Performance Saturation:} While prompt engineering offers a strong baseline, it often hits a performance ceiling. Achieving the reliability required for critical business processes demands robust adaptation to subtle, domain-specific visual nuances that standard prompts fail to capture \cite{scius2024zeroshot}.
-    \item \textbf{Operational Sovereignty and Efficiency:} The reliance on large proprietary models raises concerns regarding financial sustainability \cite{patel2024characterizing, cruz2025innovating}, energy footprint \cite{patterson2022carbon}, and data privacy. Regulatory landscapes increasingly demand solutions that ensure technological autonomy and can be deployed on-premise \cite{wiest2024privacy, strong2025trustworthy}, creating an urgent need for efficient, open-source foundation models.
+    \item \textbf{Multi-Query Attention Pooling:} Inspired by the ``learned queries'' concept in DocVLM \cite{nacson2025docvlm}, we reject simple mean pooling. We implement a mechanism where multiple learnable queries attend to different semantic and structural aspects of the document tokens, preserving fine-grained details lost in global averaging.
+    
+    \item \textbf{Elastic Geometric Constraints:} Enterprise documents often exhibit chaotic layout variations (e.g., scanned distortion, mobile photos). Standard metric losses fail here. We systematically implement \textbf{Elastic Angular Margins} (ElasticArcFace), which introduce stochasticity during training to prevent overfitting to easy samples and enforce a more generalizable decision boundary \cite{bakkali2025globaldoc}.
+    
+    \item \textbf{Active Hard Mining (The ``Professor''):} To maximize data efficiency—crucial for few-shot adaptation—we substitute random sampling with an RL-based agent. This ``Professor'' actively selects the most informative hard-negative pairs, ensuring the model learns from the most discriminative examples.
 \end{enumerate}
 
-To address these barriers, the state-of-the-art in efficient \gls{FS-DIC} is converging towards Metric Learning—such as Prototypical Networks \cite{voerman2025optimizing} or Siamese architectures \cite{macedo2025vdm}. These methods aim to learn a specialized embedding space where similar documents are grouped together. However, standard metric learning approaches often fail to enforce strict geometric constraints. They treat training samples equally, frequently resulting in embedding spaces with loose intra-class compactness and ambiguous decision boundaries, especially when facing the high visual variance typical of administrative documents.
+We demonstrate that CaVL-Doc, applied to a compact 2B parameter open-source model (InternVL2-2B), achieves state-of-the-art results on the LA-CDIP and RVL-CDIP benchmarks. Our method not only addresses the ``Visual-Semantic Gap'' but does so with a fraction of the inference cost of generative approaches, effectively resolving the Generative Paradox for document classification.
 
-% --- FIGURA CONCEITUAL (SIMÉTRICA) ---
-\begin{figure}[t]
-\centering
-% Certifique-se de que o arquivo metric_space_symmetric.pdf está na pasta correta
-\includegraphics[width=\columnwidth]{../assets/metric_space.png}
-\caption{Conceptual visualization of the Zero-Shot learning objective. The figure illustrates the goal of constructing a metric space using seen classes that maintains discriminative power for unseen classes, allowing new document types to form distinct, separable classes without additional training.}
-\label{fig:metric-space-concept}
-\end{figure}
-
-This limitation reveals a critical gap: the need for a framework that not only adapts an LVLM but actively structures its latent space. As illustrated in Figure \ref{fig:metric-space-concept}, a robust classification model must do more than cluster data; it must enforce \textbf{high intra-class compactness} (minimizing variance within a document type) and \textbf{large inter-class angular margins} (ensuring separation between types). This geometric structuring during the training phase (Phase 1) is what safeguards the model's ability to project unseen classes into distinct, non-overlapping regions during inference (Phase 2).
-
-In this work, we introduce \textbf{CaVL-Doc} (Comparative Aligned Vision-Language Document Embeddings), a novel framework for robust few-shot adaptation. Unlike standard approaches that treat the backbone as a black box, we design a specialized architecture that aggregates aligned multimodal tokens using Multi-Query Attention Pooling. Crucially, to solve the geometric gap, we move beyond standard contrastive losses. We implement and systematically evaluate a family of ``Elastic'' angular margin losses (e.g., ElasticArcFace, ElasticCircle). These losses introduce a stochastic margin during training, preventing the model from overfitting to the limited support set and forcing the learning of a generalized metric space that respects the geometry shown in Figure \ref{fig:metric-space-concept}.
-
-We demonstrate that CaVL-Doc, applied to a 2B parameter open-source LVLM (InternVL2), achieves state-of-the-art few-shot performance, significantly outperforming standard metric learning baselines while maintaining a compact operational footprint suitable for sovereign deployment.
-
-\subsection{The main contributions}
+\subsection{Main Contributions}
 The key contributions of this work are summarized as follows:
 \begin{enumerate}
-    \item \textbf{First Fully Multimodal Metric for DIC:} We introduce the first metric learning framework designed to operate directly on the aligned vision-language latent space of LVLMs. By bypassing traditional unimodal feature extraction or late fusion, CaVL-Doc constructs a semantically rich embedding space that inherently captures the interplay between visual layout and textual content.
+    \item \textbf{High-Efficiency Embedding Framework:} We propose a methodology to transform generative LVLMs into state-of-the-art discriminative embedding models, bypassing the latency of token generation \cite{faysse2025colpali}.
     
-    \item \textbf{Advancing Zero-Shot DIC Research:} We contribute to the underexplored field of Zero-Shot Document Image Classification (ZS-DIC) by proposing a robust methodology for adapting general-purpose models to specialized domains. Our approach enables the effective classification of unseen document types, addressing the critical "cold start" problem in enterprise document processing.
+    \item \textbf{Structural-Aware Architecture:} We validate the effectiveness of Multi-Query Attention in capturing layout information from frozen LVLM features, outperforming standard pooling methods \cite{nacson2025docvlm}.
     
-    \item \textbf{Extensive Architectural Evaluation:} We conduct a comprehensive experimental analysis to determine the optimal architectural components for multimodal document embeddings. This includes a rigorous evaluation of pooling mechanisms (Multi-Query Attention), loss functions (Elastic vs. Static), and sampling strategies, providing a blueprint for future research in multimodal metric learning.
+    \item \textbf{Robust Training Regime:} We introduce a hybrid training strategy combining Elastic Margins and Active Curriculum Learning, stabilizing convergence in low-data (few-shot) regimes.
     
-    \item \textbf{Robust Training Strategy:} We propose a hybrid optimization strategy that combines a two-phase Curriculum Learning schedule with an RL-based "Professor" for active hard negative mining, ensuring stable convergence and maximizing data efficiency in few-shot scenarios.
-    
-    \item \textbf{SOTA Performance with Efficiency:} We empirically demonstrate that our adapted 2B parameter model achieves state-of-the-art performance on the LA-CDIP and RVL-CDIP benchmarks. We show that specialized metric adaptation allows compact open-source models to outperform massive proprietary models, enabling sovereign and efficient deployment.
+    \item \textbf{Sovereign SOTA Performance:} We show that a 2B parameter model, when properly adapted, can outperform proprietary models orders of magnitude larger, offering a viable path for secure, on-premise document intelligence.
 \end{enumerate}
 
-The remainder of this article is structured as follows: Section~\ref{sec:related-work} reviews the state-of-the-art in few-shot document classification. Section~\ref{sec:methodology} details the CaVL-Doc framework, the token alignment strategy, and the Elastic Margin Losses. Section~\ref{sec:experiments} describes the experimental setup and baselines. Section~\ref{sec:results} presents the empirical analysis. Finally, Section \ref{sec:conclusion} concludes the article and outlines future directions.
+The remainder of this article is structured as follows: Section~\ref{sec:related-work} positions our work within the recent wave of multimodal embedding research. Section~\ref{sec:methodology} details the CaVL-Doc architecture and the Elastic Margin formulation. Section~\ref{sec:experiments} presents the experimental setup, and Section~\ref{sec:results} discusses the empirical results, demonstrating the superiority of our embedding-based approach over generative baselines.
 % --- Fim da Introdução ---
 
 \section{Related Work}\label{sec:related-work}
@@ -521,7 +511,7 @@ The choice of the objective function is critical for shaping the metric space. T
     \addlinespace
     \textit{Angular Margin} \\
     ArcFace & 3.41 & 29.39 \\
-    CosFace & 3.97 & 28.86 \\
+    CosFace & 3.50 & 28.86 \\
     % ExpFace & 4.59 & 28.50 \\
     % Circle Loss & 3.73 & 32.74 \\
     % Subcenter ArcFace & 3.15 & 28.74 \\
@@ -550,8 +540,13 @@ Using the best loss from the previous section, we assessed the contribution of t
     \cmidrule(lr){2-3}
      & \textbf{LA-CDIP} & \textbf{RVL-CDIP} \\
     \midrule
-    Random Sampling & -- & -- \\
-    \textbf{Professor Agent} & \textbf{--} & \textbf{--} \\
+    \textit{Triplet Loss} & & \\
+    Random Sampling & 1.50 & -- \\
+    \textbf{Professor Agent} & \textbf{1.48} & \textbf{--} \\
+    \addlinespace
+    \textit{CosFace} & & \\
+    Random Sampling & 3.49 & -- \\
+    Professor Agent & 3.50 & -- \\
     \bottomrule
     \end{tabular}
 \end{table}
