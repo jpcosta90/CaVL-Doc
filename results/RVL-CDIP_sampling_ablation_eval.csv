@@ -1,0 +1,9 @@
+dataset,split,strategy,loss,eer,status
+RVL-CDIP,0,random_sampling,triplet,30.312499999999996,success
+RVL-CDIP,0,random_sampling,cosface,32.25,success
+RVL-CDIP,1,random_sampling,triplet,22.750000000000004,success
+RVL-CDIP,1,random_sampling,cosface,25.312499999999993,success
+RVL-CDIP,2,random_sampling,triplet,24.187499999999996,success
+RVL-CDIP,2,random_sampling,cosface,23.0,success
+RVL-CDIP,3,random_sampling,triplet,31.125000000000004,success
+RVL-CDIP,3,random_sampling,cosface,36.5,success

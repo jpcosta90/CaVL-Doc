@@ -27,7 +27,27 @@ from cavl_doc.utils.embedding_utils import prepare_inputs_for_multimodal_embeddi
 # CONFIGURAÇÃO DO EXPERIMENTO
 # ==============================================================================
 CHECKPOINT_ROOT = "/mnt/large/checkpoints" if os.path.exists("/mnt/large") else "checkpoints"
-OUTPUT_CSV = os.path.join(WORKSPACE_ROOT, "results/LA-CDIP_sampling_ablation_eval.csv")
+CHECKPOINT_ROOT = "/mnt/large/checkpoints" if os.path.exists("/mnt/large") else "checkpoints"
+
+# Configurações padrão (serão sobrescritas por args)
+DATASETS = {
+    "LA-CDIP": {
+        "output_csv": "results/LA-CDIP_sampling_ablation_eval.csv",
+        "splits": [1, 2, 3, 4, 5],
+        "data_root": "/mnt/data/la-cdip/data",
+        "val_path_fmt": "data/generated_splits/zsl_split_{split}/validation_pairs.csv",
+        "ckpt_pattern_fmt": "ABLATION_SAMPLING_{strategy}_S{split}_{loss}_*",
+        "num_classes": 10
+    },
+    "RVL-CDIP": {
+        "output_csv": "results/RVL-CDIP_sampling_ablation_eval.csv",
+        "splits": [0, 1, 2, 3],
+        "data_root": "/mnt/data/zs_rvl_cdip/data",
+        "val_path_fmt": "data/generated_splits/RVL-CDIP_zsl_split_{split}/validation_pairs.csv",
+        "ckpt_pattern_fmt": "RVL_ABLATION_SAMPLING_{strategy}_S{split}_{loss}_*",
+        "num_classes": 16
+    }
+}
 
 STRATEGIES = ["random_sampling"]
 LOSSES = ["triplet", "cosface"]
@@ -37,10 +57,9 @@ SPLITS = [1, 2, 3, 4, 5]
 # HELPER FUNCTIONS (Adaptadas de run_trained_eval.py)
 # ==============================================================================
 
-def find_sampling_checkpoint(strategy, split, loss):
+def find_sampling_checkpoint(strategy, split, loss, pattern_fmt):
     """Localiza o checkpoint da ablação de sampling."""
-    # Padrão: ABLATION_SAMPLING_{strategy}_S{split}_{loss}_*
-    pattern = f"ABLATION_SAMPLING_{strategy}_S{split}_{loss}_*"
+    pattern = pattern_fmt.format(strategy=strategy, split=split, loss=loss)
     search_path = os.path.join(CHECKPOINT_ROOT, pattern)
     candidates = sorted(glob.glob(search_path))
     
@@ -192,8 +211,16 @@ def rl_full_collate_fn(batch):
 # ==============================================================================
 
 def main():
+    parser = argparse.ArgumentParser(description="Avaliação de Sampling Ablation")
+    parser.add_argument("--dataset", type=str, default="LA-CDIP", choices=["LA-CDIP", "RVL-CDIP"], help="Dataset para avaliação")
+    args = parser.parse_args()
+    
+    dataset_name = args.dataset
+    cfg = DATASETS[dataset_name]
+    output_csv = os.path.join(WORKSPACE_ROOT, cfg["output_csv"])
+    
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f"🚀 Iniciando Avaliação Sampling Ablation")
+    print(f"🚀 Iniciando Avaliação Sampling Ablation - {dataset_name}")
     print(f"Device: {device}")
     
     # 1. Carrega Backbone (Base)
@@ -215,20 +242,20 @@ def main():
     warm_up_model(backbone, processor)
 
     results = []
-    if os.path.exists(OUTPUT_CSV):
-        try: results = pd.read_csv(OUTPUT_CSV).to_dict('records')
+    if os.path.exists(output_csv):
+        try: results = pd.read_csv(output_csv).to_dict('records')
         except: pass
         
-    total_steps = len(SPLITS) * len(STRATEGIES) * len(LOSSES)
+    splits = cfg["splits"]
     
-    for split in SPLITS:
-        val_csv = os.path.join(WORKSPACE_ROOT, f"data/generated_splits/zsl_split_{split}/validation_pairs.csv")
+    for split in splits:
+        val_csv = os.path.join(WORKSPACE_ROOT, cfg["val_path_fmt"].format(split=split))
         if not os.path.exists(val_csv):
             print(f"⚠️  Validação não encontrada: {val_csv}")
             continue
             
         print(f"\nCarregando Validação Split {split}: {val_csv}")
-        val_dataset = DocumentPairDataset(val_csv, "/mnt/data/la-cdip/data", 448, 12, 'cpu')
+        val_dataset = DocumentPairDataset(val_csv, cfg["data_root"], 448, 12, 'cpu')
         val_loader = DataLoader(val_dataset, batch_size=24, shuffle=False, num_workers=0, collate_fn=rl_full_collate_fn)
         
         for strategy in STRATEGIES:
@@ -238,7 +265,7 @@ def main():
                     print(f"⏩ {strategy} | {loss} | Split {split} (Já existe)")
                     continue
 
-                ckpt_path = find_sampling_checkpoint(strategy, split, loss)
+                ckpt_path = find_sampling_checkpoint(strategy, split, loss, cfg["ckpt_pattern_fmt"])
                 if not ckpt_path:
                     print(f"❌ Checkpoint não encontrado: {strategy} {loss} S{split}")
                     continue
@@ -246,26 +273,26 @@ def main():
                 print(f"--- Avaliando: {strategy} | {loss} | S{split} ---")
                 try:
                     siam, config = load_trained_model(ckpt_path, device, tokenizer, backbone)
-                    criterion = build_loss(loss, num_classes=10, in_features=config['projection_output_dim']).to(device)
+                    criterion = build_loss(loss, num_classes=cfg["num_classes"], in_features=config['projection_output_dim']).to(device)
                     
                     mean_loss, eer, thr, r1 = validate_siam_on_loader(siam, val_loader, device, criterion)
                     print(f"✅ EER: {eer*100:.2f}%")
                     
                     results.append({
-                        "dataset": "LA-CDIP",
+                        "dataset": dataset_name,
                         "split": split,
                         "strategy": strategy,
                         "loss": loss,
                         "eer": eer * 100,
                         "status": "success"
                     })
-                    pd.DataFrame(results).to_csv(OUTPUT_CSV, index=False)
+                    pd.DataFrame(results).to_csv(output_csv, index=False)
                     
                 except Exception as e:
                     print(f"❌ Erro: {e}")
                     # traceback.print_exc()
 
-    print(f"\n🎉 Concluído! CSV: {OUTPUT_CSV}")
+    print(f"\n🎉 Concluído! CSV: {output_csv}")
 
 if __name__ == "__main__":
     main()
