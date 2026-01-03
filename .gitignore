@@ -89,6 +89,7 @@ ipython_config.py
 
 # paper
 docs/paper/
+docs_backup/
 cavl_doc_overleaf.zip
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is

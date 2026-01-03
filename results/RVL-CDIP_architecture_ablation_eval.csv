@@ -12,3 +12,6 @@ RVL-CDIP,2,1,cosface,22.750000000000004,success
 RVL-CDIP,2,8,triplet,25.375000000000004,success
 RVL-CDIP,2,8,cosface,23.375,success
 RVL-CDIP,3,1,triplet,27.375000000000004,success
+RVL-CDIP,3,1,cosface,35.875,success
+RVL-CDIP,3,8,triplet,27.5625,success
+RVL-CDIP,3,8,cosface,37.81250000000001,success
