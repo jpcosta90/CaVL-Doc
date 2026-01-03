@@ -53,7 +53,7 @@ COMMON_ARGS = [
 # === ABLATION SETTINGS ===
 # Updated per user request: [0.15, 0.75] (0.45 is skipped/reused from Architecture Ablation)
 MARGINS_TO_TEST = [0.15, 0.75] 
-SUBCENTERS_TO_TEST = [1, 3, 5] 
+SUBCENTERS_TO_TEST = [3, 5] 
 ELASTIC_SIGMA_LIST = [0.0125, 0.05, 0.1]
 
 # ==============================================================================
