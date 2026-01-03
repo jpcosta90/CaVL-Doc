@@ -1,0 +1,14 @@
+dataset,split,queries,loss,eer,status
+RVL-CDIP,0,1,triplet,28.874999999999996,success
+RVL-CDIP,0,1,cosface,30.874999999999996,success
+RVL-CDIP,0,8,triplet,31.8125,success
+RVL-CDIP,0,8,cosface,29.6875,success
+RVL-CDIP,1,1,triplet,23.5,success
+RVL-CDIP,1,1,cosface,30.062500000000004,success
+RVL-CDIP,1,8,triplet,25.249999999999993,success
+RVL-CDIP,1,8,cosface,23.562499999999996,success
+RVL-CDIP,2,1,triplet,26.437500000000004,success
+RVL-CDIP,2,1,cosface,22.750000000000004,success
+RVL-CDIP,2,8,triplet,25.375000000000004,success
+RVL-CDIP,2,8,cosface,23.375,success
+RVL-CDIP,3,1,triplet,27.375000000000004,success
