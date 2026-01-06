@@ -1,0 +1,4 @@
+dataset,split,name,margin,k,std,eer
+RVL-CDIP,0,margin_variation,0.15,1,None,30.500000000000004
+RVL-CDIP,0,margin_variation,0.75,1,None,30.000000000000004
+RVL-CDIP,1,margin_variation,0.15,1,None,28.500000000000004
