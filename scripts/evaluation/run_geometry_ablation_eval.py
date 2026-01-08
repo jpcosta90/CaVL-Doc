@@ -124,7 +124,7 @@ def rl_full_collate_fn(batch):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default=DEFAULT_DATASET)
-    parser.add_argument("--best-margin", type=float, default=0.45) # Used to check if we are evaluating Stage 2/3
+    parser.add_argument("--best-margin", type=float, default=0.75) # Updated based on best result
     parser.add_argument("--best-k", type=int, default=1)
     args = parser.parse_args()
 
@@ -150,8 +150,29 @@ def main():
 
     results = []
     if os.path.exists(output_csv):
-        try: results = pd.read_csv(output_csv).to_dict('records')
+        try: 
+            # keep_default_na=False ensures "None" is read as string "None", not NaN
+            results = pd.read_csv(output_csv, keep_default_na=False).to_dict('records')
         except: pass
+
+    # AUTO-DETECT BEST MARGIN
+    margin_runs = [r for r in results if r['name'] == 'margin_variation' and str(r['std']) == 'None']
+    if margin_runs:
+        # Calculate average EER per margin
+        margin_stats = {}
+        for r in margin_runs:
+            m = float(r['margin'])
+            eer = float(r['eer'])
+            if m not in margin_stats: margin_stats[m] = []
+            margin_stats[m].append(eer)
+        
+        # Find minimum average EER
+        avg_eers = {m: sum(v)/len(v) for m, v in margin_stats.items()}
+        if avg_eers:
+            best_m = min(avg_eers, key=avg_eers.get)
+            print(f"📊 Auto-detected Best Margin found in CSV: {best_m} (Avg EER: {avg_eers[best_m]:.2f}%)")
+            print(f"   -> Overriding argument --best-margin {args.best_margin} with {best_m}")
+            args.best_margin = best_m
 
     for split in cfg["splits"]:
         val_csv = os.path.join(WORKSPACE_ROOT, cfg["val_path_fmt"].format(split=split))
@@ -160,12 +181,45 @@ def main():
         val_loader = DataLoader(val_dataset, batch_size=24, shuffle=False, num_workers=0, collate_fn=rl_full_collate_fn)
 
         # Helper to run eval
-        def run_single_eval(name, margin, k, std, pattern):
-            if any(r['split'] == split and r['name'] == name and r['margin'] == margin and r['k'] == k and r['std'] == str(std) for r in results):
-                return
+        def run_single_eval(name, margin, k, std, pattern, alias_name=None):
+            # Normalização para comparação robusta
+            for r in results:
+                # Compara split e k como inteiros
+                if int(r['split']) != split: continue
+                if int(r['k']) != k: continue
+                # Compara margin com precisão de float
+                if abs(float(r['margin']) - margin) > 1e-5: continue
+                # Compara std como string
+                if str(r['std']) != str(std): continue
+
+                # Check exact name match
+                if str(r['name']) == name:
+                    print(f"⏩ Skipping {name} (m={margin}, k={k}, std={std}) S{split} - Already processed.")
+                    return
             
+            # Check alias if provided (to avoid re-running identical experiments)
+            if alias_name:
+                 for r in results:
+                    if int(r['split']) != split: continue
+                    if int(r['k']) != k: continue
+                    if abs(float(r['margin']) - margin) > 1e-5: continue
+                    if str(r['std']) != str(std): continue
+                    
+                    if str(r['name']) == alias_name:
+                        print(f"♻️ Reusing result from {alias_name} for {name} (m={margin}, k={k}) S{split}")
+                        # Copy result
+                        results.append({
+                            "dataset": args.dataset, "split": split, "name": name, 
+                            "margin": margin, "k": k, "std": str(std), 
+                            "eer": r['eer']
+                        })
+                        pd.DataFrame(results).to_csv(output_csv, index=False)
+                        return
+
             ckpt_path = find_checkpoint(pattern)
-            if not ckpt_path: return
+            if not ckpt_path: 
+                # print(f"⚠️ Checkpoint not found for pattern: {pattern}")
+                return
 
             try:
                 siam, c = load_trained_model(ckpt_path, device, tokenizer, backbone)
@@ -208,11 +262,13 @@ def main():
             loss = "subcenter_cosface" if k > 1 else "cosface"
             pat = f"RVL_ABLATION_GEO_{loss}_m{args.best_margin}_k{k}_S{split}_*"
             # If K=1, it might overlap with margin run above, but that's okay, logic handles dedupe via keys
-            run_single_eval("subcenter_variation", args.best_margin, k, "None", pat)
+            eval_alias = "margin_variation" if k == 1 else None
+            run_single_eval("subcenter_variation", args.best_margin, k, "None", pat, alias_name=eval_alias)
 
         # 3. Elasticity (Assume run with best_margin and best_k=1)
         for s in SIGMAS:
             pat = f"RVL_ABLATION_GEO_elastic_cosface_m{args.best_margin}_k1_std{s}_S{split}_*"
+            # If sigma=0 (static), it would overlap, but we start from non-zero.
             run_single_eval("elasticity_variation", args.best_margin, 1, s, pat)
 
     print(f"Done. Results in {output_csv}")
