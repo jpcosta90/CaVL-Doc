@@ -180,7 +180,10 @@ def run_rl_siamese_loop(
     # Novos argumentos para losses
     margin=0.5, scale=64.0, num_sub_centers=3, std=0.05,
     # Argumento para retomar treinamento
-    resume_checkpoint_path=None
+    resume_checkpoint_path=None,
+    # Optimizer/Scheduler configs
+    optimizer_type="adam",
+    scheduler_type=None
 ):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -295,8 +298,29 @@ def run_rl_siamese_loop(
     trainable_params = [p for n,p in siam.named_parameters() if p.requires_grad]
     loss_params = list(student_criterion.parameters())
     
-    student_optimizer = optim.Adam(trainable_params + loss_params, lr=student_lr * lr_reduce_factor)
-    professor_optimizer = optim.Adam(professor_model.parameters(), lr=professor_lr * lr_reduce_factor)
+    # --- Optimizer Setup ---
+    print(f"DEBUG: Optimizer: {optimizer_type}, Scheduler: {scheduler_type}")
+    if optimizer_type and optimizer_type.lower() == "sgd":
+        student_optimizer = optim.SGD(trainable_params + loss_params, lr=student_lr, momentum=0.9, weight_decay=1e-4)
+    elif optimizer_type and optimizer_type.lower() == "adam":
+        student_optimizer = optim.Adam(trainable_params + loss_params, lr=student_lr, weight_decay=1e-4) # Adam tradicional
+    else:
+        # Default AdamW (Padrão Moderno)
+        student_optimizer = optim.AdamW(trainable_params + loss_params, lr=student_lr, weight_decay=1e-4)
+        
+    professor_optimizer = optim.Adam(professor_model.parameters(), lr=professor_lr) # Professor usa Adam padrão
+    
+    # --- Scheduler Setup ---
+    student_scheduler = None
+    if scheduler_type:
+        if scheduler_type.lower() == "step":
+             student_scheduler = optim.lr_scheduler.StepLR(student_optimizer, step_size=1, gamma=lr_reduce_factor)
+        elif scheduler_type.lower() == "cosine":
+             # T_max usually epochs
+             student_scheduler = optim.lr_scheduler.CosineAnnealingLR(student_optimizer, T_max=epochs)
+        elif scheduler_type.lower() == "plateau":
+             student_scheduler = optim.lr_scheduler.ReduceLROnPlateau(student_optimizer, mode='min', factor=lr_reduce_factor, patience=1) # Aggressive reduction
+
 
     # Debug Resume Path
     print(f"DEBUG: resume_checkpoint_path received: '{resume_checkpoint_path}'")
@@ -327,6 +351,9 @@ def run_rl_siamese_loop(
             student_optimizer.load_state_dict(ckpt['student_optimizer'])
         if 'professor_optimizer' in ckpt:
             professor_optimizer.load_state_dict(ckpt['professor_optimizer'])
+        if 'student_scheduler' in ckpt and student_scheduler is not None:
+             student_scheduler.load_state_dict(ckpt['student_scheduler'])
+
             
         # Restaura estado do treinamento
         start_epoch = ckpt.get('epoch', 0) + 1
@@ -593,7 +620,12 @@ def run_rl_siamese_loop(
                 loss = student_criterion(sea, s_cls_a) + student_criterion(seb, s_cls_b)
             
             if torch.isnan(loss): continue
+            
             loss.backward()
+            
+            # Gradient Clipping (Global) - Deve ser APÓS backward e ANTES de step
+            torch.nn.utils.clip_grad_norm_(trainable_params + loss_params, max_norm=1.0)
+            
             student_optimizer.step()
 
             # 3. Update Prof
@@ -648,6 +680,7 @@ def run_rl_siamese_loop(
             'professor_state': professor_model.state_dict(),
             'student_optimizer': student_optimizer.state_dict(),
             'professor_optimizer': professor_optimizer.state_dict(),
+            'student_scheduler': student_scheduler.state_dict() if student_scheduler else None,
             'baseline': baseline,
             'global_batch_step': global_batch_step,
             'no_improve': no_improve, # Salva estado da paciência
@@ -684,6 +717,19 @@ def run_rl_siamese_loop(
             if use_wandb and wandb: wandb.log({"val/best_eer": best_val_eer})
         else:
             no_improve += 1
+        
+        # --- Scheduler Step ---
+        if student_scheduler:
+             if isinstance(student_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+                 student_scheduler.step(veer)
+             else:
+                 student_scheduler.step()
+             
+             current_lr = student_optimizer.param_groups[0]['lr']
+             print(f"Current LR: {current_lr}")
+             if use_wandb and wandb:
+                 wandb.log({"train/lr": current_lr, "epoch": epoch + 1})
+
         # --- Save Last Checkpoint (para Resume) ---
         backbone_trainable = {n: p.detach().cpu() for n, p in siam.backbone.named_parameters() if p.requires_grad}
         last_ckpt = {
@@ -696,6 +742,7 @@ def run_rl_siamese_loop(
             'professor_state': professor_model.state_dict(),
             'student_optimizer': student_optimizer.state_dict(),
             'professor_optimizer': professor_optimizer.state_dict(),
+            'student_scheduler': student_scheduler.state_dict() if student_scheduler else None,
             'baseline': baseline,
             'global_batch_step': global_batch_step,
             'no_improve': no_improve, # Salva estado da paciência

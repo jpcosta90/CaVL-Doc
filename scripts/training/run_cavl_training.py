@@ -385,7 +385,10 @@ def main(args):
             num_sub_centers=args.num_sub_centers,
             std=args.std,
             # Resume
-            resume_checkpoint_path=args.resume_from
+            resume_checkpoint_path=args.resume_from,
+            # Optimizer/Scheduler
+            optimizer_type=args.optimizer_type,
+            scheduler_type=args.scheduler_type
         )
     
     if args.use_wandb:
@@ -457,6 +460,10 @@ def parse_args():
     
     # Resume
     p.add_argument("--resume-from", type=str, default=None, help="Path to checkpoint to resume from")
+    
+    # Optimizer & Scheduler
+    p.add_argument("--optimizer-type", type=str, default="adam", choices=["adam", "adamw", "sgd"], help="Optimizer type")
+    p.add_argument("--scheduler-type", type=str, default=None, choices=["step", "cosine", "plateau"], help="Scheduler type")
 
     return p.parse_args()
 
