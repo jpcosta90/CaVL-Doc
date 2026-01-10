@@ -388,7 +388,12 @@ def main(args):
             resume_checkpoint_path=args.resume_from,
             # Optimizer/Scheduler
             optimizer_type=args.optimizer_type,
-            scheduler_type=args.scheduler_type
+            scheduler_type=args.scheduler_type,
+            # Debug/Sweep Control
+            max_steps_per_epoch=args.max_steps_per_epoch,
+            professor_warmup_steps=args.professor_warmup_steps,
+            easy_mining_steps=args.easy_mining_steps,
+            gradient_accumulation_steps=args.gradient_accumulation_steps
         )
     
     if args.use_wandb:
@@ -438,12 +443,16 @@ def parse_args():
     # Training config
     p.add_argument("--training-sample-size", dest="training_sample_size", type=int, default=0)
     p.add_argument("--epochs", type=int, default=5)
+    p.add_argument("--max-steps-per-epoch", type=int, default=None, help="Limita o número de steps (batches) por época para debugging/sweeps")
+    p.add_argument("--professor-warmup-steps", type=int, default=0, help="Steps iniciais com amostragem aleatória (sem Professor ativo)")
+    p.add_argument("--easy-mining-steps", type=int, default=0, help="Steps iniciais com recompensa invertida (Easy Mining)")
     p.add_argument("--load-in-4bit", action="store_true", default=False)
 
     p.add_argument("--student-lr", type=float, default=1e-4)
     p.add_argument("--professor-lr", type=float, default=1e-4)
     p.add_argument("--candidate-pool-size", type=int, default=8)
     p.add_argument("--student-batch-size", type=int, default=4)
+    p.add_argument("--gradient-accumulation-steps", type=int, default=1, help="Steps de acumulação de gradiente")
     
     p.add_argument("--cut-layer", type=int, default=27)
     
@@ -463,7 +472,7 @@ def parse_args():
     
     # Optimizer & Scheduler
     p.add_argument("--optimizer-type", type=str, default="adam", choices=["adam", "adamw", "sgd"], help="Optimizer type")
-    p.add_argument("--scheduler-type", type=str, default=None, choices=["step", "cosine", "plateau"], help="Scheduler type")
+    p.add_argument("--scheduler-type", type=str, default=None, choices=["step", "cosine", "plateau", "constant"], help="Scheduler type")
 
     return p.parse_args()
 

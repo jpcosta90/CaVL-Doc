@@ -65,6 +65,32 @@ def rl_full_collate_fn(batch):
         
     return img_a_list, img_b_list, labels, class_a, class_b
 
+def calculate_batch_recall(embeddings, labels, k=1):
+    """
+    Computa Recall@k para o batch atual.
+    """
+    if embeddings.size(0) < 2: return 0.0
+    
+    # Normaliza
+    embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
+    
+    # Matriz de Similaridade
+    sim_matrix = torch.matmul(embeddings, embeddings.T)
+    
+    # Remove diagonal
+    diag_mask = torch.eye(sim_matrix.size(0), dtype=torch.bool).to(embeddings.device)
+    sim_matrix.masked_fill_(diag_mask, -float('inf'))
+    
+    # Top-k
+    _, indices = sim_matrix.topk(k, dim=1)
+    
+    # Check Neighbors
+    neighbor_labels = labels[indices]
+    target_labels = labels.unsqueeze(1)
+    hits = (neighbor_labels == target_labels).any(dim=1).float()
+    
+    return hits.mean().item()
+
 def pairwise_eer_from_scores(labels: np.ndarray, scores: np.ndarray):
     if len(labels) == 0: return 1.0, 0.0
     fpr, tpr, thresholds = roc_curve(labels, scores)
@@ -183,7 +209,12 @@ def run_rl_siamese_loop(
     resume_checkpoint_path=None,
     # Optimizer/Scheduler configs
     optimizer_type="adam",
-    scheduler_type=None
+    scheduler_type=None,
+    # Debug/Sweep Control
+    max_steps_per_epoch=None,
+    professor_warmup_steps=0,
+    easy_mining_steps=0, # Novo argumento para curriculum de exemplos fáceis
+    gradient_accumulation_steps=1 # Novo argumento para acumulação de gradiente
 ):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -562,31 +593,31 @@ def run_rl_siamese_loop(
         pbar = tqdm(train_loader, desc=f"Ep {epoch+1}", mininterval=30.0, ncols=100)
 
         for batch_idx, (img_a, img_b, labels, cls_a, cls_b) in enumerate(pbar):
+            # --- Check Max Steps (Sweep) ---
+            if max_steps_per_epoch is not None and batch_idx >= max_steps_per_epoch:
+                print(f"\n⚠️  Limite de steps atingido ({max_steps_per_epoch}). Encerrando época.")
+                break
+
             labels = labels.to(device).float()
             cls_a = cls_a.to(device)
             cls_b = cls_b.to(device)
 
-            # 1. Professor
+            # 1. Professor Selection
             professor_model.train()
+            
+            # Warmup Check
+            is_warmup = global_batch_step < professor_warmup_steps
+            
             with torch.no_grad():
                 ea, eb = student_forward_pass(img_a, img_b, False)
-                
                 if loss_type in ['contrastive', 'angular']:
                     sl = student_criterion.forward_individual(ea, eb, labels)
                 elif loss_type == 'triplet':
-                    # Triplet precisa de batch com múltiplas amostras da mesma classe.
-                    # Concatenamos A e B para aumentar a chance de encontrar positivos/negativos.
-                    # ea: [B, D], eb: [B, D] -> full: [2B, D]
                     full_emb = torch.cat([ea, eb], dim=0)
                     full_cls = torch.cat([cls_a, cls_b], dim=0)
-                    
-                    # Calcula loss para todos
                     full_loss = student_criterion.forward_individual(full_emb, full_cls)
-                    # full_loss: [2B]. Precisamos retornar [B] para o Professor.
-                    # Tiramos a média do par (i, i+B)
                     sl = (full_loss[:len(ea)] + full_loss[len(ea):]) / 2.0
                 else:
-                    # Para ArcFace/CosFace, calculamos a loss individual de cada braço e tiramos a média
                     loss_a = student_criterion.forward_individual(ea, cls_a)
                     loss_b = student_criterion.forward_individual(eb, cls_b)
                     sl = (loss_a + loss_b) / 2.0
@@ -595,18 +626,27 @@ def run_rl_siamese_loop(
                 sl_norm = (sl - sl.min()) / (denom + 1e-6)
                 state = sl_norm.unsqueeze(-1)
             
-            logits = professor_model(state).squeeze(-1)
-            dist = Categorical(logits=logits)
-            idxs = dist.sample((student_batch_size,))
-            log_probs = dist.log_prob(idxs)
+            # Decide Indices
+            if is_warmup:
+                 # Uniform Sampling
+                 idxs = torch.randint(0, len(img_a), (student_batch_size,)).to(device)
+                 log_probs = None
+            else:
+                 logits = professor_model(state).squeeze(-1)
+                 dist = Categorical(logits=logits)
+                 idxs = dist.sample((student_batch_size,))
+                 log_probs = dist.log_prob(idxs)
 
-            # 2. Student
+            # 2. Student Update
             sel_idxs = idxs.tolist()
             sa = [img_a[i] for i in sel_idxs]; sb = [img_b[i] for i in sel_idxs]
             slbs = labels[sel_idxs]
             s_cls_a = cls_a[sel_idxs]; s_cls_b = cls_b[sel_idxs]
             
-            student_optimizer.zero_grad()
+            # Accumulalation Logic: Zero Grad at start of accumulation block
+            if (global_batch_step % gradient_accumulation_steps) == 0:
+                student_optimizer.zero_grad()
+                
             sea, seb = student_forward_pass(sa, sb, True)
             
             if loss_type in ['contrastive', 'angular']:
@@ -618,15 +658,26 @@ def run_rl_siamese_loop(
                 loss = student_criterion(full_emb, full_cls)
             else:
                 loss = student_criterion(sea, s_cls_a) + student_criterion(seb, s_cls_b)
+
+            # --- DIAGNOSTICO BATCH RECALL ---
+            with torch.no_grad():
+                 batch_emb = torch.cat([sea.detach(), seb.detach()], dim=0)
+                 batch_cls = torch.cat([s_cls_a, s_cls_b], dim=0)
+                 batch_recall = calculate_batch_recall(batch_emb, batch_cls, k=1)
+            # --------------------------------
             
             if torch.isnan(loss): continue
             
+            # Scale Loss for Accumulation
+            loss = loss / gradient_accumulation_steps
             loss.backward()
             
-            # Gradient Clipping (Global) - Deve ser APÓS backward e ANTES de step
-            torch.nn.utils.clip_grad_norm_(trainable_params + loss_params, max_norm=1.0)
-            
-            student_optimizer.step()
+            # Step only after N accumulation steps
+            if ((global_batch_step + 1) % gradient_accumulation_steps) == 0:
+                # Gradient Clipping (Global) - Deve ser APÓS backward e ANTES de step
+                torch.nn.utils.clip_grad_norm_(trainable_params + loss_params, max_norm=1.0)
+                student_optimizer.step()
+
 
             # 3. Update Prof
             with torch.no_grad():
@@ -637,31 +688,63 @@ def run_rl_siamese_loop(
                     l_b = student_criterion.forward_individual(seb.detach(), s_cls_b)
                     s_ind = (l_a + l_b) / 2.0
 
-            rew = s_ind.detach()
-            avg_r = float(rew.mean().item())
-            adv = rew - baseline
-            adv_std_val = adv.std(unbiased=False).clamp(min=1e-6)
-            adv_norm = (adv - adv.mean()) / (adv_std_val + 1e-6)
+            # --- RL REWARD STRATEGY ---
+            raw_loss_rewards = s_ind.detach()
             
-            professor_optimizer.zero_grad()
-            ploss = - (log_probs * adv_norm).mean() - entropy_coeff * dist.entropy().mean()
-            ploss.backward()
-            professor_optimizer.step()
+            is_easy_mining = global_batch_step < easy_mining_steps
+            
+            if is_easy_mining:
+                 # Easy Mining Phase: Maximize probability of LOW loss.
+                 # Reward = -Loss. Higher reward for smaller loss.
+                 rew = -raw_loss_rewards
+            else:
+                 # Hard Mining Phase (Default): Maximize probability of HIGH loss.
+                 # Reward = Loss. Higher reward for larger loss.
+                 rew = raw_loss_rewards
+
+            avg_r = float(rew.mean().item())
+            
+            # Professor Update (Only if NOT warmup)
+            ploss_val = 0.0
+            if not is_warmup and log_probs is not None:
+                adv = rew - baseline
+                adv_std_val = adv.std(unbiased=False).clamp(min=1e-6)
+                adv_norm = (adv - adv.mean()) / (adv_std_val + 1e-6)
+                
+                professor_optimizer.zero_grad()
+                ploss = - (log_probs * adv_norm).mean() - entropy_coeff * dist.entropy().mean()
+                ploss.backward()
+                professor_optimizer.step()
+                ploss_val = ploss.item()
 
             baseline = (1 - baseline_alpha) * baseline + baseline_alpha * avg_r
             
             global_batch_step += 1
-            avg_loss.update(loss.item()); avg_rew.update(avg_r); avg_prof_loss.update(ploss.item())
-            pbar.set_postfix({'L': f"{avg_loss.avg:.4f}", 'R': f"{avg_rew.avg:.4f}"})
+            # Rescale loss for logging
+            actual_loss = loss.item() * gradient_accumulation_steps
+            avg_loss.update(actual_loss); avg_rew.update(avg_r); avg_prof_loss.update(ploss_val)
+            
+            status_str = "Warmup" if is_warmup else ("Easy" if is_easy_mining else "Hard")
+            # Removendo 'Rec' do postfix pois batch_recall não está no escopo global dessa função de substituição
+            # e poderia quebrar se eu não o definisse aqui.
+            # Vou manter simples:
+            pbar.set_postfix({'L': f"{avg_loss.avg:.4f}", 'R': f"{avg_rew.avg:.4f}", 'Prof': status_str})
             
             if use_wandb and wandb:
-                wandb.log({
-                    "train/loss": loss.item(), "train/reward": avg_r, "train/prof_loss": ploss.item(),
-                    "train/baseline": baseline, "train/entropy": dist.entropy().mean().item(),
-                    "step": global_batch_step
-                })
+                log_dict = {
+                    "train/loss": actual_loss, "train/reward": avg_r, "train/prof_loss": ploss_val,
+                    "train/baseline": baseline, 
+                    "train/entropy": dist.entropy().mean().item() if not is_warmup else 0.0,
+                    "step": global_batch_step,
+                    "professor_active": 0 if is_warmup else 1
+                }
+                # Se 'batch_recall' existir no escopo local (definido anteriormente), adiciona
+                if 'batch_recall' in locals():
+                     log_dict["train/batch_recall"] = batch_recall
+                
+                wandb.log(log_dict)
 
-            log_writer.writerow([epoch+1, global_batch_step, f"{loss.item():.4f}", f"{ploss.item():.4f}", f"{avg_r:.4f}", "", "", "", "", ""])
+            log_writer.writerow([epoch+1, global_batch_step, f"{loss.item():.4f}", f"{ploss_val:.4f}", f"{avg_r:.4f}", f"{status_str}", "", "", "", ""])
 
         pbar.close()
 
