@@ -108,6 +108,9 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_b
     # Listas para k-NN
     knn_embeds = []
     knn_classes = []
+    
+    # Lista para Batch Recall (New)
+    batch_recalls = []
 
     with torch.no_grad():
         # Ajusta o total da barra de progresso para refletir o limite
@@ -156,6 +159,20 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_b
                 dummy_loss = (labels * (1 - cos_sim) + (1 - labels) * torch.relu(cos_sim)).mean()
                 losses.append(dummy_loss.item())
             # -----------------------------
+            
+            # --- [BATCH RECALL] ---
+            # Calcula Recall dentro do batch de validação
+            try:
+                # Necessitamos dos nomes de classe ou IDs para recall
+                # cls_a e cls_b são tensores de IDs
+                batch_emb = torch.cat([za, zb], dim=0)
+                batch_cls = torch.cat([cls_a.to(device), cls_b.to(device)], dim=0)
+                br = calculate_batch_recall(batch_emb, batch_cls, k=1)
+                batch_recalls.append(br)
+            except Exception as e:
+                # Silenciosamente falha se houver issue com batch recall
+                pass
+            # -----------------------------
 
             scores = torch.nn.functional.cosine_similarity(za, zb, dim=-1).cpu().numpy()
             all_scores.append(scores)
@@ -167,11 +184,12 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_b
             knn_classes.append(cls_a.cpu().numpy())
             knn_classes.append(cls_b.cpu().numpy())
 
-    if len(losses) == 0: return float('nan'), 1.0, 0.0, 0.0
+    if len(losses) == 0: return float('nan'), 1.0, 0.0, 0.0, 0.0
     
     all_scores = np.concatenate(all_scores, axis=0)
     all_labels = np.concatenate(all_labels, axis=0)
     mean_loss = float(np.mean(losses))
+    mean_batch_recall = float(np.mean(batch_recalls)) if batch_recalls else 0.0
     eer, thr = pairwise_eer_from_scores(all_labels, all_scores)
 
     # --- [DIAGNÓSTICO DO K-NN] ---
@@ -192,7 +210,7 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_b
     except Exception as e:
         print(f"\n[DEBUG k-NN] ❌ Erro no cálculo: {e}")
 
-    return mean_loss, eer, thr, r1
+    return mean_loss, eer, thr, r1, mean_batch_recall
 
 def run_rl_siamese_loop(
     base_model, student_head, professor_model, tokenizer, dataset, epochs, student_lr, professor_lr,
@@ -214,7 +232,8 @@ def run_rl_siamese_loop(
     max_steps_per_epoch=None,
     professor_warmup_steps=0,
     easy_mining_steps=0, # Novo argumento para curriculum de exemplos fáceis
-    gradient_accumulation_steps=1 # Novo argumento para acumulação de gradiente
+    gradient_accumulation_steps=1, # Novo argumento para acumulação de gradiente
+    weight_decay=1e-4 # Novo argumento para weight decay
 ):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -330,14 +349,14 @@ def run_rl_siamese_loop(
     loss_params = list(student_criterion.parameters())
     
     # --- Optimizer Setup ---
-    print(f"DEBUG: Optimizer: {optimizer_type}, Scheduler: {scheduler_type}")
+    print(f"DEBUG: Optimizer: {optimizer_type}, Scheduler: {scheduler_type}, Weight Decay: {weight_decay}")
     if optimizer_type and optimizer_type.lower() == "sgd":
-        student_optimizer = optim.SGD(trainable_params + loss_params, lr=student_lr, momentum=0.9, weight_decay=1e-4)
+        student_optimizer = optim.SGD(trainable_params + loss_params, lr=student_lr, momentum=0.9, weight_decay=5e-4 if weight_decay == 1e-4 else weight_decay)
     elif optimizer_type and optimizer_type.lower() == "adam":
-        student_optimizer = optim.Adam(trainable_params + loss_params, lr=student_lr, weight_decay=1e-4) # Adam tradicional
+        student_optimizer = optim.Adam(trainable_params + loss_params, lr=student_lr, weight_decay=weight_decay) # Adam tradicional
     else:
         # Default AdamW (Padrão Moderno)
-        student_optimizer = optim.AdamW(trainable_params + loss_params, lr=student_lr, weight_decay=1e-4)
+        student_optimizer = optim.AdamW(trainable_params + loss_params, lr=student_lr, weight_decay=weight_decay)
         
     professor_optimizer = optim.Adam(professor_model.parameters(), lr=professor_lr) # Professor usa Adam padrão
     
@@ -527,11 +546,17 @@ def run_rl_siamese_loop(
     if resume_checkpoint_path and run_immediate_validation:
         print(f"🚨 Executando validação pendente da Época {start_epoch+1}...")
         # Validação no subset balanceado (sem limite de batches, pois o subset já é pequeno)
-        vloss, veer, vthr, vr1 = validate_siam_on_loader(siam, val_loader, device, student_criterion)
-        print(f"Val (Recovered): EER={veer*100:.2f}% | R@1={vr1*100:.2f}% | Loss={vloss:.4f}")
+        vloss, veer, vthr, vr1, v_batch_recall = validate_siam_on_loader(siam, val_loader, device, student_criterion)
+        print(f"Val (Recovered): EER={veer*100:.2f}% | R@1={vr1*100:.2f}% | R_Batch={v_batch_recall*100:.2f}% Loss={vloss:.4f}")
         
         if use_wandb and wandb:
-            wandb.log({"val/eer": veer, "val/loss": vloss, "val/recall_at_1": vr1, "epoch": start_epoch + 1})
+            wandb.log({
+                "val/eer": veer, 
+                "val/loss": vloss, 
+                "val/recall_at_1": vr1, 
+                "val/batch_recall": v_batch_recall,
+                "epoch": start_epoch + 1
+            })
         
         log_writer.writerow([start_epoch+1, "end", "", "", "", "", "", "", f"{vloss:.4f}", f"{veer:.4f}"])
         
@@ -587,7 +612,7 @@ def run_rl_siamese_loop(
         
         student_criterion.train()
         print(f"\n--- Época {epoch + 1}/{epochs} ---")
-        avg_loss = AverageMeter(); avg_rew = AverageMeter(); avg_prof_loss = AverageMeter()
+        avg_loss = AverageMeter(); avg_rew = AverageMeter(); avg_prof_loss = AverageMeter(); avg_batch_recall = AverageMeter()
         
         # Update lento para não travar UI
         pbar = tqdm(train_loader, desc=f"Ep {epoch+1}", mininterval=30.0, ncols=100)
@@ -724,6 +749,9 @@ def run_rl_siamese_loop(
             actual_loss = loss.item() * gradient_accumulation_steps
             avg_loss.update(actual_loss); avg_rew.update(avg_r); avg_prof_loss.update(ploss_val)
             
+            if 'batch_recall' in locals():
+                avg_batch_recall.update(batch_recall)
+            
             status_str = "Warmup" if is_warmup else ("Easy" if is_easy_mining else "Hard")
             # Removendo 'Rec' do postfix pois batch_recall não está no escopo global dessa função de substituição
             # e poderia quebrar se eu não o definisse aqui.
@@ -738,9 +766,9 @@ def run_rl_siamese_loop(
                     "step": global_batch_step,
                     "professor_active": 0 if is_warmup else 1
                 }
-                # Se 'batch_recall' existir no escopo local (definido anteriormente), adiciona
+                # Se 'batch_recall' existir no escopo local (definido anteriormente), adiciona a média móvel
                 if 'batch_recall' in locals():
-                     log_dict["train/batch_recall"] = batch_recall
+                     log_dict["train/batch_recall"] = avg_batch_recall.avg
                 
                 wandb.log(log_dict)
 
@@ -774,11 +802,17 @@ def run_rl_siamese_loop(
         print(f"Saved last_checkpoint.pt (Epoch {epoch+1} - Pre-Validation)")
 
         # Validação no subset balanceado
-        vloss, veer, vthr, vr1 = validate_siam_on_loader(siam, val_loader, device, student_criterion)
-        print(f"Val: EER={veer*100:.2f}% | R@1={vr1*100:.2f}% | Loss={vloss:.4f}")
+        vloss, veer, vthr, vr1, v_batch_recall = validate_siam_on_loader(siam, val_loader, device, student_criterion)
+        print(f"Val: EER={veer*100:.2f}% | R@1={vr1*100:.2f}% | R_Batch={v_batch_recall*100:.2f}% | Loss={vloss:.4f}")
         
         if use_wandb and wandb:
-            wandb.log({"val/eer": veer, "val/loss": vloss, "val/recall_at_1": vr1, "epoch": epoch + 1})
+            wandb.log({
+                "val/eer": veer, 
+                "val/loss": vloss, 
+                "val/recall_at_1": vr1, 
+                "val/batch_recall": v_batch_recall,
+                "epoch": epoch + 1
+            })
 
         log_writer.writerow([epoch+1, "end", "", "", "", "", "", "", f"{vloss:.4f}", f"{veer:.4f}"])
 

@@ -101,11 +101,14 @@ def main(args):
     if args.use_wandb:
         import wandb
         
+        # Check if group is provided via environment variable (from sweep script)
+        default_group = os.environ.get("WANDB_RUN_GROUP", "cavl-rl-training")
+        
         init_kwargs = {
             "project": args.wandb_project,
             "name": args.wandb_run_name,
             "config": vars(args),
-            "group": "cavl-rl-training",
+            "group": default_group,
             "settings": wandb.Settings(init_timeout=300)
         }
         
@@ -393,7 +396,8 @@ def main(args):
             max_steps_per_epoch=args.max_steps_per_epoch,
             professor_warmup_steps=args.professor_warmup_steps,
             easy_mining_steps=args.easy_mining_steps,
-            gradient_accumulation_steps=args.gradient_accumulation_steps
+            gradient_accumulation_steps=args.gradient_accumulation_steps,
+            weight_decay=args.weight_decay
         )
     
     if args.use_wandb:
@@ -473,6 +477,7 @@ def parse_args():
     # Optimizer & Scheduler
     p.add_argument("--optimizer-type", type=str, default="adam", choices=["adam", "adamw", "sgd"], help="Optimizer type")
     p.add_argument("--scheduler-type", type=str, default=None, choices=["step", "cosine", "plateau", "constant"], help="Scheduler type")
+    p.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay for optimizer")
 
     return p.parse_args()
 
