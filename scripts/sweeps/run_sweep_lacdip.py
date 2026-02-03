@@ -12,13 +12,13 @@ import argparse
 WORKSPACE_ROOT = "/home/joaopaulo/Projects/CaVL-Doc"
 SCRIPT_PATH = os.path.join(WORKSPACE_ROOT, "scripts/training/run_cavl_training.py")
 PREP_SCRIPT_PATH = os.path.join(WORKSPACE_ROOT, "scripts/utils/prepare_splits.py")
-RAW_DATA_ROOT = "/mnt/data/zs_rvl_cdip" 
+RAW_DATA_ROOT = "/mnt/data/la-cdip" 
 RAW_IMAGES_DIR = os.path.join(RAW_DATA_ROOT, "data") 
 BASE_IMAGE_DIR = RAW_IMAGES_DIR
 
 # Common Settings for Protocol V3
 PROTOCOL_DEFAULTS = {
-    "wandb_project": "CaVL-Calibration-Protocol",
+    "wandb_project": "CaVL-Calibration-Protocol-LACDIP",
     "epochs": "5",
     "max_steps": "1000",
     "batch_size": "4",
@@ -27,7 +27,7 @@ PROTOCOL_DEFAULTS = {
     "prof_lr": "1e-4",
     "cut_layer": "27",
     "proj_dim": "1536",
-    "pairs": 15
+    "pairs": 2
 }
 
 # ==============================================================================
@@ -43,8 +43,8 @@ EXP_REGISTRY = {
             {"scale": 64.0, "margin": 0.5, "lr": 1e-3, "optimizer": "adamw", "warmup": 100},
             {"scale": 64.0, "margin": 0.5, "lr": 5e-4, "optimizer": "adamw", "warmup": 100},
             {"scale": 64.0, "margin": 0.5, "lr": 3e-4, "optimizer": "adamw", "warmup": 100},
-            {"scale": 64.0, "margin": 0.5, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
-            {"scale": 64.0, "margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "warmup": 100},
+            # {"scale": 64.0, "margin": 0.5, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
+            # {"scale": 64.0, "margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "warmup": 100},
         ],
         "scale": [
             {"scale": 64.0, "margin": 0.5, "lr": 0.1, "optimizer": "sgd", "warmup": 100},
@@ -77,9 +77,9 @@ EXP_REGISTRY = {
             {"scale": 16.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
         ],
         "margin": [
-            {"scale": 64.0, "margin": 0.2, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
-            {"scale": 64.0, "margin": 0.4, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
-            {"scale": 64.0, "margin": 0.6, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
+            {"scale": 24.0, "margin": 0.2, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
+            {"scale": 24.0, "margin": 0.4, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
+            {"scale": 24.0, "margin": 0.6, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
         ],
     },
 "circle": {
@@ -137,22 +137,21 @@ EXP_REGISTRY = {
             # GRUPO K=2 (O Conservador Estável)
             # ====================================================================
             # Testamos se relaxar ou apertar a margem melhora o K=2
-            {"scale": 24.0, "margin": 0.2, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2},
-            {"scale": 24.0, "margin": 0.3, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2},
-            {"scale": 24.0, "margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2}, # Seu baseline atual
-            {"scale": 24.0, "margin": 0.7, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2},
-            {"scale": 24.0, "margin": 0.8, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2},
+            {"scale": 24.0, "margin": 0.2, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2},
+            {"scale": 24.0, "margin": 0.3, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2},
+            {"scale": 24.0, "margin": 0.5, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2}, # Seu baseline atual
+            {"scale": 24.0, "margin": 0.7, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2},
 
-            # ====================================================================
-            # GRUPO K=3 (O Flexível)
-            # ====================================================================
-            # K=3 tem mais centros, então talvez precise de mais margem (0.7) para
-            # garantir que os grupos não se misturem, ou menos (0.3) para estabilizar.
-            {"scale": 24.0, "margin": 0.2, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
-            {"scale": 24.0, "margin": 0.3, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
-            {"scale": 24.0, "margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3}, # Seu baseline atual
-            {"scale": 24.0, "margin": 0.7, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
-            {"scale": 24.0, "margin": 0.8, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # # ====================================================================
+            # # GRUPO K=3 (O Flexível)
+            # # ====================================================================
+            # # K=3 tem mais centros, então talvez precise de mais margem (0.7) para
+            # # garantir que os grupos não se misturem, ou menos (0.3) para estabilizar.
+            # {"scale": 24.0, "margin": 0.2, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # {"scale": 24.0, "margin": 0.3, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # {"scale": 24.0, "margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3}, # Seu baseline atual
+            # {"scale": 24.0, "margin": 0.7, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # {"scale": 24.0, "margin": 0.8, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
         ]
     },
     "subcenter_cosface": {
@@ -163,41 +162,40 @@ EXP_REGISTRY = {
             # ====================================================================
             # Mantemos a escala alta que funcionou no K=1.
             # Como S=64 é agressivo, testamos K=2 com a LR original e uma reduzida.
-            {"scale": 64.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2}, # Aposta agressiva
-            {"scale": 64.0, "margin": 0.35, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2}, # Aposta segura
+            {"scale": 24.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2}, # Aposta agressiva
+            {"scale": 24.0, "margin": 0.35, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2}, # Aposta segura
             
             # Para K=3, S=64 pode ser instável demais, então vamos só na LR segura
-            {"scale": 64.0, "margin": 0.35, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            {"scale": 24.0, "margin": 0.35, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
 
             # ====================================================================
             # HIPÓTESE 2: "Estabilidade para Sub-centros" (Scale 32)
             # ====================================================================
             # Sub-centros geralmente convergem melhor com escalas menores (30~32).
             # Se o grupo acima falhar (Loss reta), este grupo deve salvar o dia.
-            {"scale": 32.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2},
-            {"scale": 32.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 3},
+            {"scale": 24.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2},
+            {"scale": 24.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 3},
         ],
         "margin": [
             # ====================================================================
             # GRUPO K=2 (O Conservador Estável)
             # ====================================================================
             # Testamos se relaxar ou apertar a margem melhora o K=2
-            {"scale": 24.0, "margin": 0.2, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2},
-            {"scale": 24.0, "margin": 0.3, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2},
-            {"scale": 24.0, "margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2}, # Seu baseline atual
-            {"scale": 24.0, "margin": 0.7, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2},
-            {"scale": 24.0, "margin": 0.8, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2},
+            {"scale": 24.0, "margin": 0.2, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2},
+            {"scale": 24.0, "margin": 0.3, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2},
+            {"scale": 24.0, "margin": 0.5, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2}, # Seu baseline atual
+            {"scale": 24.0, "margin": 0.7, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2},
 
-            # ====================================================================
-            # GRUPO K=3 (O Flexível)
-            # ====================================================================
-            # K=3 tem mais centros, então talvez precise de mais margem (0.7) para
-            # garantir que os grupos não se misturem, ou menos (0.3) para estabilizar.
-            {"scale": 24.0, "margin": 0.2, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
-            {"scale": 24.0, "margin": 0.3, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
-            {"scale": 24.0, "margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3}, # Seu baseline atual
-            {"scale": 24.0, "margin": 0.7, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
-            {"scale": 24.0, "margin": 0.8, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # # ====================================================================
+            # # GRUPO K=3 (O Flexível)
+            # # ====================================================================
+            # # K=3 tem mais centros, então talvez precise de mais margem (0.7) para
+            # # garantir que os grupos não se misturem, ou menos (0.3) para estabilizar.
+            # {"scale": 24.0, "margin": 0.2, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # {"scale": 24.0, "margin": 0.3, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # {"scale": 24.0, "margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3}, # Seu baseline atual
+            # {"scale": 24.0, "margin": 0.7, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # {"scale": 24.0, "margin": 0.8, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
         ]
     },
     # =========================================================
@@ -253,9 +251,11 @@ EXP_REGISTRY = {
         # Só rode este se já tiver achado a LR ideal acima
         "margin": [
             # Margem Pequena (0.2): Foco em consistência local
-            {"margin": 0.2, "lr": 5e-5, "optimizer": "adamw", "scale": 1.0, "warmup": 100},
+            {"margin": 0.2, "lr": 1e-4, "optimizer": "adamw", "scale": 1.0, "warmup": 100},
             # Margem Grande (0.5): "Hard Margin", força clusters muito compactos
-            {"margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "scale": 1.0, "warmup": 100},
+            {"margin": 0.3, "lr": 1e-4, "optimizer": "adamw", "scale": 1.0, "warmup": 100},
+            {"margin": 0.5, "lr": 1e-4, "optimizer": "adamw", "scale": 1.0, "warmup": 100},
+            {"margin": 0.7, "lr": 1e-4, "optimizer": "adamw", "scale": 1.0, "warmup": 100},
         ]
     }
 }
@@ -269,7 +269,7 @@ EXP_REGISTRY = {
 def prepare_data(protocol="zsl", split_idx=1):
     num_pairs = PROTOCOL_DEFAULTS['pairs']
     # Adiciona o número de pares ao nome do diretório para evitar cache incorreto
-    generated_data_dir = os.path.join(WORKSPACE_ROOT, f"data/generated_splits/RVL-CDIP_{protocol}_split_{split_idx}_{num_pairs}pairs")
+    generated_data_dir = os.path.join(WORKSPACE_ROOT, f"data/generated_splits/LA-CDIP_{protocol}_split_{split_idx}_{num_pairs}pairs")
     pairs_csv = os.path.join(generated_data_dir, "train_pairs.csv")
     
     if not os.path.exists(pairs_csv):
@@ -290,10 +290,10 @@ def run_suite(experiment_name, sweep_param, experiments, dry_run=False):
     
     # Dynamic Project Name for better organization
     # UNIFIED PROJECT NAME WITH GROUPS
-    wandb_project = "CaVL-Protocol-Sweeps" 
-    wandb_group = f"{experiment_name}_{sweep_param}" # ex: arcface_lr, arcface_scale
+    wandb_project = "CaVL-Protocol-Sweeps-LA-CDIP" 
+    wandb_group = f"LA-CDIP_{experiment_name}_{sweep_param}" # ex: LA-CDIP_arcface_lr
     
-    print(f"\n🎯 Running Protocol V3 | Exp: {experiment_name} | Sweep: {sweep_param}")
+    print(f"\n🎯 Running Protocol V3 (LA-CDIP) | Exp: {experiment_name} | Sweep: {sweep_param}")
     print(f"📂 WandB Project: {wandb_project} | Group: {wandb_group}")
     print("=" * 60)
 
@@ -308,7 +308,7 @@ def run_suite(experiment_name, sweep_param, experiments, dry_run=False):
 
         # REMOVIDO o sweep_param do nome para permitir compartilhamento de checkpoints entre sweeps
         # Adicionei o wandb_group como prefixo APENAS para log visual se quiser, mas o run_name deve ser único por config
-        run_name = f"{experiment_name}_{desc}"
+        run_name = f"LA-CDIP_{experiment_name}_{desc}"
         
         print(f"\n▶️  Running {i+1}/{len(experiments)}: {run_name}")
         
@@ -325,7 +325,7 @@ def run_suite(experiment_name, sweep_param, experiments, dry_run=False):
         cmd = [
             sys.executable, SCRIPT_PATH,
             "--model-name", "InternVL3-2B",
-            "--dataset-name", "RVL-CDIP",
+            "--dataset-name", "LA-CDIP",
             "--use-wandb",
             "--wandb-project", wandb_project,
             "--wandb-run-name", run_name,
