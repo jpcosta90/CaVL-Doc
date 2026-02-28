@@ -77,9 +77,9 @@ EXP_REGISTRY = {
             {"scale": 16.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
         ],
         "margin": [
-            {"scale": 64.0, "margin": 0.2, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
-            {"scale": 64.0, "margin": 0.4, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
-            {"scale": 64.0, "margin": 0.6, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
+            {"scale": 24.0, "margin": 0.2, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
+            {"scale": 24.0, "margin": 0.4, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
+            {"scale": 24.0, "margin": 0.6, "lr": 1e-4, "optimizer": "adamw", "warmup": 100},
         ],
     },
 "circle": {
@@ -163,19 +163,19 @@ EXP_REGISTRY = {
             # ====================================================================
             # Mantemos a escala alta que funcionou no K=1.
             # Como S=64 é agressivo, testamos K=2 com a LR original e uma reduzida.
-            {"scale": 64.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2}, # Aposta agressiva
-            {"scale": 64.0, "margin": 0.35, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2}, # Aposta segura
+            {"scale": 24.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2}, # Aposta agressiva
+            {"scale": 24.0, "margin": 0.35, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2}, # Aposta segura
             
             # Para K=3, S=64 pode ser instável demais, então vamos só na LR segura
-            {"scale": 64.0, "margin": 0.35, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            {"scale": 24.0, "margin": 0.35, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
 
             # ====================================================================
             # HIPÓTESE 2: "Estabilidade para Sub-centros" (Scale 32)
             # ====================================================================
             # Sub-centros geralmente convergem melhor com escalas menores (30~32).
             # Se o grupo acima falhar (Loss reta), este grupo deve salvar o dia.
-            {"scale": 32.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2},
-            {"scale": 32.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 3},
+            {"scale": 24.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 2},
+            {"scale": 24.0, "margin": 0.35, "lr": 1e-4, "optimizer": "adamw", "warmup": 100, "k": 3},
         ],
         "margin": [
             # ====================================================================
@@ -186,18 +186,17 @@ EXP_REGISTRY = {
             {"scale": 24.0, "margin": 0.3, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2},
             {"scale": 24.0, "margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2}, # Seu baseline atual
             {"scale": 24.0, "margin": 0.7, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2},
-            {"scale": 24.0, "margin": 0.8, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 2},
 
-            # ====================================================================
-            # GRUPO K=3 (O Flexível)
-            # ====================================================================
-            # K=3 tem mais centros, então talvez precise de mais margem (0.7) para
-            # garantir que os grupos não se misturem, ou menos (0.3) para estabilizar.
-            {"scale": 24.0, "margin": 0.2, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
-            {"scale": 24.0, "margin": 0.3, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
-            {"scale": 24.0, "margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3}, # Seu baseline atual
-            {"scale": 24.0, "margin": 0.7, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
-            {"scale": 24.0, "margin": 0.8, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # # ====================================================================
+            # # GRUPO K=3 (O Flexível)
+            # # ====================================================================
+            # # K=3 tem mais centros, então talvez precise de mais margem (0.7) para
+            # # garantir que os grupos não se misturem, ou menos (0.3) para estabilizar.
+            # {"scale": 24.0, "margin": 0.2, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # {"scale": 24.0, "margin": 0.3, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # {"scale": 24.0, "margin": 0.5, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3}, # Seu baseline atual
+            # {"scale": 24.0, "margin": 0.7, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
+            # {"scale": 24.0, "margin": 0.8, "lr": 5e-5, "optimizer": "adamw", "warmup": 100, "k": 3},
         ]
     },
     # =========================================================

@@ -1,0 +1,57 @@
+program: scripts/training/run_cavl_training.py
+method: bayes
+metric:
+  name: val/eer
+  goal: minimize
+parameters:
+  professor-warmup-steps:
+    value: 100000
+  easy-mining-steps:
+    value: 0
+  loss-type:
+    value: "subcenter_arcface"
+  student-lr:
+    distribution: log_uniform_values
+    min: 1e-6
+    max: 1e-3
+  margin:
+    distribution: uniform
+    min: 0.1
+    max: 0.6
+  scale:
+    value: 32.0
+  num-sub-centers:
+    value: 1
+  optimizer-type:
+    value: "adamw"
+
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - "--use-wandb"
+  - "--gradient-accumulation-steps"
+  - "2"
+  - "--candidate-pool-size"
+  - "8"
+  - "--student-batch-size"
+  - "8"
+  - "--dataset-name"
+  - "RVL-CDIP"
+  - "--val-subset-size"
+  - "128"
+  - "--pairs-csv"
+  - "data/RVL-CDIP/train_pairs.csv"
+  - "--base-image-dir"
+  - "/mnt/data/zs_rvl_cdip/data"
+  - "--epochs"
+  - "3"
+  - "--weight-decay"
+  - "0.05"
+  - "--num-workers"
+  - "2"
+  - "--max-steps-per-epoch"
+  - "50"
+  - "--model-name"
+  - "InternVL3-2B"
+  - ${args}

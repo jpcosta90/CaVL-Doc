@@ -48,14 +48,14 @@ loss_configs = {
             "--margin", "0.5",
         ]
     },
-    "arcface": {
+    "subcenter_arcface": {
         "description": "ArcFace (Additive Angular Margin)",
         "args": [
             "--student-lr", "0.1", # Ajustado para AdamW (0.1 seria muito alto)
             "--optimizer-type", "adamw",
             "--scheduler-type", "cosine",
             "--margin", "0.5",
-            "--scale", "64.0",
+            "--scale", "24.0",
         ]
     },
     "cosface": {
@@ -80,7 +80,7 @@ loss_configs = {
     },
 }
 
-LOSSES_TO_TEST = ["arcface", "cosface", "contrastive", "triplet"]
+LOSSES_TO_TEST = ["subcenter_arcface", "subcenter_cosface", "contrastive", "triplet"]
 
 # Argumentos Comuns (Base) - Serão sobrescritos pelos específicos se houver conflito
 # Mas como passamos os específicos depois na lista de cmd, eles ganham precedência (dependendo do argparse implementation
@@ -99,7 +99,7 @@ COMMON_ARGS = [
     "--cut-layer", "27",
     "--projection-output-dim", "1536",
     "--max-num-image-tokens", "12",
-    "--num-queries", "4",
+    "--num-queries", "1",
     "--pooler-type", "attention",
     "--head-type", "mlp",
     "--baseline-alpha", "0.05",

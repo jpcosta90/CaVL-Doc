@@ -246,8 +246,9 @@ def main(args):
             train_dataset = Subset(full_ds, train_indices)
             val_dataset = Subset(full_ds, val_indices)
 
-        train_loader = DataLoader(train_dataset, batch_size=args.candidate_pool_size, shuffle=True, num_workers=0, collate_fn=rl_full_collate_fn)
-        val_loader = DataLoader(val_dataset, batch_size=96, shuffle=False, num_workers=0, collate_fn=rl_full_collate_fn)
+        train_loader = DataLoader(train_dataset, batch_size=args.candidate_pool_size, shuffle=True, num_workers=args.num_workers, collate_fn=rl_full_collate_fn)
+        # Validation with 0 workers to safe memory
+        val_loader = DataLoader(val_dataset, batch_size=24, shuffle=False, num_workers=0, collate_fn=rl_full_collate_fn)
 
         # 5.2 Build Full Model
         def _encode_fn(backbone, images, cut_layer=args.cut_layer, **kwargs):
@@ -382,6 +383,7 @@ def main(args):
             num_queries=args.num_queries,
             num_classes=num_classes,
             val_samples_per_class=args.val_samples_per_class,
+            val_subset_size=args.val_subset_size, # Novo argumento
             # Hiperparâmetros de Loss
             margin=args.margin,
             scale=args.scale,
@@ -397,7 +399,8 @@ def main(args):
             professor_warmup_steps=args.professor_warmup_steps,
             easy_mining_steps=args.easy_mining_steps,
             gradient_accumulation_steps=args.gradient_accumulation_steps,
-            weight_decay=args.weight_decay
+            weight_decay=args.weight_decay,
+            num_workers=args.num_workers
         )
     
     if args.use_wandb:
@@ -463,6 +466,7 @@ def parse_args():
     p.add_argument("--val-fraction", type=float, default=0.05)
     p.add_argument("--val-min-size", type=int, default=200)
     p.add_argument("--val-samples-per-class", type=int, default=20, help="Number of samples per class for balanced validation subset")
+    p.add_argument("--val-subset-size", type=int, default=None, help="Target total size for validation subset (overrides val-samples-per-class)")
     p.add_argument("--patience", type=int, default=3)
     
     p.add_argument("--baseline-alpha", type=float, default=0.01)
@@ -478,6 +482,7 @@ def parse_args():
     p.add_argument("--optimizer-type", type=str, default="adam", choices=["adam", "adamw", "sgd"], help="Optimizer type")
     p.add_argument("--scheduler-type", type=str, default=None, choices=["step", "cosine", "plateau", "constant"], help="Scheduler type")
     p.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay for optimizer")
+    p.add_argument("--num-workers", type=int, default=0, help="Number of workers for data loading")
 
     return p.parse_args()
 

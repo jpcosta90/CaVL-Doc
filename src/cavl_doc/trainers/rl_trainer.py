@@ -221,6 +221,7 @@ def run_rl_siamese_loop(
     use_wandb=False,
     loss_type="contrastive", pooler_type="attention", head_type="mlp", num_classes=None, num_queries=1,
     val_samples_per_class=20, # Novo argumento com default
+    val_subset_size=None, # Novo argumento: Tamanho total alvo do subset de validação
     # Novos argumentos para losses
     margin=0.5, scale=64.0, num_sub_centers=3, std=0.05,
     # Argumento para retomar treinamento
@@ -233,7 +234,8 @@ def run_rl_siamese_loop(
     professor_warmup_steps=0,
     easy_mining_steps=0, # Novo argumento para curriculum de exemplos fáceis
     gradient_accumulation_steps=1, # Novo argumento para acumulação de gradiente
-    weight_decay=1e-4 # Novo argumento para weight decay
+    weight_decay=1e-4, # Novo argumento para weight decay
+    num_workers=0 # Configuração de workers para DataLoader
 ):
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -350,13 +352,42 @@ def run_rl_siamese_loop(
     
     # --- Optimizer Setup ---
     print(f"DEBUG: Optimizer: {optimizer_type}, Scheduler: {scheduler_type}, Weight Decay: {weight_decay}")
+    
     if optimizer_type and optimizer_type.lower() == "sgd":
         student_optimizer = optim.SGD(trainable_params + loss_params, lr=student_lr, momentum=0.9, weight_decay=5e-4 if weight_decay == 1e-4 else weight_decay)
+    
     elif optimizer_type and optimizer_type.lower() == "adam":
         student_optimizer = optim.Adam(trainable_params + loss_params, lr=student_lr, weight_decay=weight_decay) # Adam tradicional
+    
     else:
-        # Default AdamW (Padrão Moderno)
-        student_optimizer = optim.AdamW(trainable_params + loss_params, lr=student_lr, weight_decay=weight_decay)
+        # Default AdamW (Fix: Smart Weight Decay - No decay for Bias/LayerNorm)
+        decay_params = []
+        no_decay_params = []
+        
+        # Filtra parâmetros do Backbone + Head + Pool
+        for n, p in siam.named_parameters():
+            if not p.requires_grad: continue
+            if any(nd in n for nd in ['bias', 'LayerNorm.weight', 'layernorm.weight', 'ln.weight', 'bn.weight', 'norm.weight']):
+                no_decay_params.append(p)
+            else:
+                decay_params.append(p)
+                
+        # Parâmetros da Loss (geralmente matrizes de projeção W, aplicamos decay)
+        loss_decay = [p for p in student_criterion.parameters() if p.requires_grad]
+        
+        # Se weight_decay for o default 1e-4 e estamos usando AdamW, avisa (mas respeita)
+        # AdamW geralmente se beneficia de decay maior (ex: 0.01 ou 0.05)
+        used_wd = weight_decay
+        if used_wd == 1e-4:
+            print(f"⚠️  [AdamW] Usando weight_decay={used_wd} (padrão baixo). Considere aumentar para 0.01 ou 0.05 nos sweeps.")
+
+        optim_groups = [
+            {'params': decay_params + loss_decay, 'weight_decay': used_wd},
+            {'params': no_decay_params, 'weight_decay': 0.0}
+        ]
+        
+        student_optimizer = optim.AdamW(optim_groups, lr=student_lr)
+        print(f"✅ [AdamW] Configurado Smart Decay: {len(decay_params)+len(loss_decay)} params com decay, {len(no_decay_params)} sem decay.")
         
     professor_optimizer = optim.Adam(professor_model.parameters(), lr=professor_lr) # Professor usa Adam padrão
     
@@ -454,8 +485,8 @@ def run_rl_siamese_loop(
         val_dataset = Subset(full_ds, val_indices)
 
     # Validação com shuffle=True para garantir que os 20 batches limitados sejam uma amostra aleatória (balanceada estatisticamente)
-    # num_workers=0 para evitar crash por falta de RAM (16GB é pouco para InternVL + Workers)
-    train_loader = DataLoader(train_dataset, batch_size=candidate_pool_size, shuffle=True, num_workers=0, collate_fn=rl_full_collate_fn)
+    # num_workers=args.num_workers (se possível, ou fixo baixo para estabilidade na validação)
+    train_loader = DataLoader(train_dataset, batch_size=candidate_pool_size, shuffle=True, num_workers=num_workers, collate_fn=rl_full_collate_fn)
     
     # --- BALANCED VALIDATION SUBSET ---
     # Cria um subset de validação balanceado e reduzido para avaliação rápida entre épocas
@@ -473,12 +504,21 @@ def run_rl_siamese_loop(
         current_val_indices = list(range(len(val_dataset)))
 
     if hasattr(val_source_ds, 'df') and 'class_a_name' in val_source_ds.df.columns:
-        print(f"Criando subset de validação balanceado ({samples_per_class} pares/classe)...")
         subset_df = val_source_ds.df.iloc[current_val_indices]
-        classes = subset_df['class_a_name'].tolist()
-        
+        classes_list = subset_df['class_a_name'].tolist()
+        unique_classes = set(classes_list)
+        n_classes = len(unique_classes)
+
+        # Se val_subset_size for definido, ele tem precedência
+        if val_subset_size is not None and val_subset_size > 0:
+            new_samples = max(1, val_subset_size // n_classes)
+            print(f"🔄 Ajustando validação balanceada: Target={val_subset_size} | Classes={n_classes} -> {new_samples} pares/classe")
+            samples_per_class = new_samples
+        else:
+            print(f"Criando subset de validação balanceado ({samples_per_class} pares/classe)...")
+
         class_map = {}
-        for i, cls_name in enumerate(classes):
+        for i, cls_name in enumerate(classes_list):
             real_idx = current_val_indices[i]
             if cls_name not in class_map: class_map[cls_name] = []
             class_map[cls_name].append(real_idx)
@@ -504,8 +544,10 @@ def run_rl_siamese_loop(
         balanced_val_indices = random.sample(current_val_indices, n_samples)
         val_dataset_balanced = Subset(val_source_ds, balanced_val_indices)
 
-    # num_workers=0 para estabilidade
-    val_loader = DataLoader(val_dataset_balanced, batch_size=24, shuffle=False, num_workers=0, collate_fn=rl_full_collate_fn)
+    # Validation Batch Size: Aligned with Training Scale (2x to be safe with memory but faster)
+    # Uses num_workers=0 to avoid Shared Memory Bus Errors
+    val_bs = candidate_pool_size * 2
+    val_loader = DataLoader(val_dataset_balanced, batch_size=val_bs, shuffle=False, num_workers=0, collate_fn=rl_full_collate_fn)
     
     print(f"Dataset Sizes: Train={len(train_dataset)} | Val (Balanced Subset)={len(val_dataset_balanced)}")
 
@@ -614,13 +656,19 @@ def run_rl_siamese_loop(
         print(f"\n--- Época {epoch + 1}/{epochs} ---")
         avg_loss = AverageMeter(); avg_rew = AverageMeter(); avg_prof_loss = AverageMeter(); avg_batch_recall = AverageMeter()
         
+        # Define steps totais (Dataset ou Limite do Sweep)
+        total_steps = len(train_loader)
+        if max_steps_per_epoch is not None and max_steps_per_epoch > 0:
+            total_steps = min(total_steps, max_steps_per_epoch)
+
         # Update lento para não travar UI
-        pbar = tqdm(train_loader, desc=f"Ep {epoch+1}", mininterval=30.0, ncols=100)
+        pbar = tqdm(train_loader, desc=f"Ep {epoch+1}", mininterval=30.0, ncols=100, total=total_steps)
 
         for batch_idx, (img_a, img_b, labels, cls_a, cls_b) in enumerate(pbar):
             # --- Check Max Steps (Sweep) ---
             if max_steps_per_epoch is not None and batch_idx >= max_steps_per_epoch:
                 print(f"\n⚠️  Limite de steps atingido ({max_steps_per_epoch}). Encerrando época.")
+                pbar.close() # Garante que a barra fecha corretamente
                 break
 
             labels = labels.to(device).float()
@@ -633,34 +681,40 @@ def run_rl_siamese_loop(
             # Warmup Check
             is_warmup = global_batch_step < professor_warmup_steps
             
-            with torch.no_grad():
-                ea, eb = student_forward_pass(img_a, img_b, False)
-                if loss_type in ['contrastive', 'angular']:
-                    sl = student_criterion.forward_individual(ea, eb, labels)
-                elif loss_type == 'triplet':
-                    full_emb = torch.cat([ea, eb], dim=0)
-                    full_cls = torch.cat([cls_a, cls_b], dim=0)
-                    full_loss = student_criterion.forward_individual(full_emb, full_cls)
-                    sl = (full_loss[:len(ea)] + full_loss[len(ea):]) / 2.0
-                else:
-                    loss_a = student_criterion.forward_individual(ea, cls_a)
-                    loss_b = student_criterion.forward_individual(eb, cls_b)
-                    sl = (loss_a + loss_b) / 2.0
-
-                denom = (sl.max() - sl.min()).item() or 1.0
-                sl_norm = (sl - sl.min()) / (denom + 1e-6)
-                state = sl_norm.unsqueeze(-1)
-            
             # Decide Indices
+            log_probs = None
+            
             if is_warmup:
-                 # Uniform Sampling
-                 idxs = torch.randint(0, len(img_a), (student_batch_size,)).to(device)
-                 log_probs = None
+                 # Otimização: Pular forward pass caro do professor se estamos em warmup (random)
+                 if len(img_a) <= student_batch_size:
+                      # Se o batch carregado for menor ou igual ao target, usa tudo (sem desperdício)
+                      idxs = torch.arange(len(img_a), device=device)
+                 else:
+                      # Random sampling SEM reposição (melhor cobertura que randint)
+                      idxs = torch.randperm(len(img_a), device=device)[:student_batch_size]
             else:
-                 logits = professor_model(state).squeeze(-1)
-                 dist = Categorical(logits=logits)
-                 idxs = dist.sample((student_batch_size,))
-                 log_probs = dist.log_prob(idxs)
+                with torch.no_grad():
+                    ea, eb = student_forward_pass(img_a, img_b, False)
+                    if loss_type in ['contrastive', 'angular']:
+                        sl = student_criterion.forward_individual(ea, eb, labels)
+                    elif loss_type == 'triplet':
+                        full_emb = torch.cat([ea, eb], dim=0)
+                        full_cls = torch.cat([cls_a, cls_b], dim=0)
+                        full_loss = student_criterion.forward_individual(full_emb, full_cls)
+                        sl = (full_loss[:len(ea)] + full_loss[len(ea):]) / 2.0
+                    else:
+                        loss_a = student_criterion.forward_individual(ea, cls_a)
+                        loss_b = student_criterion.forward_individual(eb, cls_b)
+                        sl = (loss_a + loss_b) / 2.0
+
+                    denom = (sl.max() - sl.min()).item() or 1.0
+                    sl_norm = (sl - sl.min()) / (denom + 1e-6)
+                    state = sl_norm.unsqueeze(-1)
+
+                logits = professor_model(state).squeeze(-1)
+                dist = Categorical(logits=logits)
+                idxs = dist.sample((student_batch_size,))
+                log_probs = dist.log_prob(idxs)
 
             # 2. Student Update
             sel_idxs = idxs.tolist()
