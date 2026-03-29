@@ -1,0 +1,11 @@
+loss_label,param,pearson_abs,is_inert,fixed_value,reason
+contrastive_k3,margin,0.45760986309595386,False,,active
+contrastive_k3,scale,,False,,nunique<2
+subcenter_arcface_k1,margin,0.14735187550908654,True,0.2922315675931198,|r|<0.3
+subcenter_arcface_k1,scale,,False,,nunique<2
+subcenter_cosface_k1,margin,0.3935697480309001,False,,active
+subcenter_cosface_k1,scale,,False,,nunique<2
+subcenter_cosface_k3,margin,1.0,False,,active
+subcenter_cosface_k3,scale,,False,,nunique<2
+triplet_k3,margin,0.3811718859998534,False,,active
+triplet_k3,scale,,False,,nunique<2

@@ -210,6 +210,9 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Pair mismatch visual reports (generated artifacts)
+analysis/pair_mismatch_report/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

@@ -10,20 +10,20 @@ Fase 3 — Geração de Sweep YAMLs de Alta Fidelidade (method: bayes)
 
 Uso:
     # RVL-CDIP (padrão):
-    python scripts/sweeps/analyze_and_build_finesearch.py \
+    python scripts/optimization/fine_search/analyze_and_build_finesearch.py \
         --dataset rvlcdip \
         --entity <seu_wandb_entity>
 
     # LA-CDIP:
-    python scripts/sweeps/analyze_and_build_finesearch.py \
+    python scripts/optimization/fine_search/analyze_and_build_finesearch.py \
         --dataset lacdip \
         --entity <seu_wandb_entity>
 
     # Só análise (sem gerar YAMLs):
-    python scripts/sweeps/analyze_and_build_finesearch.py --dataset rvlcdip --analyze-only
+    python scripts/optimization/fine_search/analyze_and_build_finesearch.py --dataset rvlcdip --analyze-only
 
     # Forçar thresholds:
-    python scripts/sweeps/analyze_and_build_finesearch.py \
+    python scripts/optimization/fine_search/analyze_and_build_finesearch.py \
         --dataset rvlcdip --eer-ceiling 0.40 --top-k 5
 ==============================================================================
 """
@@ -44,8 +44,8 @@ DATASET_CONFIGS = {
         "display_name"     : "RVL-CDIP",
         "wandb_project"    : "CaVL-Doc_RVL-CDIP_InternVL3-2B_Sweeps",
         "output_project"   : "CaVL-Doc_RVL-CDIP_FineSearch",
-        "output_dir"       : Path("scripts/sweeps/configs/rvlcdip/fine_search"),
-        "bash_script"      : Path("scripts/sweeps/setup_finesearch_rvlcdip.sh"),
+        "output_dir"       : Path("scripts/optimization/fine_search/configs/rvlcdip"),
+        "bash_script"      : Path("scripts/optimization/fine_search/setup_finesearch_rvlcdip.sh"),
         "eer_ceiling"      : 0.35,
         # Parâmetros do command block do YAML gerado
         "dataset_name"     : "RVL-CDIP",
@@ -63,8 +63,8 @@ DATASET_CONFIGS = {
         "display_name"     : "LA-CDIP",
         "wandb_project"    : "CaVL-Doc_LA-CDIP_InternVL3-2B_Sweeps",
         "output_project"   : "CaVL-Doc_LA-CDIP_FineSearch",
-        "output_dir"       : Path("scripts/sweeps/configs/lacdip/fine_search"),
-        "bash_script"      : Path("scripts/sweeps/setup_finesearch_lacdip.sh"),
+        "output_dir"       : Path("scripts/optimization/fine_search/configs/lacdip"),
+        "bash_script"      : Path("scripts/optimization/fine_search/setup_finesearch_lacdip.sh"),
         "eer_ceiling"      : 0.05,
         # Parâmetros do command block do YAML gerado
         "dataset_name"     : "LA-CDIP",

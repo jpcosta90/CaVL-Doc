@@ -134,7 +134,7 @@ with tab_new:
 
     # --- MONTAGEM DO COMANDO ---
     cmd = [
-        sys.executable, "scripts/run_cavl_training.py",
+        sys.executable, "scripts/training/run_cavl_training.py",
         "--dataset-name", dataset_name,
         "--model-name", model_name,
         "--pairs-csv", pairs_csv,

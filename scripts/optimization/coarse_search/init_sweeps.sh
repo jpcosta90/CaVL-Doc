@@ -41,15 +41,15 @@ run_sweep() {
 }
 
 if [ "$TARGET" == "metric" ] || [ "$TARGET" == "all" ]; then
-    run_sweep "scripts/sweeps/configs/$DATASET/sweep_metric.yaml"
+    run_sweep "scripts/optimization/coarse_search/configs/$DATASET/sweep_metric.yaml"
 fi
 
 if [ "$TARGET" == "geometric" ] || [ "$TARGET" == "all" ]; then
-    run_sweep "scripts/sweeps/configs/$DATASET/sweep_geometric.yaml"
+    run_sweep "scripts/optimization/coarse_search/configs/$DATASET/sweep_geometric.yaml"
 fi
 
 if [ "$TARGET" == "circle" ] || [ "$TARGET" == "all" ]; then
-    run_sweep "scripts/sweeps/configs/$DATASET/sweep_circle.yaml"
+    run_sweep "scripts/optimization/coarse_search/configs/$DATASET/sweep_circle.yaml"
 fi
 
 echo "✅ Done. Copy the 'wandb agent ...' commands from above to start your workers."

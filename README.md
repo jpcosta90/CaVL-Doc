@@ -1,202 +1,108 @@
 # CaVL-Doc: Comparative Aligned Vision-Language Document Embeddings
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![arXiv](https://img.shields.io/badge/arXiv-2510.12345-b31b1b.svg)](https://arxiv.org/abs/2510.12345) [![Dataset](https://img.shields.io/badge/Dataset-LA--CDIP-green)](https://github.com/jpcosta90/LA-CDIP)
-[![Dataset](https://img.shields.io/badge/Dataset-RVL--CDIP-blue)](https://www.cs.cmu.edu/~aharley/rvl-cdip/)
+[![InternVL3](https://img.shields.io/badge/Backbone-InternVL3--2B-blue)](https://github.com/OpenGVLab/InternVL)
+[![Dataset](https://img.shields.io/badge/Research-Document--Comparison-orange)](#)
 
-This repository implements **CaVL-Doc**, an architecture and finetuning pipeline designed to generate **Comparative Aligned Vision-Language Document Embeddings**. The goal is to optimize a Large Vision-Language Model (LVLM) to produce high-quality, unified document representations for tasks requiring robust **similarity comparison** and **zero-shot document classification**.
-
-The pipeline is built on the **Autoregressive Multimodal Pre-Training** paradigm (similar to InternVL3), where image patches are processed as tokens alongside text. Our core contribution lies in optimizing the output layer to learn a high-quality embedding space via **Supervised Metric Learning** (supporting Contrastive, ArcFace, and other comparative losses).
+**CaVL-Doc** is a specialized framework for learning **Comparative Aligned Vision-Language Document Embeddings**. Unlike standard document VQA, CaVL-Doc optimizes Large Vision-Language Models (LVLMs) to produce unified, low-dimensional representations optimized for **similarity matching**, **retrieval**, and **zero-shot classification**.
 
 ---
 
-## CaVL-Doc Architecture and Strategy
+## 🎯 Project Focus & Value Proposition
 
-CaVL-Doc focuses exclusively on enhancing the **representation quality** of the LVLM's output feature vector for document retrieval tasks.
-
-![Model Architecture](docs/assets/CAVL_structure.png)
-
-The system utilizes a frozen, pre-trained LVLM (e.g., InternVL3) and fine-tunes it using a **Hybrid Curriculum-RL** strategy.
-
-* **The Student (CaVL Model):** A projection head attached to the frozen LVLM learns to map multimodal tokens into a compact embedding space optimized for comparison (Euclidean/Cosine).
-* **The Teacher (RL Policy):** A Reinforcement Learning agent (Professor) selects the most informative training pairs ("hard negatives") to maximize the Student's learning efficiency.
-* **The Curriculum (Loss Schedule):** A macro-strategy that transitions the objective function through three phases to ensure robust convergence:
-    1.  **Phase 1 (Geometric Alignment):** Uses **Contrastive Loss** to establish global structure.
-    2.  **Phase 2 (Angular Refinement):** Uses **ExpFace Loss** to enforce strict angular margins.
-    3.  **Phase 3 (Hard Adaptation):** Uses **Elastic ExpFace Loss** with stochastic margins to handle difficult samples and prevent overfitting.
+The core objective of CaVL-Doc is to transform raw document images into a high-quality **Metric Space** where:
+*   **Semantic Similarity**: Visually different but semantically related documents (e.g., two different invoices) are pulled together.
+*   **Discrimination**: Visually similar but unrelated documents are pushed apart.
+*   **Zero-Shot capability**: Documents can be categorized without re-training, simply by comparing their embeddings to class prototypes.
 
 ---
 
-## Repository Structure
+## 🏗️ Architecture & Strategy
 
-The project is structured as a reusable Python package (`cavl_doc`).
+CaVL-Doc utilizes a **Hybrid Curriculum-Reinforcement Learning** strategy to fine-tune a projection head attached to a frozen LVLM backbone.
+
+![Architecture Overview](docs/assets/architecture_with_teacher.png)
+
+### 1. The Core Components
+*   **Backbone (Frozen)**: InternVL3-2B provides basic multimodal tokenization.
+*   **Student (CaVL Head)**: A trainable projection layer (Attention/MLP) that maps multimodal tokens into a metric embedding.
+*   **Teacher (RL Policy)**: A reinforcement learning agent (PPO-based) that selects the most informative training pairs for the Student.
+
+### 2. Multi-Phase Curriculum
+The training progresses through three distinct optimization phases:
+1.  **Phase 1 (Alignment)**: Geometric initialization using Contrastive Loss.
+2.  **Phase 2 (Angular Margin)**: Refinement using ArcFace/ExpFace to enforce strict angular boundaries.
+3.  **Phase 3 (Hard Adaptation)**: Final tuning with stochastic margins to handle edge cases.
+
+---
+
+## 🚀 Research & Optimization Pipeline
+
+The project follows a rigorous, two-stage optimization process for model hyperparameter discovery.
+
+| Stage | Name | Description | Tools |
+| :--- | :--- | :--- | :--- |
+| **Stage 1** | **Coarse Sweep** | Broad exploration of hyperparameters (LR, Margin, Scale) using WandB Bayesian search. | `scripts/optimization/coarse_search/` |
+| **Stage 2** | **Fine Search** | Automated analysis of Stage 1 results, pruning inert parameters for high-fidelity refinement. | `scripts/optimization/fine_search/` |
+
+---
+
+## 📂 Repository Structure
+
+The repository is organized following the functional phases of the research pipeline:
 
 ```
 .
-├── checkpoints/              # Stores fine-tuned models (best_siam.pt)
-├── data/                     # Datasets (LA-CDIP, RVL-CDIP) and pair files
-├── analysis/                 # Stores CSV files related to error analysis
-├── results/                  # Stores master result logs and generated plots
-├── scripts/                  # Executable Python scripts
-│   ├── run_cavl_training.py  # Main training loop (Curriculum + RL)
-│   ├── run_siamese_eval.py   # Evaluation script for trained checkpoints
-│   └── update_readme.py      # Utility to update this README with new results
-└── src/                      # Source code library
-    ├── cavl_doc/             # The 'cavl-doc' Python module
-    │   ├── __init__.py
-    │   ├── models/           # Model definitions (CaVLModel, Policy, Backbone)
-    │   ├── modules/          # Building blocks (Heads, Poolers, Losses)
-    │   ├── trainers/         # Training loops (CurriculumTrainer)
-    │   ├── data/             # Dataset classes
-    │   ├── evaluation/       # Metrics and Baselines
-    │   └── utils/            # Helpers and visualization
+├── src/cavl_doc/             # Core Library: Models, Losses, Trainers
+├── scripts/                  # Executable Pipelines
+│   ├── optimization/         # Stage 1 (Coarse) and Stage 2 (Fine) Sweeps
+│   ├── training/             # Main Curriculum-RL Training loops
+│   ├── evaluation/           # Metrics (EER), benchmarks and visualization
+│   └── utils/                # Data preparation (prepare_splits.py) and maintenance
+├── data/                     # Data Manifest and local split pointers
+├── analysis/                 # Research notebooks and detailed reports
+├── results/                  # Final metrics, EER plots, and sweep summaries
+└── docs/                     # Documentation assets and paper drafts
 ```
 
 ---
 
-## Installation
+## 🛠️ Getting Started
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/jpcosta90/CaVL-Doc.git 
-    cd CaVL-Doc
-    ```
-
-2.  **Set up a virtual environment and install dependencies:**
-    ```bash
-    python -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-    ```
-
-3.  **Install the project in editable mode** (Critical for imports to work):
-    ```bash
-    pip install -e .
-    ```
-
-4.  **Download Datasets:**
-    * Place the document image datasets (LA-CDIP, RVL-CDIP) and their respective pair files inside the `data/` directory.
-
----
-
-## Usage & Experimental Workflow
-
-### 1. Training the CaVL Model (`run_cavl_training.py`)
-
-This script runs the **Hybrid Curriculum-RL** training loop. It freezes the backbone and trains the Projection Head using the 3-phase curriculum, where the RL Agent selects data in every phase.
-
+### Installation
 ```bash
-python scripts/run_cavl_training.py \
-  --dataset-name LA-CDIP \
-  --model-name InternVL3-2B \
-  --pairs-csv data/LA-CDIP/train_pairs.csv \
-  --base-image-dir /mnt/data/la-cdip \
-  --epochs 15 \
-  --training-sample-size 2000 \
-  --student-lr 0.0001 \
-  --professor-lr 0.0001 \
-  --candidate-pool-size 25 \
-  --student-batch-size 4 \
-  --cut-layer 27 \
-  --projection-output-dim 512 \
-  --patience 3 \
-  --baseline-alpha 0.01 \
-  --entropy-coeff 0.01 \
-  --max-num-image-tokens 12 \
-  --num-queries 1 \
-  --pooler-type attention \
-  --head-type mlp \
-  --use-wandb \
-  --wandb-project CaVL-Doc-Experiments-LA-CDIP \
-  --use-curriculum \
-  --phase1-loss contrastive \
-  --phase2-loss expface \
-  --phase3-loss elastic_expface
+git clone https://github.com/jpcosta90/CaVL-Doc.git 
+cd CaVL-Doc
+pip install -e .
 ```
-* **Output:** Saves the best model to `checkpoints/` (e.g., `best_phase3.pt`).
 
-### 2. Evaluating Embeddings (`run_siamese_eval.py`)
-
-Evaluate a trained checkpoint on a validation or test set. This script automatically detects the model configuration from the checkpoint file.
-
+### Data Preparation
+CaVL-Doc assumes datasets are stored in `/mnt/data/`. To prepare a specific split:
 ```bash
-python scripts/run_siamese_eval.py \
-    --pairs-csv "data/RVL-CDIP/test_pairs.csv" \
-    --base-image-dir "/path/to/images/" \
-    --checkpoint-path "checkpoints/Your_Experiment/best_siam.pt" \
-    --metric "euclidean" \
-    --plot
+python scripts/utils/prepare_splits.py --data-root /mnt/data/la-cdip --protocol zsl --split-idx 1
 ```
-* **Output:** Generates density plots in `results/plots` and a results CSV.
 
-### 3. Running an Evaluation (`run_evaluation.py`)
-
-This script is your primary tool. It runs a single, well-defined experiment and logs the result to a master CSV file. It automatically handles naming and metadata.
-
-#### **Example 3.1: Running a Baseline (Pixel Comparison)**
-
-To run the `pixel_euclidean` baseline on the LA-CDIP validation set:
-
+### Running a Sweep
 ```bash
-python scripts/run_evaluation.py \
-    --evaluation-method "pixel_euclidean" \
-    --pairs-csv "data/LA-CDIP/validation_pairs.csv" \
-    --base-image-dir "path/to/your/images/" \
-    --plot
-```
-* `--evaluation-method`: Specifies which method to run. Options are `pixel_cosine` and `pixel_euclidean` for baselines.
-
-#### **Example 3.2: Evaluating the Embedding Method (Base Prompt)**
-
-To evaluate the default `InternVL3-2B` model with a base prompt on the RVL-CDIP validation set:
-
-```bash
-python scripts/run_evaluation.py \
-    --evaluation-method "embedding" \
-    --model-name "InternVL3-2B" \
-    --prompt "<image> describe this document" \
-    --pairs-csv "data/RVL-CDIP/validation_pairs.csv" \
-    --base-image-dir "path/to/your/images/" \
-    --metric "cosine" \
-    --plot
-```
-* `--evaluation-method`: Must be `"embedding"` to use an LVLM.
-* `--prompt`: The text prompt is now required.
-* The script will automatically generate a unique `method_name` for the results table based on the model, prompt hash, and metric.
-
-### 3. Updating Results (`update_readme.py`)
-
-To regenerate the tables and plots below based on the latest experiments:
-
-```bash
-python scripts/update_readme.py
+# Launch Stage 1 (Coarse)
+wandb sweep scripts/optimization/coarse_search/sweep_config.yaml
 ```
 
 ---
+
+## 📊 Results & Artifacts
 
 ## Results
 
-### LA-CDIP Results
-
-| Method                |   EER (%) | Model/Adapter   | Metric   | Link Figura                                             |
-|:----------------------|----------:|:----------------|:---------|:--------------------------------------------------------|
-| pixel_cosine_baseline |      9.07 | Baseline        | cosine   | [Link](results/plots/LA-CDIP_pixel_cosine_baseline.png) |
-
-### RVL-CDIP Results
-
-| Method                |   EER (%) | Model/Adapter   | Metric   | Link Figura                                              |
-|:----------------------|----------:|:----------------|:---------|:---------------------------------------------------------|
-| pixel_cosine_baseline |      36.3 | N/A             | cosine   | [Link](results/plots/RVL-CDIP_pixel_cosine_baseline.png) |
-
 ### Performance vs. Parameters (LA-CDIP Dataset)
 
-The following chart plots the performance (EER) against the number of model parameters (in log scale) for the LA-CDIP dataset. This chart is automatically generated and updated by the `scripts/update_readme.py` script.
-
-![Performance vs. Parameters Chart](results/plots/LA-CDIP_performance_vs_parameters.png)
+Master results and performance benchmarks are tracked in the `results/` directory. 
+*   **EER Plots**: Available in `results/plots/`.
+*   **Sweep Analysis**: Automated reports generated in `results/sweeps/`.
 
 ---
 
-## Citation
+## 📜 Citation & License
 
 If you use this work in your research, please cite our paper:
 
