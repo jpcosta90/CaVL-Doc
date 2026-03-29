@@ -1,0 +1,61 @@
+# Fine Search | LA-CDIP | subcenter_arcface_k3
+# Gerado automaticamente por analyze_and_build_finesearch.py
+# Finalistas do Sweep Grosseiro refinados com method: bayes
+
+program: scripts/training/run_cavl_training.py
+method: bayes
+run_cap: 10
+metric:
+  name: val/eer
+  goal: minimize
+
+parameters:
+  professor-warmup-steps:
+    value: 100000
+  easy-mining-steps:
+    value: 0
+  loss-type:
+    value: "subcenter_arcface"
+  optimizer-type:
+    value: "adamw"
+  num-sub-centers:
+    value: 3
+  student-lr:
+    distribution: log_uniform_values
+    min: 1.44e-05
+    max: 1.03e-04
+  margin:
+    value: 0.3246
+  scale:
+    value: 32.0
+
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - "--use-wandb"
+  - "--gradient-accumulation-steps"
+  - "2"
+  - "--candidate-pool-size"
+  - "8"
+  - "--student-batch-size"
+  - "8"
+  - "--dataset-name"
+  - "LA-CDIP"
+  - "--val-subset-size"
+  - "512"
+  - "--pairs-csv"
+  - "data/LA-CDIP/train_pairs.csv"
+  - "--base-image-dir"
+  - "/mnt/data/la-cdip/data"
+  - "--epochs"
+  - "5"
+  - "--weight-decay"
+  - "0.05"
+  - "--num-workers"
+  - "2"
+  - "--max-steps-per-epoch"
+  - "100"
+  - "--model-name"
+  - "InternVL3-2B"
+  - ${args}
