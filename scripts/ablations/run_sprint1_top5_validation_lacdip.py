@@ -25,6 +25,7 @@ def setup_runtime_env(runtime_root: Optional[str]) -> Dict[str, str]:
         return env
 
     root = os.path.abspath(runtime_root)
+    home = os.path.expanduser("~")
     paths = {
         "TMPDIR": os.path.join(root, "tmp"),
         "XDG_CACHE_HOME": os.path.join(root, "xdg", "cache"),
@@ -33,9 +34,10 @@ def setup_runtime_env(runtime_root: Optional[str]) -> Dict[str, str]:
         "WANDB_DIR": os.path.join(root, "wandb", "runs"),
         "WANDB_CACHE_DIR": os.path.join(root, "wandb", "cache"),
         "WANDB_CONFIG_DIR": os.path.join(root, "wandb", "config"),
-        "HF_HOME": os.path.join(root, "hf"),
-        "HUGGINGFACE_HUB_CACHE": os.path.join(root, "hf", "hub"),
-        "TRANSFORMERS_CACHE": os.path.join(root, "hf", "transformers"),
+        # Reutiliza cache padrão do HF (onde InternVL já foi baixado)
+        "HF_HOME": os.path.join(home, ".cache", "huggingface"),
+        "HUGGINGFACE_HUB_CACHE": os.path.join(home, ".cache", "huggingface", "hub"),
+        "TRANSFORMERS_CACHE": os.path.join(home, ".cache", "huggingface", "hub"),
         "TORCH_HOME": os.path.join(root, "torch"),
         "MPLCONFIGDIR": os.path.join(root, "mpl"),
         "PIP_CACHE_DIR": os.path.join(root, "pip"),
@@ -254,7 +256,7 @@ def build_command(
         "--candidate-pool-size",
         "8",
         "--val-subset-size",
-        "512",
+        "1036",
         "--scheduler-type",
         "constant",
         "--projection-output-dim",

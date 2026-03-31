@@ -202,7 +202,11 @@ def main(args):
         dataset = torch.utils.data.Subset(dataset, indices)
 
     # --- 4) Validação ---
-    val_csv = args.pairs_csv.replace("train_pairs.csv", "validation_pairs.csv")
+    # Prioriza arquivo corrigido (split 0, labels validados contra protocolo oficial)
+    val_csv = args.pairs_csv.replace("train_pairs.csv", "validation_pairs.corrected_split0.csv")
+    if not os.path.exists(val_csv):
+        # Fallback: tenta validation_pairs.csv (original)
+        val_csv = args.pairs_csv.replace("train_pairs.csv", "validation_pairs.csv")
     if not os.path.exists(val_csv):
         val_csv = None
         print("Aviso: validation_pairs.csv não encontrado. Usando split automático.")

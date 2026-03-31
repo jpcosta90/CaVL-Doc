@@ -15,7 +15,7 @@ RUNTIME_ROOT="${4:-/mnt/data/cavl_runtime/main}"
 SEEDS="${5:-42,43,44}"
 EXTRA_ARGS=("${@:6}")
 
-mkdir -p "$RUNTIME_ROOT"/{tmp,xdg/cache,xdg/config,xdg/data,wandb/runs,wandb/cache,wandb/config,hf/hub,hf/transformers,torch,mpl,pip,pycache}
+mkdir -p "$RUNTIME_ROOT"/{tmp,xdg/cache,xdg/config,xdg/data,wandb/runs,wandb/cache,wandb/config,torch,mpl,pip,pycache}
 
 export TMPDIR="$RUNTIME_ROOT/tmp"
 export XDG_CACHE_HOME="$RUNTIME_ROOT/xdg/cache"
@@ -24,9 +24,10 @@ export XDG_DATA_HOME="$RUNTIME_ROOT/xdg/data"
 export WANDB_DIR="$RUNTIME_ROOT/wandb/runs"
 export WANDB_CACHE_DIR="$RUNTIME_ROOT/wandb/cache"
 export WANDB_CONFIG_DIR="$RUNTIME_ROOT/wandb/config"
-export HF_HOME="$RUNTIME_ROOT/hf"
-export HUGGINGFACE_HUB_CACHE="$RUNTIME_ROOT/hf/hub"
-export TRANSFORMERS_CACHE="$RUNTIME_ROOT/hf/transformers"
+# Reutiliza cache padrão do HF (onde InternVL já foi baixado)
+export HF_HOME="$HOME/.cache/huggingface"
+export HUGGINGFACE_HUB_CACHE="$HOME/.cache/huggingface/hub"
+export TRANSFORMERS_CACHE="$HOME/.cache/huggingface/hub"
 export TORCH_HOME="$RUNTIME_ROOT/torch"
 export MPLCONFIGDIR="$RUNTIME_ROOT/mpl"
 export PIP_CACHE_DIR="$RUNTIME_ROOT/pip"
