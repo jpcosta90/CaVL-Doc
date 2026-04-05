@@ -112,6 +112,9 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_b
     # Lista para Batch Recall (New)
     batch_recalls = []
 
+    val_chunk_size = int(os.getenv("CAVL_VAL_CHUNK_SIZE", "12"))
+    val_chunk_size = max(1, val_chunk_size)
+
     with torch.no_grad():
         # Ajusta o total da barra de progresso para refletir o limite
         total_batches = len(val_loader)
@@ -128,7 +131,7 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_b
             
             # Processamento em chunks para evitar OOM se o batch for grande (ex: 96)
             # InternVL consome muita VRAM, então processamos em mini-batches
-            chunk_size = 12 
+            chunk_size = val_chunk_size
             emb_a_chunks = []
             emb_b_chunks = []
             
@@ -882,6 +885,11 @@ def run_rl_siamese_loop(
         os.makedirs(output_dir, exist_ok=True)
         torch.save(pre_val_ckpt, os.path.join(output_dir, "last_checkpoint.pt"))
         print(f"Saved last_checkpoint.pt (Epoch {epoch+1} - Pre-Validation)")
+
+        # Mitiga fragmentação de memória antes da validação (comum em GPUs compartilhadas/NAS)
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         # Validação no subset balanceado
         vloss, veer, vthr, vr1, v_batch_recall = validate_siam_on_loader(siam, val_loader, device, student_criterion)

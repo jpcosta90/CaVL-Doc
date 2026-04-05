@@ -300,6 +300,7 @@ def build_command(
     val_samples_per_class: int,
     num_workers: int,
     weight_decay: float,
+    max_num_image_tokens: int,
     checkpoint_root: str,
     auto_resume: bool,
 ) -> List[str]:
@@ -368,7 +369,7 @@ def build_command(
         "--projection-output-dim",
         "1536",
         "--max-num-image-tokens",
-        "12",
+        str(max_num_image_tokens),
         "--seed",
         str(seed),
     ]
@@ -441,6 +442,12 @@ def main() -> None:
     )
     parser.add_argument("--num-workers", type=int, default=2)
     parser.add_argument("--weight-decay", type=float, default=0.05)
+    parser.add_argument(
+        "--max-num-image-tokens",
+        type=int,
+        default=12,
+        help="Quantidade máxima de image tokens por amostra (reduzir ajuda a baixar uso de VRAM).",
+    )
     parser.add_argument(
         "--scheduler-type",
         default="plateau",
@@ -633,6 +640,7 @@ def main() -> None:
             val_samples_per_class=args.val_samples_per_class,
             num_workers=args.num_workers,
             weight_decay=args.weight_decay,
+            max_num_image_tokens=args.max_num_image_tokens,
             checkpoint_root=checkpoint_root,
             auto_resume=args.auto_resume,
         )
