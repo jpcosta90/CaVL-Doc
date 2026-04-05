@@ -226,6 +226,9 @@ def run_rl_siamese_loop(
     margin=0.5, scale=64.0, num_sub_centers=3, std=0.05,
     # Argumento para retomar treinamento
     resume_checkpoint_path=None,
+    # Argumentos para transfer learning (inicialização sem retomar estado)
+    init_checkpoint_path=None,
+    init_load_professor=False,
     # Optimizer/Scheduler configs
     optimizer_type="adam",
     scheduler_type=None,
@@ -347,6 +350,26 @@ def run_rl_siamese_loop(
         in_features=projection_output_dim
     ).to(device)
 
+    # --- Lógica de Inicialização para Transfer Learning (sem retomar estado) ---
+    if init_checkpoint_path:
+        if not os.path.exists(init_checkpoint_path):
+            raise FileNotFoundError(f"init_checkpoint_path não encontrado: {init_checkpoint_path}")
+        print(f"📥 Inicializando pesos do checkpoint base (transfer): {init_checkpoint_path}")
+        init_ckpt = torch.load(init_checkpoint_path, map_location=device)
+
+        if 'siam_pool' in init_ckpt:
+            siam.pool.load_state_dict(init_ckpt['siam_pool'])
+        if 'siam_head' in init_ckpt:
+            siam.head.load_state_dict(init_ckpt['siam_head'])
+        if 'backbone_trainable' in init_ckpt and init_ckpt['backbone_trainable']:
+            siam.backbone.load_state_dict(init_ckpt['backbone_trainable'], strict=False)
+
+        if init_load_professor and 'professor_state' in init_ckpt:
+            professor_model.load_state_dict(init_ckpt['professor_state'])
+            print("   -> Professor inicializado a partir do checkpoint base.")
+
+        print("✅ Pesos iniciais carregados para transferência.")
+
     trainable_params = [p for n,p in siam.named_parameters() if p.requires_grad]
     loss_params = list(student_criterion.parameters())
     
@@ -433,7 +456,12 @@ def run_rl_siamese_loop(
         if 'professor_optimizer' in ckpt:
             professor_optimizer.load_state_dict(ckpt['professor_optimizer'])
         if 'student_scheduler' in ckpt and student_scheduler is not None:
-             student_scheduler.load_state_dict(ckpt['student_scheduler'])
+             scheduler_state = ckpt.get('student_scheduler')
+             if scheduler_state:
+                 try:
+                     student_scheduler.load_state_dict(scheduler_state)
+                 except Exception as e:
+                     print(f"⚠️ Falha ao restaurar scheduler do checkpoint. Continuando com scheduler novo. Detalhe: {e}")
 
             
         # Restaura estado do treinamento
@@ -878,6 +906,13 @@ def run_rl_siamese_loop(
                 'epoch': epoch, 'metrics': {'eer': veer, 'loss': vloss}, 'config': model_config,
                 'siam_pool': siam.pool.state_dict(), 'siam_head': siam.head.state_dict(),
                 'backbone_trainable': backbone_trainable, 'professor_state': professor_model.state_dict()
+                , 'student_optimizer': student_optimizer.state_dict(),
+                'professor_optimizer': professor_optimizer.state_dict(),
+                'student_scheduler': student_scheduler.state_dict() if student_scheduler else None,
+                'baseline': baseline,
+                'global_batch_step': global_batch_step,
+                'no_improve': no_improve,
+                'stage': 'best'
             }
             
             # Garante que o diretório existe antes de salvar (defensivo contra falhas de FS)
@@ -891,13 +926,41 @@ def run_rl_siamese_loop(
         
         # --- Scheduler Step ---
         if student_scheduler:
+             prev_lr = student_optimizer.param_groups[0]['lr']
              if isinstance(student_scheduler, optim.lr_scheduler.ReduceLROnPlateau):
                  student_scheduler.step(veer)
              else:
                  student_scheduler.step()
-             
+
              current_lr = student_optimizer.param_groups[0]['lr']
              print(f"Current LR: {current_lr}")
+
+             # Se o scheduler reduziu a LR, recarrega o melhor checkpoint para continuar dali.
+             if isinstance(student_scheduler, optim.lr_scheduler.ReduceLROnPlateau) and current_lr < prev_lr:
+                 best_ckpt_path = os.path.join(output_dir, "best_siam.pt")
+                 if os.path.exists(best_ckpt_path):
+                     print(f"🔁 Plateau reduziu LR ({prev_lr:.6g} -> {current_lr:.6g}). Recarregando best_siam.pt...")
+                     best_ckpt = torch.load(best_ckpt_path, map_location=device)
+                     siam.pool.load_state_dict(best_ckpt['siam_pool'])
+                     siam.head.load_state_dict(best_ckpt['siam_head'])
+                     if 'backbone_trainable' in best_ckpt and best_ckpt['backbone_trainable']:
+                         siam.backbone.load_state_dict(best_ckpt['backbone_trainable'], strict=False)
+                     if 'professor_state' in best_ckpt:
+                         professor_model.load_state_dict(best_ckpt['professor_state'])
+                     if 'student_optimizer' in best_ckpt:
+                         student_optimizer.load_state_dict(best_ckpt['student_optimizer'])
+                         for group in student_optimizer.param_groups:
+                             group['lr'] = current_lr
+                     if 'professor_optimizer' in best_ckpt:
+                         professor_optimizer.load_state_dict(best_ckpt['professor_optimizer'])
+                     if 'student_scheduler' in best_ckpt and student_scheduler is not None and best_ckpt['student_scheduler']:
+                         # Mantém o scheduler atual; não voltamos o estado do scheduler, apenas os pesos.
+                         pass
+                     baseline = best_ckpt.get('baseline', baseline)
+                     global_batch_step = best_ckpt.get('global_batch_step', global_batch_step)
+                     no_improve = 0
+                     print("✅ Pesos restaurados a partir do melhor checkpoint; treino continua do melhor ponto.")
+
              if use_wandb and wandb:
                  wandb.log({"train/lr": current_lr, "epoch": epoch + 1})
 

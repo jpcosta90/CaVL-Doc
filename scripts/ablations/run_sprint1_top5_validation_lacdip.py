@@ -2,6 +2,7 @@
 import argparse
 import csv
 import glob
+import json
 import math
 import os
 import subprocess
@@ -184,6 +185,33 @@ def load_best_configs(runs_csv_path: str, losses: List[str]) -> Dict[str, Dict[s
     return selected
 
 
+def _is_resume_compatible(resume_path: str, expected: Dict[str, object]) -> tuple[bool, List[str]]:
+    cfg_path = os.path.join(os.path.dirname(resume_path), "training_config.json")
+    if not os.path.exists(cfg_path):
+        return False, ["training_config.json ausente"]
+
+    try:
+        with open(cfg_path, "r", encoding="utf-8") as handle:
+            cfg = json.load(handle)
+    except Exception as exc:
+        return False, [f"falha ao ler training_config.json: {exc}"]
+
+    mismatches: List[str] = []
+    for key, exp_value in expected.items():
+        got_value = cfg.get(key)
+        if isinstance(exp_value, float):
+            try:
+                if abs(float(got_value) - float(exp_value)) > 1e-12:
+                    mismatches.append(f"{key}={got_value} (esperado {exp_value})")
+            except Exception:
+                mismatches.append(f"{key}={got_value} (esperado {exp_value})")
+        else:
+            if str(got_value) != str(exp_value):
+                mismatches.append(f"{key}={got_value} (esperado {exp_value})")
+
+    return len(mismatches) == 0, mismatches
+
+
 def build_command(
     script_path: str,
     pairs_csv: str,
@@ -196,6 +224,17 @@ def build_command(
     seed: int,
     with_professor_last5: bool,
     run_suffix: str,
+    scheduler_type: str,
+    patience: int,
+    student_batch_size: int,
+    gradient_accumulation_steps: int,
+    candidate_pool_size: int,
+    val_subset_size: int,
+    val_samples_per_class: int,
+    num_workers: int,
+    weight_decay: float,
+    checkpoint_root: str,
+    auto_resume: bool,
 ) -> List[str]:
     warmup_steps = 5 * max_steps_per_epoch
     if not with_professor_last5:
@@ -209,7 +248,7 @@ def build_command(
     if run_suffix:
         run_name = f"{run_name}_{run_suffix}"
 
-    return [
+    cmd = [
         sys.executable,
         script_path,
         "--use-wandb",
@@ -246,19 +285,19 @@ def build_command(
         "--max-steps-per-epoch",
         str(max_steps_per_epoch),
         "--weight-decay",
-        "0.05",
+        str(weight_decay),
         "--num-workers",
-        "2",
+        str(num_workers),
         "--student-batch-size",
-        "8",
+        str(student_batch_size),
         "--gradient-accumulation-steps",
-        "2",
+        str(gradient_accumulation_steps),
         "--candidate-pool-size",
-        "8",
-        "--val-subset-size",
-        "1036",
+        str(candidate_pool_size),
         "--scheduler-type",
-        "constant",
+        scheduler_type,
+        "--patience",
+        str(patience),
         "--projection-output-dim",
         "1536",
         "--max-num-image-tokens",
@@ -266,6 +305,47 @@ def build_command(
         "--seed",
         str(seed),
     ]
+
+    # Regra: val_subset_size > 0 limita validação; <= 0 usa validação completa (sem limite por subset)
+    if val_subset_size > 0:
+        cmd.extend(["--val-subset-size", str(val_subset_size)])
+    else:
+        cmd.extend(["--val-samples-per-class", str(val_samples_per_class)])
+
+    resume_path = os.path.join(checkpoint_root, run_name, "last_checkpoint.pt")
+
+    # Resume automático: continua do último checkpoint da mesma run se existir.
+    if auto_resume and os.path.exists(resume_path):
+        expected_cfg = {
+            "dataset_name": "LA-CDIP",
+            "model_name": "InternVL3-2B",
+            "pairs_csv": pairs_csv,
+            "base_image_dir": base_image_dir,
+            "loss_type": loss_name,
+            "student_lr": float(config['student_lr']),
+            "margin": float(config['margin']),
+            "scale": float(config['scale']),
+            "num_sub_centers": int(config["num_sub_centers"]),
+            "epochs": epochs,
+            "max_steps_per_epoch": max_steps_per_epoch,
+            "scheduler_type": scheduler_type,
+            "patience": patience,
+            "student_batch_size": student_batch_size,
+            "gradient_accumulation_steps": gradient_accumulation_steps,
+            "candidate_pool_size": candidate_pool_size,
+            "num_workers": num_workers,
+            "weight_decay": weight_decay,
+            "seed": seed,
+        }
+        ok_resume, reasons = _is_resume_compatible(resume_path, expected_cfg)
+        if ok_resume:
+            cmd.extend(["--resume-from", resume_path])
+        else:
+            print(f"⚠️ Auto-resume ignorado para '{run_name}' (config incompatível):")
+            for reason in reasons[:8]:
+                print(f"   - {reason}")
+
+    return cmd
 
 
 def main() -> None:
@@ -282,6 +362,30 @@ def main() -> None:
     parser.add_argument("--wandb-project", default="CaVL-Doc_LA-CDIP_Sprint1_Top5Validation")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--max-steps-per-epoch", type=int, default=140)
+    parser.add_argument("--student-batch-size", type=int, default=8)
+    parser.add_argument("--gradient-accumulation-steps", type=int, default=2)
+    parser.add_argument("--candidate-pool-size", type=int, default=8)
+    parser.add_argument("--val-subset-size", type=int, default=1036)
+    parser.add_argument(
+        "--val-samples-per-class",
+        type=int,
+        default=1000000,
+        help="Usado quando --val-subset-size <= 0 para evitar downsampling e usar validação completa",
+    )
+    parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument("--weight-decay", type=float, default=0.05)
+    parser.add_argument(
+        "--scheduler-type",
+        default="plateau",
+        choices=["step", "cosine", "plateau", "constant"],
+        help="Scheduler usado no fine-tuning da Sprint 1",
+    )
+    parser.add_argument(
+        "--patience",
+        type=int,
+        default=5,
+        help="Paciência de early stopping do treino",
+    )
     parser.add_argument(
         "--losses",
         default=",".join(TOP5_LOSSES),
@@ -316,6 +420,17 @@ def main() -> None:
         help="Diretório raiz para caches/logs temporários fora do $HOME",
     )
     parser.add_argument("--dry-run", action="store_true", help="Apenas imprime comandos")
+    parser.add_argument(
+        "--checkpoint-root",
+        default=None,
+        help="Raiz de checkpoints. Se vazio, usa /mnt/large/checkpoints quando existir, senão checkpoints/",
+    )
+    parser.add_argument(
+        "--auto-resume",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Retoma automaticamente runs compatíveis com last_checkpoint.pt existente",
+    )
     args = parser.parse_args()
 
     if args.num_shards < 1:
@@ -326,6 +441,9 @@ def main() -> None:
     workspace_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     script_path = os.path.join(workspace_root, "scripts", "training", "run_cavl_training.py")
     runs_csv_path = os.path.join(workspace_root, args.runs_csv)
+    checkpoint_root = args.checkpoint_root
+    if not checkpoint_root:
+        checkpoint_root = "/mnt/large/checkpoints" if os.path.exists("/mnt/large/checkpoints") else "checkpoints"
 
     pairs_csv_path = _resolve_pairs_csv(workspace_root, args.pairs_csv)
     base_image_dir_path = _resolve_base_image_dir(workspace_root, args.base_image_dir)
@@ -383,6 +501,17 @@ def main() -> None:
             seed=seed,
             with_professor_last5=with_professor_last5,
             run_suffix=args.run_suffix,
+            scheduler_type=args.scheduler_type,
+            patience=args.patience,
+            student_batch_size=args.student_batch_size,
+            gradient_accumulation_steps=args.gradient_accumulation_steps,
+            candidate_pool_size=args.candidate_pool_size,
+            val_subset_size=args.val_subset_size,
+            val_samples_per_class=args.val_samples_per_class,
+            num_workers=args.num_workers,
+            weight_decay=args.weight_decay,
+            checkpoint_root=checkpoint_root,
+            auto_resume=args.auto_resume,
         )
 
         variant = "COM professor nas últimas 5" if with_professor_last5 else "SEM professor nas últimas 5"

@@ -1,0 +1,5 @@
+source_run,metric_key,epoch,metric,cosine_lr,plateau_lr,plateau_reduced
+n3bso47h,val/eer,1,0.035822,1e-05,1e-05,0
+n3bso47h,val/eer,2,0.050205,7.5e-06,1e-05,0
+n3bso47h,val/eer,3,0.059263,2.5e-06,5e-06,1
+n3bso47h,val/eer,4,0.048340,0,5e-06,0

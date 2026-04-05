@@ -395,6 +395,8 @@ def main(args):
             std=args.std,
             # Resume
             resume_checkpoint_path=args.resume_from,
+            init_checkpoint_path=args.init_from_checkpoint,
+            init_load_professor=args.init_load_professor,
             # Optimizer/Scheduler
             optimizer_type=args.optimizer_type,
             scheduler_type=args.scheduler_type,
@@ -481,6 +483,8 @@ def parse_args():
     
     # Resume
     p.add_argument("--resume-from", type=str, default=None, help="Path to checkpoint to resume from")
+    p.add_argument("--init-from-checkpoint", type=str, default=None, help="Path to checkpoint to initialize weights for transfer learning (sem retomar estado)")
+    p.add_argument("--init-load-professor", action="store_true", help="Também carrega pesos do professor do checkpoint de inicialização")
     
     # Optimizer & Scheduler
     p.add_argument("--optimizer-type", type=str, default="adam", choices=["adam", "adamw", "sgd"], help="Optimizer type")
