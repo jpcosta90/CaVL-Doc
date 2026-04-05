@@ -417,7 +417,7 @@ def build_command(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Sprint 1 LA-CDIP: validação Top-5 (10 épocas) com ablação do professor nas 5 últimas épocas"
+        description="Sprint 1 LA-CDIP: validação Top-5 (10 épocas) focada em losses"
     )
     parser.add_argument(
         "--runs-csv",
@@ -462,6 +462,12 @@ def main() -> None:
         "--seeds",
         default="42",
         help="Seeds separadas por vírgula. Ex.: 42,43,44",
+    )
+    parser.add_argument(
+        "--professor-mode",
+        default="off",
+        choices=["off", "on", "both"],
+        help="Controle do professor na Sprint 1: off (padrão), on ou both (ablação).",
     )
     parser.add_argument("--sleep", type=float, default=3.0, help="Pausa entre runs")
     parser.add_argument(
@@ -554,7 +560,13 @@ def main() -> None:
 
     print("=" * 80)
     print("Sprint 1 | LA-CDIP | Top-5 validação quase final")
-    print("Regime: 10 épocas, steps/época maior, ablação com/sem professor nas 5 finais")
+    if args.professor_mode == "off":
+        professor_regime = "SEM professor nas 5 finais"
+    elif args.professor_mode == "on":
+        professor_regime = "COM professor nas 5 finais"
+    else:
+        professor_regime = "ablação com/sem professor nas 5 finais"
+    print(f"Regime: 10 épocas, steps/época maior, {professor_regime}")
     print("=" * 80)
     print(f"pairs_csv: {pairs_csv_path}")
     print(f"base_image_dir: {base_image_dir_path}")
@@ -576,9 +588,16 @@ def main() -> None:
         )
 
     all_jobs = []
+    if args.professor_mode == "off":
+        professor_variants = [False]
+    elif args.professor_mode == "on":
+        professor_variants = [True]
+    else:
+        professor_variants = [True, False]
+
     for loss_name in losses:
         for seed in seeds:
-            for with_professor_last5 in (True, False):
+            for with_professor_last5 in professor_variants:
                 all_jobs.append((loss_name, seed, with_professor_last5))
 
     shard_jobs = [
