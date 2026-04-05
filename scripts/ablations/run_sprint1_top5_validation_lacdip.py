@@ -5,6 +5,7 @@ import glob
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import time
@@ -50,6 +51,72 @@ def setup_runtime_env(runtime_root: Optional[str]) -> Dict[str, str]:
 
     env.update(paths)
     return env
+
+
+def _parse_nvidia_smi_free_memory() -> List[tuple[int, int]]:
+    try:
+        output = subprocess.check_output(
+            [
+                "nvidia-smi",
+                "--query-gpu=index,memory.free",
+                "--format=csv,noheader,nounits",
+            ],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return []
+
+    gpus: List[tuple[int, int]] = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) < 2:
+            continue
+        try:
+            gpu_index = int(parts[0])
+            free_mib = int(float(re.sub(r"[^0-9.]", "", parts[1]) or 0))
+        except ValueError:
+            continue
+        gpus.append((gpu_index, free_mib))
+    return gpus
+
+
+def _select_gpu(min_free_mib: int, wait_seconds: float, poll_interval: float) -> Optional[tuple[int, int]]:
+    deadline = time.time() + max(0.0, wait_seconds)
+    while True:
+        gpus = _parse_nvidia_smi_free_memory()
+        if gpus:
+            selected = max(gpus, key=lambda item: (item[1], -item[0]))
+            if selected[1] >= min_free_mib:
+                return selected
+
+        if wait_seconds <= 0.0 or time.time() >= deadline:
+            return None
+
+        time.sleep(max(1.0, poll_interval))
+
+
+def setup_gpu_env(
+    env: Dict[str, str],
+    gpu_id: Optional[int],
+    min_free_mib: int,
+    wait_seconds: float,
+    poll_interval: float,
+) -> Optional[tuple[int, int]]:
+    if gpu_id is not None:
+        env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+        return gpu_id, -1
+
+    selected = _select_gpu(min_free_mib=min_free_mib, wait_seconds=wait_seconds, poll_interval=poll_interval)
+    if selected is None:
+        return None
+
+    selected_gpu, free_mib = selected
+    env["CUDA_VISIBLE_DEVICES"] = str(selected_gpu)
+    return selected_gpu, free_mib
 
 
 def _to_float(value: str, default: float) -> float:
@@ -419,6 +486,30 @@ def main() -> None:
         default=None,
         help="Diretório raiz para caches/logs temporários fora do $HOME",
     )
+    parser.add_argument(
+        "--gpu-id",
+        type=int,
+        default=None,
+        help="GPU física fixa para usar. Se omitido, o launcher escolhe a GPU com mais memória livre.",
+    )
+    parser.add_argument(
+        "--gpu-min-free-mib",
+        type=int,
+        default=12000,
+        help="Memória livre mínima em MiB para iniciar. Se nenhuma GPU atingir isso, o launcher espera.",
+    )
+    parser.add_argument(
+        "--gpu-wait-seconds",
+        type=float,
+        default=0.0,
+        help="Tempo máximo para esperar por uma GPU com memória livre suficiente. 0 = tenta uma vez.",
+    )
+    parser.add_argument(
+        "--gpu-poll-seconds",
+        type=float,
+        default=15.0,
+        help="Intervalo entre verificações de GPU quando estiver aguardando.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Apenas imprime comandos")
     parser.add_argument(
         "--checkpoint-root",
@@ -453,6 +544,13 @@ def main() -> None:
 
     best_configs = load_best_configs(runs_csv_path, losses)
     run_env = setup_runtime_env(args.runtime_root)
+    selected_gpu = setup_gpu_env(
+        env=run_env,
+        gpu_id=args.gpu_id,
+        min_free_mib=args.gpu_min_free_mib,
+        wait_seconds=args.gpu_wait_seconds,
+        poll_interval=args.gpu_poll_seconds,
+    )
 
     print("=" * 80)
     print("Sprint 1 | LA-CDIP | Top-5 validação quase final")
@@ -462,6 +560,12 @@ def main() -> None:
     print(f"base_image_dir: {base_image_dir_path}")
     if args.runtime_root:
         print(f"Runtime isolado fora do HOME: {os.path.abspath(args.runtime_root)}")
+    if selected_gpu is None:
+        print("GPU: nenhuma seleção automática aplicada (sem CUDA_VISIBLE_DEVICES explícito)")
+    elif args.gpu_id is not None:
+        print(f"GPU fixa selecionada: física {args.gpu_id}")
+    else:
+        print(f"GPU selecionada automaticamente: física {selected_gpu[0]} com {selected_gpu[1]} MiB livres")
     for loss_name in losses:
         config = best_configs[loss_name]
         print(
