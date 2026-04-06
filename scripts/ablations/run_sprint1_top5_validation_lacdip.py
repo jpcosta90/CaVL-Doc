@@ -390,9 +390,11 @@ def build_command(
             "pairs_csv": pairs_csv,
             "base_image_dir": base_image_dir,
             "loss_type": loss_name,
-            "student_lr": float(config['student_lr']),
-            "margin": float(config['margin']),
-            "scale": float(config['scale']),
+            # Compara com os valores efetivamente enviados na CLI para evitar
+            # falso negativo por diferença de arredondamento serializado.
+            "student_lr": float(f"{config['student_lr']:.12g}"),
+            "margin": float(f"{config['margin']:.6f}"),
+            "scale": float(f"{config['scale']:.6f}"),
             "num_sub_centers": int(config["num_sub_centers"]),
             "epochs": epochs,
             "max_steps_per_epoch": max_steps_per_epoch,
@@ -401,7 +403,6 @@ def build_command(
             "student_batch_size": student_batch_size,
             "gradient_accumulation_steps": gradient_accumulation_steps,
             "candidate_pool_size": candidate_pool_size,
-            "num_workers": num_workers,
             "weight_decay": weight_decay,
             "seed": seed,
         }

@@ -135,12 +135,18 @@ def main(args):
         print(f"🚀 WandB Inicializado: Run {wandb.run.name} (ID: {wandb.run.id})")
         
         if wandb.run:
-            # Salva o ID no args para persistência futura
-            args.wandb_id = wandb.run.id
-            
+            # Primeiro aplica parâmetros vindos do wandb.config (sweeps),
+            # exceto campos de identidade do próprio run.
             for k, v in wandb.config.items():
+                if k in {"wandb_id", "wandb_run_name", "wandb_project"}:
+                    continue
                 if hasattr(args, k):
                     setattr(args, k, v)
+
+            # Salva o ID no args para persistência futura.
+            # Importante: deve ocorrer APÓS aplicar wandb.config para não ser
+            # sobrescrito por valor None de configuração antiga.
+            args.wandb_id = wandb.run.id
         
         # Atualiza o arquivo de configuração com o ID do WandB
         # Isso garante que futuros resumes possam encontrar o ID correto
