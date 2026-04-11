@@ -14,6 +14,123 @@ research_questions:
   q4: "Custo computacional versus ganho de desempenho"
 
 sprints:
+  sprint_0_1:
+    phase: 1
+    title: "Fase 1 — Protocolo Experimental"
+    start_date: "2026-01-01"
+    end_date: "2026-02-08"
+    duration_days: 38
+    description: "Definição de protocolo experimental, datasets, splits, métricas e seeds para LA-CDIP e RVL-CDIP"
+    milestone: "Phase 1"
+    tasks:
+      T-01-01:
+        title: "Definir protocolo experimental e splits"
+        description: "Protocolo base definido para LA-CDIP e RVL-CDIP com datasets, métricas e seeds"
+        status: "done"
+        priority: "high"
+        labels: ["phase:1", "status:done"]
+        research_question: "q2"
+        evidence: "Protocolo documentado"
+  
+  sprint_0_2:
+    phase: 2
+    title: "Fase 2 — Pipeline Base de Treino/Eval"
+    start_date: "2026-02-09"
+    end_date: "2026-02-17"
+    duration_days: 9
+    description: "Implementação do pipeline base de treinamento e avaliação com checkpoints e W&B"
+    milestone: "Phase 2"
+    tasks:
+      T-02-01:
+        title: "Implementar pipeline base de treino/eval"
+        description: "Treino com checkpoints e rastreamento W&B operacional"
+        status: "done"
+        priority: "high"
+        labels: ["phase:2", "status:done"]
+        research_question: "q2"
+        evidence: "Pipeline operacional"
+  
+  sprint_1_1:
+    phase: 3
+    title: "Fase 3 — Coarse Sweep (Stage 1)"
+    start_date: "2026-02-18"
+    end_date: "2026-02-20"
+    duration_days: 3
+    description: "Exploração ampla de hiperparâmetros (LR, margin, scale, k) por loss candidata"
+    milestone: "Phase 3"
+    tasks:
+      T-03-01:
+        title: "Executar Coarse Sweep (LA-CDIP)"
+        description: "173 runs de exploração de hiperparâmetros com descoberta de regiões promissoras"
+        status: "done"
+        priority: "high"
+        labels: ["phase:3", "topic:sweep", "status:done"]
+        research_question: "q1,q2"
+        evidence: "lacdip_coarse_all.csv (173 runs)"
+      
+      T-03-02:
+        title: "Executar Coarse Sweep (RVL-CDIP paralelo)"
+        description: "135 runs paralelos no RVL-CDIP com 135.56 h consumidas"
+        status: "done"
+        priority: "medium"
+        labels: ["phase:3", "topic:sweep", "dataset:rvl", "status:done"]
+        research_question: "q3"
+        evidence: "rvlcdip_coarse_all.csv (135 runs, 135.56 h)"
+  
+  sprint_1_2:
+    phase: "3B"
+    title: "Fase 3B — RVL-CDIP Ciclo Completo"
+    start_date: "2026-02-21"
+    end_date: "2026-03-12"
+    duration_days: 20
+    description: "Ciclo RVL-CDIP com coarse + fine em paralelo (301.90 h consumidas, baixa conversão final)"
+    milestone: "Phase 3B"
+    tasks:
+      T-03B-01:
+        title: "Executar ciclo RVL coarse + fine Search"
+        description: "Coarse (135 runs) + Fine (50 runs) = 301.90 h consumidas. Diagnóstico: baixa conversão em ganho final"
+        status: "done"
+        priority: "medium"
+        labels: ["phase:3b", "topic:sweep", "dataset:rvl", "status:done"]
+        research_question: "q3,q4"
+        evidence: "rvlcdip_coarse_all.csv + rvlcdip_fine_all.csv (301.90 h)"
+  
+  sprint_1_3:
+    phase: 4
+    title: "Fase 4 — Fine Search (Stage 2)"
+    start_date: "2026-03-14"
+    end_date: "2026-03-28"
+    duration_days: 15
+    description: "Refinamento das melhores regiões do coarse e seleção top por loss"
+    milestone: "Phase 4"
+    tasks:
+      T-04-01:
+        title: "Executar Fine Search (LA-CDIP)"
+        description: "96 runs de refinamento com 311.62 h. Seleção das melhores configurações por loss"
+        status: "done"
+        priority: "high"
+        labels: ["phase:4", "topic:sweep", "status:done"]
+        research_question: "q1,q2"
+        evidence: "lacdip_fine_all.csv (96 runs, 311.62 h)"
+  
+  sprint_1_4:
+    phase: 5
+    title: "Fase 5 — Sprint 1 (Top 5 Validation LA-CDIP)"
+    start_date: "2026-03-29"
+    end_date: "2026-04-09"
+    duration_days: 12
+    description: "Comparação das melhores configurações de cada loss no LA-CDIP"
+    milestone: "Phase 5"
+    tasks:
+      T-05-01:
+        title: "Executar validação top-5 por loss na LA-CDIP"
+        description: "23 runs de validação com 171.78 h. Comparativo final entre losses com configs do Fine Search"
+        status: "done"
+        priority: "high"
+        labels: ["phase:5", "topic:validation", "status:done"]
+        research_question: "q1,q2"
+        evidence: "CaVL-Doc_LA-CDIP_Sprint1_Top5Validation (23 runs, 171.78 h)"
+  
   sprint_2:
     phase: 6
     title: "Sprint 2 — Teacher Sweep (Fase 6)"

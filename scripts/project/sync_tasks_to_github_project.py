@@ -83,19 +83,13 @@ def create_or_find_issue(
         print(f"  → Issue #{existing} already exists")
         return existing
     
-    # Create new
+    # Create new (without labels/milestone to avoid failing when they don't exist yet)
     cmd = [
         "issue", "create",
         "--repo", repo,
         "--title", full_title,
         "--body", description,
     ]
-    
-    if labels:
-        cmd.extend(["--label", ",".join(labels)])
-    
-    if milestone:
-        cmd.extend(["--milestone", milestone])
     
     output = run_gh_command(cmd, dry_run=dry_run)
     
@@ -116,12 +110,13 @@ def add_issue_to_project(
     dry_run: bool = False
 ) -> bool:
     """Add issue to project."""
+    owner, repo_name = repo.split("/")
+    issue_url = f"https://github.com/{owner}/{repo_name}/issues/{issue_number}"
     cmd = [
         "project", "item-add",
         str(project_number),
-        "--owner", repo.split("/")[0],
-        "--repo", repo.split("/")[1],
-        "--issue-number", issue_number
+        "--owner", owner,
+        "--url", issue_url
     ]
     
     output = run_gh_command(cmd, dry_run=dry_run)
@@ -149,6 +144,227 @@ def add_labels_to_issue(
     return output is not None or dry_run
 
 
+def ensure_label_exists(repo: str, label: str, dry_run: bool = False) -> bool:
+    """Ensure a label exists in the repository."""
+    if not label:
+        return True
+
+    check_cmd = [
+        "label", "list",
+        "--repo", repo,
+        "--search", label,
+        "--json", "name",
+        "--limit", "100"
+    ]
+    output = run_gh_command(check_cmd, dry_run=False)
+    if output:
+        try:
+            labels = json.loads(output)
+            if any(item.get("name") == label for item in labels):
+                return True
+        except json.JSONDecodeError:
+            pass
+
+    create_cmd = [
+        "label", "create",
+        label,
+        "--repo", repo,
+        "--description", "Auto-created by task sync script"
+    ]
+    return run_gh_command(create_cmd, dry_run=dry_run) is not None or dry_run
+
+
+def ensure_milestone_exists(repo: str, milestone: str, dry_run: bool = False) -> bool:
+    """Ensure a milestone exists in the repository."""
+    if not milestone:
+        return True
+
+    list_cmd = [
+        "api",
+        f"repos/{repo}/milestones?state=all&per_page=100"
+    ]
+    output = run_gh_command(list_cmd, dry_run=False)
+    if output:
+        try:
+            milestones = json.loads(output)
+            if any(item.get("title") == milestone for item in milestones):
+                return True
+        except json.JSONDecodeError:
+            pass
+
+    create_cmd = [
+        "api", "-X", "POST",
+        f"repos/{repo}/milestones",
+        "-f", f"title={milestone}"
+    ]
+    return run_gh_command(create_cmd, dry_run=dry_run) is not None or dry_run
+
+
+def set_issue_milestone(
+    repo: str,
+    issue_number: str,
+    milestone: Optional[str],
+    dry_run: bool = False
+) -> bool:
+    """Set milestone on an issue."""
+    if not milestone:
+        return True
+
+    cmd = [
+        "issue", "edit",
+        issue_number,
+        "--repo", repo,
+        "--milestone", milestone
+    ]
+    return run_gh_command(cmd, dry_run=dry_run) is not None or dry_run
+
+
+def get_project_id(owner: str, project_number: int) -> Optional[str]:
+    """Get GitHub Project node ID from owner and project number."""
+    cmd = [
+        "project", "list",
+        "--owner", owner,
+        "--format", "json"
+    ]
+    output = run_gh_command(cmd, dry_run=False)
+    if not output:
+        return None
+
+    try:
+        data = json.loads(output)
+        for project in data.get("projects", []):
+            if int(project.get("number", -1)) == int(project_number):
+                return project.get("id")
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return None
+
+    return None
+
+
+def ensure_project_date_field(owner: str, project_number: int, field_name: str, dry_run: bool = False) -> Optional[str]:
+    """Ensure a DATE field exists in the project and return its field ID."""
+    list_cmd = [
+        "project", "field-list",
+        str(project_number),
+        "--owner", owner,
+        "--format", "json"
+    ]
+    output = run_gh_command(list_cmd, dry_run=False)
+    if output:
+        try:
+            fields = json.loads(output).get("fields", [])
+            for field in fields:
+                if field.get("name") == field_name:
+                    return field.get("id")
+        except json.JSONDecodeError:
+            pass
+
+    create_cmd = [
+        "project", "field-create",
+        str(project_number),
+        "--owner", owner,
+        "--name", field_name,
+        "--data-type", "DATE"
+    ]
+    run_gh_command(create_cmd, dry_run=dry_run)
+
+    output = run_gh_command(list_cmd, dry_run=False)
+    if output:
+        try:
+            fields = json.loads(output).get("fields", [])
+            for field in fields:
+                if field.get("name") == field_name:
+                    return field.get("id")
+        except json.JSONDecodeError:
+            pass
+
+    return None
+
+
+def get_project_status_field(owner: str, project_number: int) -> tuple[Optional[str], Dict[str, str]]:
+    """Return Status field id and normalized option-name -> option-id mapping."""
+    list_cmd = [
+        "project", "field-list",
+        str(project_number),
+        "--owner", owner,
+        "--format", "json"
+    ]
+    output = run_gh_command(list_cmd, dry_run=False)
+    if not output:
+        return None, {}
+
+    try:
+        fields = json.loads(output).get("fields", [])
+    except json.JSONDecodeError:
+        return None, {}
+
+    for field in fields:
+        if field.get("name") == "Status" and field.get("type") == "ProjectV2SingleSelectField":
+            mapping: Dict[str, str] = {}
+            for option in field.get("options", []):
+                name = str(option.get("name", "")).strip().lower()
+                option_id = option.get("id")
+                if name and option_id:
+                    mapping[name] = option_id
+            return field.get("id"), mapping
+
+    return None, {}
+
+
+def normalize_task_status(task_status: Optional[str]) -> str:
+    """Normalize YAML task status names to Project status option names."""
+    raw = str(task_status or "").strip().lower()
+    if raw in {"todo", "to-do", "to do", "not-started", "not started", "pending"}:
+        return "todo"
+    if raw in {"in-progress", "in progress", "doing", "wip", "ongoing"}:
+        return "in progress"
+    if raw in {"done", "completed", "complete", "finished"}:
+        return "done"
+    return "todo"
+
+
+def set_project_item_status(
+    item_id: str,
+    project_id: str,
+    status_field_id: str,
+    status_option_id: str,
+    dry_run: bool = False
+) -> bool:
+    """Set single-select Status field on a project item."""
+    if not (item_id and project_id and status_field_id and status_option_id):
+        return True
+
+    cmd = [
+        "project", "item-edit",
+        "--id", item_id,
+        "--project-id", project_id,
+        "--field-id", status_field_id,
+        "--single-select-option-id", status_option_id
+    ]
+    return run_gh_command(cmd, dry_run=dry_run) is not None or dry_run
+
+
+def set_project_item_date(
+    item_id: str,
+    project_id: str,
+    field_id: str,
+    value: Optional[str],
+    dry_run: bool = False
+) -> bool:
+    """Set DATE field value on a project item."""
+    if not (item_id and project_id and field_id and value):
+        return True
+
+    cmd = [
+        "project", "item-edit",
+        "--id", item_id,
+        "--project-id", project_id,
+        "--field-id", field_id,
+        "--date", value
+    ]
+    return run_gh_command(cmd, dry_run=dry_run) is not None or dry_run
+
+
 def sync_tasks_to_project(
     project_number: int,
     repo: str = None,
@@ -165,6 +381,12 @@ def sync_tasks_to_project(
     if project_number is None:
         print("Error: --project-number is required or set project_number in tasks.yaml")
         sys.exit(1)
+
+    owner = repo.split("/")[0]
+    project_id = get_project_id(owner=owner, project_number=project_number)
+    start_date_field_id = ensure_project_date_field(owner=owner, project_number=project_number, field_name="Start date", dry_run=dry_run)
+    target_date_field_id = ensure_project_date_field(owner=owner, project_number=project_number, field_name="Target date", dry_run=dry_run)
+    status_field_id, status_options = get_project_status_field(owner=owner, project_number=project_number)
     
     print(f"\n{'='*60}")
     print(f"Syncing tasks to GitHub Project {project_number}")
@@ -179,20 +401,27 @@ def sync_tasks_to_project(
         print(f"\n📋 {sprint_data['title']}")
         print(f"   {sprint_data['start_date']} → {sprint_data['end_date']}")
         print()
+
+        sprint_milestone = sprint_data.get("milestone")
+        ensure_milestone_exists(repo=repo, milestone=sprint_milestone, dry_run=dry_run)
         
         tasks = sprint_data.get("tasks", {})
         for task_id, task_data in tasks.items():
             total_tasks += 1
             
             print(f"  {task_id}: {task_data['title']}")
+
+            labels = task_data.get("labels", [])
+            for label in labels:
+                ensure_label_exists(repo=repo, label=label, dry_run=dry_run)
             
             issue_num = create_or_find_issue(
                 repo=repo,
                 task_id=task_id,
                 title=task_data["title"],
                 description=task_data.get("description", ""),
-                labels=task_data.get("labels", []),
-                milestone=sprint_data.get("milestone"),
+                labels=labels,
+                milestone=sprint_milestone,
                 dry_run=dry_run
             )
             
@@ -204,10 +433,61 @@ def sync_tasks_to_project(
                     issue_number=issue_num,
                     dry_run=dry_run
                 )
+
+                item_list_cmd = [
+                    "project", "item-list",
+                    str(project_number),
+                    "--owner", owner,
+                    "--format", "json"
+                ]
+                item_list_output = run_gh_command(item_list_cmd, dry_run=False)
+                item_id = None
+                if item_list_output:
+                    try:
+                        items = json.loads(item_list_output).get("items", [])
+                        for item in items:
+                            content = item.get("content", {})
+                            if str(content.get("number", "")) == str(issue_num):
+                                item_id = item.get("id")
+                                break
+                    except json.JSONDecodeError:
+                        item_id = None
+
+                set_project_item_date(
+                    item_id=item_id,
+                    project_id=project_id,
+                    field_id=start_date_field_id,
+                    value=sprint_data.get("start_date"),
+                    dry_run=dry_run
+                )
+                set_project_item_date(
+                    item_id=item_id,
+                    project_id=project_id,
+                    field_id=target_date_field_id,
+                    value=sprint_data.get("end_date"),
+                    dry_run=dry_run
+                )
+
+                normalized_status = normalize_task_status(task_data.get("status"))
+                status_option_id = status_options.get(normalized_status)
+                set_project_item_status(
+                    item_id=item_id,
+                    project_id=project_id,
+                    status_field_id=status_field_id,
+                    status_option_id=status_option_id,
+                    dry_run=dry_run
+                )
+
                 add_labels_to_issue(
                     repo=repo,
                     issue_number=issue_num,
-                    labels=task_data.get("labels", []),
+                    labels=labels,
+                    dry_run=dry_run
+                )
+                set_issue_milestone(
+                    repo=repo,
+                    issue_number=issue_num,
+                    milestone=sprint_milestone,
                     dry_run=dry_run
                 )
     
