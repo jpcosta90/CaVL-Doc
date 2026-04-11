@@ -12,19 +12,19 @@ Consolidar o estado real do projeto em fases, destacando claramente o que já fo
 
 ## Quadro de fases
 
-| Fase | Escopo | Entregável principal | Início | Fim | Status |
-|---|---|---|---|---|---|
-| 1 | Protocolo experimental (datasets, splits, métricas, seeds) | Protocolo base definido para LA-CDIP e RVL-CDIP | N/D (histórico) | N/D (histórico) | ✅ Concluído |
-| 2 | Pipeline base de treino/eval | Treino com checkpoints e rastreamento W&B operacional | N/D (histórico) | N/D (histórico) | ✅ Concluído |
-| 3 | Coarse Sweep (Stage 1) | Exploração ampla de hiperparâmetros por loss | 08/02/2026* | 20/02/2026* | ✅ Concluído |
-| 3B | Ciclo RVL-CDIP (coarse + fine, paralelo) | Registro consolidado do esforço RVL com janela de execução e horas consumidas (**301.90 h**) | 21/02/2026* | 12/03/2026* | ✅ Concluído (baixa conversão em ganho final) |
-| 4 | Fine Search (Stage 2) | Refinamento das melhores regiões do coarse + seleção top por loss | 14/03/2026* | 28/03/2026* | ✅ Concluído |
-| 5 | Sprint 1 (LA-CDIP): comparação das melhores configs por loss | Comparativo final entre losses com configs vindas do Fine Search | 29/03/2026 | 09/04/2026 | ✅ Concluído |
-| 6 | Sprint 2: Teacher Sweep (rede pequena) | Sweep proporcional ao tempo (2 dias) nas losses com melhor desempenho + contrastive, partindo da best_siam (+3 épocas) | 13/04/2026 | 14/04/2026 | ⬜ Pendente |
-| 7 | Sprint 3: Ablação + resultado final LA-CDIP | Matriz com/sem teacher × 5 splits × 2 losses + consolidação final no LA-CDIP | 15/04/2026 | 29/04/2026 | ⬜ Pendente |
-| 8 | Sprint 4: Transfer learning + sweep de batch (RVL zero-shot) | Melhor loss/config, 5 épocas, com/sem transfer × 5 batch sizes (máx. 2h/época) | 30/04/2026 | 08/05/2026 | ⬜ Pendente |
-| 9 | Sprint 5: Resultado final RVL zero-shot | 1 configuração final × 5 splits RVL | 11/05/2026 | 14/05/2026 | ⬜ Pendente |
-| 10 | Sprint 6: Fechamento e submissão | Tabelas/figuras finais e escrita de resultados/discussão/conclusão | 15/05/2026 | 29/05/2026 | ⬜ Pendente |
+| Fase | Escopo | Entregável principal | Início | Fim | Status script | Status processamento |
+|---|---|---|---|---|---|---|
+| 1 | Protocolo experimental (datasets, splits, métricas, seeds) | Protocolo base definido para LA-CDIP e RVL-CDIP | N/D (histórico) | N/D (histórico) | ✅ Concluído | ✅ Concluído |
+| 2 | Pipeline base de treino/eval | Treino com checkpoints e rastreamento W&B operacional | N/D (histórico) | N/D (histórico) | ✅ Concluído | ✅ Concluído |
+| 3 | Coarse Sweep (Stage 1) | Exploração ampla de hiperparâmetros por loss | 08/02/2026* | 20/02/2026* | ✅ Concluído | ✅ Concluído |
+| 3B | Ciclo RVL-CDIP (coarse + fine, paralelo) | Registro consolidado do esforço RVL com janela de execução e horas consumidas (**301.90 h**) | 21/02/2026* | 12/03/2026* | ✅ Concluído | ✅ Concluído (baixa conversão em ganho final) |
+| 4 | Fine Search (Stage 2) | Refinamento das melhores regiões do coarse + seleção top por loss | 14/03/2026* | 28/03/2026* | ✅ Concluído | ✅ Concluído |
+| 5 | Sprint 1 (LA-CDIP): comparação das melhores configs por loss | Comparativo final entre losses com configs vindas do Fine Search | 29/03/2026 | 09/04/2026 | ✅ Concluído | ✅ Concluído |
+| 6 | Sprint 2: Teacher Sweep (rede pequena) | Sweep Bayes por loss partindo da best_siam, com baseline OFF e 3 épocas | 13/04/2026 | 14/04/2026 | ✅ Concluído | 🟡 Em andamento |
+| 7 | Sprint 3: Ablação + resultado final LA-CDIP | Matriz com/sem teacher × 5 splits × 2 losses + consolidação final no LA-CDIP | 15/04/2026 | 29/04/2026 | ⬜ Pendente | ⬜ Pendente |
+| 8 | Sprint 4: Transfer learning + sweep de batch (RVL zero-shot) | Melhor loss/config, 5 épocas, com/sem transfer × 5 batch sizes (máx. 2h/época) | 30/04/2026 | 08/05/2026 | ⬜ Pendente | ⬜ Pendente |
+| 9 | Sprint 5: Resultado final RVL zero-shot | 1 configuração final × 5 splits RVL | 11/05/2026 | 14/05/2026 | ⬜ Pendente | ⬜ Pendente |
+| 10 | Sprint 6: Fechamento e submissão | Tabelas/figuras finais e escrita de resultados/discussão/conclusão | 15/05/2026 | 29/05/2026 | ⬜ Pendente | ⬜ Pendente |
 
 \* Datas marcadas com asterisco são **janelas observadas nos logs de runs disponíveis nesta máquina** (CSV + W&B local/runtime). Elas não implicam ausência de trabalho fora desses logs (ex.: preparação, análise, ajustes offline ou runs em outro storage). No contexto deste projeto, o intervalo entre Coarse e Fine é compatível com processamento/rodadas de RVL-CDIP.
 
@@ -132,6 +132,7 @@ Data de referência: **11/04/2026**.
 - Inicializar a partir de `best_siam`, com ~3 épocas adicionais.
 - Reservar **2 dias** de processamento; número de experimentos proporcional ao tempo disponível.
 - Entrega: melhor configuração teacher para seguir para ablação.
+- Status atual: scripts prontos; processamento ainda em andamento.
 
 ### Sprint 3 — Ablação Teacher (Fase 7)
 - Rodar ablação com e sem teacher + resultados finais no LA-CDIP.
@@ -168,3 +169,31 @@ Data de referência: **11/04/2026**.
 - [ ] Executar Sprint 4 (Transfer + sweep batch RVL)
 - [ ] Executar Sprint 5 (Resultado final RVL)
 - [ ] Executar Sprint 6 (Fechamento/submissão)
+
+---
+
+## Vinculação com GitHub Project
+
+Este cronograma é a **visão macro** da pesquisa. A execução operacional é rastreada em:
+
+- **Arquivo fonte**: [`docs/tasks.yaml`](../docs/tasks.yaml)
+- **Ferramenta**: GitHub Project (Roadmap view)
+- **Sincronização**: Script Python [`scripts/project/sync_tasks_to_github_project.py`](../scripts/project/sync_tasks_to_github_project.py)
+
+### Como usar
+
+**Primiera vez:**
+1. Criar o GitHub Project como Roadmap
+2. Anotar o `project_number` (URL: `github.com/users/<username>/projects/<project_number>`)
+3. Rodar: `python scripts/project/sync_tasks_to_github_project.py --project-number <NUMBER>`
+
+**Dia a dia:**
+- Editar [`docs/tasks.yaml`](../docs/tasks.yaml) quando a estrutura mudar
+- Sincronizar: `python scripts/project/sync_tasks_to_github_project.py --project-number <NUMBER>`
+- Movimentar no Project (To do → In Progress → Done) conforme executa
+
+**Ao terminar uma tarefa:**
+- Fechar a issue via GitHub (`close` ou `fixes #<N>` em commit)
+- Atualizar o status em `docs/tasks.yaml` (opcional)
+
+Ver [`scripts/project/README.md`](../scripts/project/README.md) para detalhes de setup.

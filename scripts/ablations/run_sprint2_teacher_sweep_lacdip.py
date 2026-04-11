@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -737,6 +738,307 @@ def build_command(
     return cmd
 
 
+def build_baseline_off_command(
+    script_path: str,
+    pairs_csv: str,
+    base_image_dir: str,
+    wandb_project: str,
+    run_suffix: str,
+    checkpoint_root: str,
+    epochs: int,
+    max_steps_per_epoch: int,
+    candidate_pool_size: int,
+    student_lr: float,
+    scheduler_type: str,
+    patience: int,
+    student_batch_size: int,
+    gradient_accumulation_steps: int,
+    val_subset_size: int,
+    val_samples_per_class: int,
+    weight_decay: float,
+    num_workers: int,
+    max_num_image_tokens: int,
+    loss_type: str,
+    seed: int,
+    sprint1_run: Sprint1BestRun,
+) -> List[str]:
+    init_ckpt = _find_checkpoint_for_run(checkpoint_root, sprint1_run.run_name)
+    if not init_ckpt:
+        raise FileNotFoundError(
+            f"Checkpoint base do Sprint 1 não encontrado para run '{sprint1_run.run_name}' em {checkpoint_root}"
+        )
+
+    run_name = f"Sprint2_{loss_type}_from_{sprint1_run.run_id}_prof_off_E{epochs}_SPE{max_steps_per_epoch}_seed{seed}"
+    if run_suffix:
+        run_name = f"{run_name}_{run_suffix}"
+
+    cmd = [
+        sys.executable,
+        script_path,
+        "--use-wandb",
+        "--wandb-project",
+        wandb_project,
+        "--wandb-run-name",
+        run_name,
+        "--dataset-name",
+        "LA-CDIP",
+        "--model-name",
+        "InternVL3-2B",
+        "--pairs-csv",
+        pairs_csv,
+        "--base-image-dir",
+        base_image_dir,
+        "--loss-type",
+        loss_type,
+        "--optimizer-type",
+        "adamw",
+        "--scheduler-type",
+        scheduler_type,
+        "--student-lr",
+        f"{student_lr:.12g}",
+        "--professor-lr",
+        "0",
+        "--epochs",
+        str(epochs),
+        "--max-steps-per-epoch",
+        str(max_steps_per_epoch),
+        "--weight-decay",
+        str(weight_decay),
+        "--num-workers",
+        str(num_workers),
+        "--student-batch-size",
+        str(student_batch_size),
+        "--gradient-accumulation-steps",
+        str(gradient_accumulation_steps),
+        "--candidate-pool-size",
+        str(candidate_pool_size),
+        "--patience",
+        str(patience),
+        "--projection-output-dim",
+        "1536",
+        "--max-num-image-tokens",
+        str(max_num_image_tokens),
+        "--seed",
+        str(seed),
+        "--init-from-checkpoint",
+        init_ckpt,
+    ]
+
+    if val_subset_size > 0:
+        cmd.extend(["--val-subset-size", str(val_subset_size)])
+    else:
+        cmd.extend(["--val-samples-per-class", str(val_samples_per_class)])
+
+    return cmd
+
+
+def _write_bayes_sweep_yaml(
+    yaml_path: str,
+    script_path: str,
+    pairs_csv: str,
+    base_image_dir: str,
+    checkpoint_path: str,
+    loss_type: str,
+    epochs: int,
+    max_steps_per_epoch: int,
+    candidate_pool_size: int,
+    student_lr: float,
+    scheduler_type: str,
+    patience: int,
+    student_batch_size: int,
+    gradient_accumulation_steps: int,
+    val_subset_size: int,
+    val_samples_per_class: int,
+    weight_decay: float,
+    num_workers: int,
+    max_num_image_tokens: int,
+    professor_lr_min: float,
+    professor_lr_max: float,
+    baseline_alpha_min: float,
+    baseline_alpha_max: float,
+    entropy_coeff_min: float,
+    entropy_coeff_max: float,
+    seed: int,
+) -> None:
+    val_arg = [
+        "  - \"--val-subset-size\"",
+        f"  - \"{val_subset_size}\"",
+    ] if val_subset_size > 0 else [
+        "  - \"--val-samples-per-class\"",
+        f"  - \"{val_samples_per_class}\"",
+    ]
+
+    content = [
+        "program: scripts/training/run_cavl_training.py",
+        "method: bayes",
+        "metric:",
+        "  name: val/eer",
+        "  goal: minimize",
+        "parameters:",
+        "  professor-lr:",
+        "    distribution: log_uniform_values",
+        f"    min: {professor_lr_min}",
+        f"    max: {professor_lr_max}",
+        "  baseline-alpha:",
+        "    distribution: uniform",
+        f"    min: {baseline_alpha_min}",
+        f"    max: {baseline_alpha_max}",
+        "  entropy-coeff:",
+        "    distribution: uniform",
+        f"    min: {entropy_coeff_min}",
+        f"    max: {entropy_coeff_max}",
+        "command:",
+        "  - ${env}",
+        "  - ${interpreter}",
+        "  - ${program}",
+        "  - \"--use-wandb\"",
+        "  - \"--optimizer-type\"",
+        "  - \"adamw\"",
+        "  - \"--dataset-name\"",
+        "  - \"LA-CDIP\"",
+        "  - \"--model-name\"",
+        "  - \"InternVL3-2B\"",
+        "  - \"--pairs-csv\"",
+        f"  - \"{pairs_csv}\"",
+        "  - \"--base-image-dir\"",
+        f"  - \"{base_image_dir}\"",
+        "  - \"--loss-type\"",
+        f"  - \"{loss_type}\"",
+        "  - \"--student-lr\"",
+        f"  - \"{student_lr}\"",
+        "  - \"--scheduler-type\"",
+        f"  - \"{scheduler_type}\"",
+        "  - \"--patience\"",
+        f"  - \"{patience}\"",
+        "  - \"--epochs\"",
+        f"  - \"{epochs}\"",
+        "  - \"--max-steps-per-epoch\"",
+        f"  - \"{max_steps_per_epoch}\"",
+        "  - \"--weight-decay\"",
+        f"  - \"{weight_decay}\"",
+        "  - \"--num-workers\"",
+        f"  - \"{num_workers}\"",
+        "  - \"--student-batch-size\"",
+        f"  - \"{student_batch_size}\"",
+        "  - \"--gradient-accumulation-steps\"",
+        f"  - \"{gradient_accumulation_steps}\"",
+        "  - \"--candidate-pool-size\"",
+        f"  - \"{candidate_pool_size}\"",
+        "  - \"--projection-output-dim\"",
+        "  - \"1536\"",
+        "  - \"--max-num-image-tokens\"",
+        f"  - \"{max_num_image_tokens}\"",
+        "  - \"--seed\"",
+        f"  - \"{seed}\"",
+        "  - \"--init-from-checkpoint\"",
+        f"  - \"{checkpoint_path}\"",
+        *val_arg,
+        "  - ${args}",
+    ]
+
+    with open(yaml_path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(content) + "\n")
+
+
+def _run_bayes_sweep_for_loss(
+    *,
+    workspace_root: str,
+    run_env: Dict[str, str],
+    wandb_project: str,
+    wandb_entity: str,
+    runs_per_loss: int,
+    dry_run: bool,
+    script_path: str,
+    pairs_csv: str,
+    base_image_dir: str,
+    checkpoint_root: str,
+    loss_type: str,
+    sprint1_run: Sprint1BestRun,
+    epochs: int,
+    max_steps_per_epoch: int,
+    candidate_pool_size: int,
+    student_lr: float,
+    scheduler_type: str,
+    patience: int,
+    student_batch_size: int,
+    gradient_accumulation_steps: int,
+    val_subset_size: int,
+    val_samples_per_class: int,
+    weight_decay: float,
+    num_workers: int,
+    max_num_image_tokens: int,
+    professor_lr_min: float,
+    professor_lr_max: float,
+    baseline_alpha_min: float,
+    baseline_alpha_max: float,
+    entropy_coeff_min: float,
+    entropy_coeff_max: float,
+    seed: int,
+) -> None:
+    init_ckpt = _find_checkpoint_for_run(checkpoint_root, sprint1_run.run_name)
+    if not init_ckpt:
+        raise FileNotFoundError(
+            f"Checkpoint base do Sprint 1 não encontrado para run '{sprint1_run.run_name}' em {checkpoint_root}"
+        )
+
+    run_env = run_env.copy()
+    run_env["WANDB_RUN_GROUP"] = f"sprint2-{loss_type}"
+
+    with tempfile.TemporaryDirectory(prefix=f"sprint2_bayes_{loss_type}_", dir=workspace_root) as tmp_dir:
+        yaml_path = os.path.join(tmp_dir, f"sweep_{loss_type}.yaml")
+        _write_bayes_sweep_yaml(
+            yaml_path=yaml_path,
+            script_path=script_path,
+            pairs_csv=pairs_csv,
+            base_image_dir=base_image_dir,
+            checkpoint_path=init_ckpt,
+            loss_type=loss_type,
+            epochs=epochs,
+            max_steps_per_epoch=max_steps_per_epoch,
+            candidate_pool_size=candidate_pool_size,
+            student_lr=student_lr,
+            scheduler_type=scheduler_type,
+            patience=patience,
+            student_batch_size=student_batch_size,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            val_subset_size=val_subset_size,
+            val_samples_per_class=val_samples_per_class,
+            weight_decay=weight_decay,
+            num_workers=num_workers,
+            max_num_image_tokens=max_num_image_tokens,
+            professor_lr_min=professor_lr_min,
+            professor_lr_max=professor_lr_max,
+            baseline_alpha_min=baseline_alpha_min,
+            baseline_alpha_max=baseline_alpha_max,
+            entropy_coeff_min=entropy_coeff_min,
+            entropy_coeff_max=entropy_coeff_max,
+            seed=seed,
+        )
+
+        sweep_cmd = ["wandb", "sweep", yaml_path, "--project", wandb_project, "--entity", wandb_entity]
+        print("SWEEP CMD:", " ".join(sweep_cmd))
+        if dry_run:
+            return
+
+        sweep_proc = subprocess.run(
+            sweep_cmd,
+            check=True,
+            text=True,
+            capture_output=True,
+            env=run_env,
+            cwd=workspace_root,
+        )
+        sweep_output = (sweep_proc.stdout or "") + "\n" + (sweep_proc.stderr or "")
+        match = re.search(r"wandb agent\s+([^\s]+)", sweep_output)
+        if not match:
+            raise RuntimeError(f"Não foi possível extrair o SWEEP_ID do output do wandb sweep.\n{sweep_output}")
+        sweep_id = match.group(1).strip()
+
+        agent_cmd = ["wandb", "agent", sweep_id, "--count", str(runs_per_loss)]
+        print("AGENT CMD:", " ".join(agent_cmd))
+        subprocess.run(agent_cmd, check=True, env=run_env, cwd=workspace_root)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Sprint 2 LA-CDIP: teacher sweep a partir dos melhores checkpoints do Sprint 1"
@@ -822,24 +1124,25 @@ def main() -> None:
     parser.add_argument("--pairs-csv", default="data/LA-CDIP/train_pairs.csv")
     parser.add_argument("--base-image-dir", default="/mnt/data/la-cdip/data")
     parser.add_argument("--wandb-project", default="CaVL-Doc_LA-CDIP_Sprint2_TeacherSweep")
+    parser.add_argument("--wandb-entity", default="jpcosta1990-university-of-brasilia")
 
     parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--max-steps-per-epoch", type=int, default=140)
+    parser.add_argument("--max-steps-per-epoch", type=int, default=50)
     parser.add_argument("--student-lr", type=float, default=1e-5)
     parser.add_argument("--scheduler-type", default="plateau", choices=["step", "cosine", "plateau", "constant"])
     parser.add_argument("--patience", type=int, default=3)
-    parser.add_argument("--student-batch-size", type=int, default=8)
-    parser.add_argument("--gradient-accumulation-steps", type=int, default=2)
+    parser.add_argument("--student-batch-size", type=int, default=6)
+    parser.add_argument("--gradient-accumulation-steps", type=int, default=3)
     parser.add_argument("--val-subset-size", type=int, default=1036)
     parser.add_argument("--val-samples-per-class", type=int, default=1000000)
     parser.add_argument("--weight-decay", type=float, default=0.05)
-    parser.add_argument("--num-workers", type=int, default=2)
+    parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--max-num-image-tokens", type=int, default=12)
 
     parser.add_argument("--professor-lrs", default="5e-5,1e-4")
-    parser.add_argument("--candidate-pool-sizes", default="32,64")
+    parser.add_argument("--candidate-pool-sizes", default="8")
     parser.add_argument("--baseline-alphas", default="0.01,0.05")
-    parser.add_argument("--entropy-coeffs", default="0.01")
+    parser.add_argument("--entropy-coeffs", default="0.005,0.02")
     parser.add_argument("--seeds", default="42")
     parser.add_argument(
         "--max-jobs-per-loss",
@@ -847,6 +1150,8 @@ def main() -> None:
         default=2,
         help="Limite de combinações por loss (0 = sem limite)",
     )
+    parser.add_argument("--bayes-runs-per-loss", type=int, default=5)
+    parser.add_argument("--run-baseline-off", action=argparse.BooleanOptionalAction, default=True)
 
     parser.add_argument("--sleep", type=float, default=3.0)
     parser.add_argument("--num-shards", type=int, default=1)
@@ -904,23 +1209,23 @@ def main() -> None:
             for loss in DEFAULT_FALLBACK_LOSSES
         }
 
-    professor_lrs = _parse_csv_float_list(args.professor_lrs)
+    seeds = _parse_csv_int_list(args.seeds)
+    seed = seeds[0] if seeds else 42
     candidate_pool_sizes = _parse_csv_int_list(args.candidate_pool_sizes)
+    candidate_pool_size = candidate_pool_sizes[0] if candidate_pool_sizes else 8
+    loss_items = list(selected.items())
+    shard_loss_items = [item for idx, item in enumerate(loss_items) if (idx % args.num_shards) == args.shard_index]
+
+    professor_lrs = _parse_csv_float_list(args.professor_lrs)
     baseline_alphas = _parse_csv_float_list(args.baseline_alphas)
     entropy_coeffs = _parse_csv_float_list(args.entropy_coeffs)
-    seeds = _parse_csv_int_list(args.seeds)
 
-    jobs = _build_jobs(
-        selected=selected,
-        professor_lrs=professor_lrs,
-        candidate_pool_sizes=candidate_pool_sizes,
-        baseline_alphas=baseline_alphas,
-        entropy_coeffs=entropy_coeffs,
-        seeds=seeds,
-        max_jobs_per_loss=args.max_jobs_per_loss,
-    )
-
-    shard_jobs = [job for idx, job in enumerate(jobs) if (idx % args.num_shards) == args.shard_index]
+    professor_lr_min = min(professor_lrs) if professor_lrs else 5e-5
+    professor_lr_max = max(professor_lrs) if professor_lrs else 1e-4
+    baseline_alpha_min = min(baseline_alphas) if baseline_alphas else 0.01
+    baseline_alpha_max = max(baseline_alphas) if baseline_alphas else 0.05
+    entropy_coeff_min = min(entropy_coeffs) if entropy_coeffs else 0.005
+    entropy_coeff_max = max(entropy_coeffs) if entropy_coeffs else 0.02
 
     run_env = setup_runtime_env(args.runtime_root)
     selected_gpu = setup_gpu_env(
@@ -960,20 +1265,29 @@ def main() -> None:
         )
 
     print(
-        f"\nJobs totais: {len(jobs)} | shard {args.shard_index}/{args.num_shards - 1}: {len(shard_jobs)} jobs"
+        f"\nLosses totais: {len(loss_items)} | shard {args.shard_index}/{args.num_shards - 1}: {len(shard_loss_items)} losses"
     )
 
-    for job in shard_jobs:
-        cmd = build_command(
+    for loss_type, sprint1_run in shard_loss_items:
+        print("\n" + "-" * 100)
+        print(f"Loss={loss_type} | Sprint1 run_id={sprint1_run.run_id}")
+
+        _run_bayes_sweep_for_loss(
+            workspace_root=workspace_root,
+            run_env=run_env,
+            wandb_project=args.wandb_project,
+            wandb_entity=args.wandb_entity,
+            runs_per_loss=args.bayes_runs_per_loss,
+            dry_run=args.dry_run,
             script_path=script_path,
             pairs_csv=pairs_csv_path,
             base_image_dir=base_image_dir_path,
-            wandb_project=args.wandb_project,
-            run_suffix=args.run_suffix,
             checkpoint_root=checkpoint_root,
-            auto_resume=args.auto_resume,
+            loss_type=loss_type,
+            sprint1_run=sprint1_run,
             epochs=args.epochs,
             max_steps_per_epoch=args.max_steps_per_epoch,
+            candidate_pool_size=candidate_pool_size,
             student_lr=args.student_lr,
             scheduler_type=args.scheduler_type,
             patience=args.patience,
@@ -984,28 +1298,44 @@ def main() -> None:
             weight_decay=args.weight_decay,
             num_workers=args.num_workers,
             max_num_image_tokens=args.max_num_image_tokens,
-            init_load_professor=args.init_load_professor,
-            job=job,
+            professor_lr_min=professor_lr_min,
+            professor_lr_max=professor_lr_max,
+            baseline_alpha_min=baseline_alpha_min,
+            baseline_alpha_max=baseline_alpha_max,
+            entropy_coeff_min=entropy_coeff_min,
+            entropy_coeff_max=entropy_coeff_max,
+            seed=seed,
         )
 
-        print("\n" + "-" * 100)
-        print(
-            "Loss={loss} | Seed={seed} | prof_lr={plr:.2e} | pool={pool} | baseline_alpha={ba:.4f} | entropy={ent:.4f}".format(
-                loss=job["loss_type"],
-                seed=job["seed"],
-                plr=job["professor_lr"],
-                pool=job["candidate_pool_size"],
-                ba=job["baseline_alpha"],
-                ent=job["entropy_coeff"],
+        if args.run_baseline_off:
+            baseline_cmd = build_baseline_off_command(
+                script_path=script_path,
+                pairs_csv=pairs_csv_path,
+                base_image_dir=base_image_dir_path,
+                wandb_project=args.wandb_project,
+                run_suffix=args.run_suffix,
+                checkpoint_root=checkpoint_root,
+                epochs=args.epochs,
+                max_steps_per_epoch=args.max_steps_per_epoch,
+                candidate_pool_size=candidate_pool_size,
+                student_lr=args.student_lr,
+                scheduler_type=args.scheduler_type,
+                patience=args.patience,
+                student_batch_size=args.student_batch_size,
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+                val_subset_size=args.val_subset_size,
+                val_samples_per_class=args.val_samples_per_class,
+                weight_decay=args.weight_decay,
+                num_workers=args.num_workers,
+                max_num_image_tokens=args.max_num_image_tokens,
+                loss_type=loss_type,
+                seed=seed,
+                sprint1_run=sprint1_run,
             )
-        )
-        print("CMD:", " ".join(cmd))
-
-        if args.dry_run:
-            continue
-
-        subprocess.run(cmd, check=True, env=run_env)
-        time.sleep(args.sleep)
+            print("BASELINE CMD:", " ".join(baseline_cmd))
+            if not args.dry_run:
+                subprocess.run(baseline_cmd, check=True, env=run_env, cwd=workspace_root)
+                time.sleep(args.sleep)
 
 
 if __name__ == "__main__":

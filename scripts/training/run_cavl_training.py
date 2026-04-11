@@ -133,6 +133,18 @@ def main(args):
                 raise e
 
         print(f"🚀 WandB Inicializado: Run {wandb.run.name} (ID: {wandb.run.id})")
+
+        # Garante que o dashboard/sweep enxergue as métricas certas, como nos
+        # outros fluxos de pesquisa do projeto.
+        try:
+            wandb.define_metric("step")
+            wandb.define_metric("epoch")
+            wandb.define_metric("train/*", step_metric="step")
+            wandb.define_metric("val/*", step_metric="epoch")
+            wandb.define_metric("val/eer", summary="min")
+            wandb.define_metric("val/best_eer", summary="min")
+        except Exception as metric_exc:
+            print(f"⚠️ Não foi possível registrar métricas do W&B: {metric_exc}")
         
         if wandb.run:
             # Primeiro aplica parâmetros vindos do wandb.config (sweeps),

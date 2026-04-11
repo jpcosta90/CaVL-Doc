@@ -112,7 +112,7 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_b
     # Lista para Batch Recall (New)
     batch_recalls = []
 
-    val_chunk_size = int(os.getenv("CAVL_VAL_CHUNK_SIZE", "12"))
+    val_chunk_size = int(os.getenv("CAVL_VAL_CHUNK_SIZE", "4"))
     val_chunk_size = max(1, val_chunk_size)
 
     with torch.no_grad():
@@ -575,9 +575,9 @@ def run_rl_siamese_loop(
         balanced_val_indices = random.sample(current_val_indices, n_samples)
         val_dataset_balanced = Subset(val_source_ds, balanced_val_indices)
 
-    # Validation Batch Size: Aligned with Training Scale (2x to be safe with memory but faster)
-    # Uses num_workers=0 to avoid Shared Memory Bus Errors
-    val_bs = candidate_pool_size * 2
+    # Validation Batch Size: conservador para evitar OOM com InternVL e batches grandes.
+    # Mantém a validação estável mesmo quando o treino usa professor ativo/pool alto.
+    val_bs = max(4, min(candidate_pool_size, 8))
     val_loader = DataLoader(val_dataset_balanced, batch_size=val_bs, shuffle=False, num_workers=0, collate_fn=rl_full_collate_fn)
     
     print(f"Dataset Sizes: Train={len(train_dataset)} | Val (Balanced Subset)={len(val_dataset_balanced)}")

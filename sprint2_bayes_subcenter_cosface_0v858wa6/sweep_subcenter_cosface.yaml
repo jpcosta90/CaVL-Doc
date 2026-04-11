@@ -1,0 +1,66 @@
+program: scripts/training/run_cavl_training.py
+method: bayes
+metric:
+  name: val/eer
+  goal: minimize
+parameters:
+  professor-lr:
+    distribution: log_uniform_values
+    min: 5e-05
+    max: 0.0001
+  baseline-alpha:
+    distribution: uniform
+    min: 0.01
+    max: 0.05
+  entropy-coeff:
+    distribution: uniform
+    min: 0.005
+    max: 0.02
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - "--use-wandb"
+  - "--optimizer-type"
+  - "adamw"
+  - "--dataset-name"
+  - "LA-CDIP"
+  - "--model-name"
+  - "InternVL3-2B"
+  - "--pairs-csv"
+  - "/home/joaopaulo/Projects/CaVL-Doc/data/LA-CDIP/train_pairs.csv"
+  - "--base-image-dir"
+  - "/mnt/data/la-cdip/data"
+  - "--loss-type"
+  - "subcenter_cosface"
+  - "--student-lr"
+  - "1e-05"
+  - "--scheduler-type"
+  - "plateau"
+  - "--patience"
+  - "3"
+  - "--epochs"
+  - "3"
+  - "--max-steps-per-epoch"
+  - "50"
+  - "--weight-decay"
+  - "0.05"
+  - "--num-workers"
+  - "0"
+  - "--student-batch-size"
+  - "6"
+  - "--gradient-accumulation-steps"
+  - "3"
+  - "--candidate-pool-size"
+  - "8"
+  - "--projection-output-dim"
+  - "1536"
+  - "--max-num-image-tokens"
+  - "12"
+  - "--seed"
+  - "42"
+  - "--init-from-checkpoint"
+  - "/mnt/large/checkpoints/Sprint1_subcenter_cosface_k3_E10_SPE140_prof_last5_off_seed42_main/best_siam.pt"
+  - "--val-subset-size"
+  - "1036"
+  - ${args}
