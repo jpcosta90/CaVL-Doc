@@ -91,6 +91,9 @@ ipython_config.py
 docs/paper/
 docs_backup/
 cavl_doc_overleaf.zip
+
+# Local backup area kept inside the repo but ignored by Git
+.backup/
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
 #   intended to run in multiple environments; otherwise, check them in:

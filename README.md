@@ -36,14 +36,36 @@ The training progresses through three distinct optimization phases:
 
 ---
 
-## 🚀 Research & Optimization Pipeline
+## 🚀 Research Construction Flow (Documented Procedure)
 
-The project follows a rigorous, two-stage optimization process for model hyperparameter discovery.
+The repository now follows the research procedure that was actually executed in this project, in chronological order.
 
-| Stage | Name | Description | Tools |
+| Phase | What was done | Main artifacts | Current status |
 | :--- | :--- | :--- | :--- |
-| **Stage 1** | **Coarse Sweep** | Broad exploration of hyperparameters (LR, Margin, Scale) using WandB Bayesian search. | `scripts/optimization/coarse_search/` |
-| **Stage 2** | **Fine Search** | Automated analysis of Stage 1 results, pruning inert parameters for high-fidelity refinement. | `scripts/optimization/fine_search/` |
+| **1** | Experimental protocol definition (datasets, splits, metrics, seeds) | Split generation + protocol docs | ✅ Done |
+| **2** | Base training/evaluation pipeline stabilization | Core training scripts + checkpoints + W&B tracking | ✅ Done |
+| **3** | **LA-CDIP Coarse Sweep** (broad hyperparameter exploration) | `analysis/sweep_report/dataframes/lacdip_coarse_all.csv` | ✅ Done |
+| **3B** | **RVL-CDIP Sweep cycle (parallel)** coarse + fine | `analysis/sweep_report/dataframes/rvlcdip_coarse_all.csv`, `analysis/sweep_report/dataframes/rvlcdip_fine_all.csv` | ✅ Done (low conversion to final gains) |
+| **4** | **LA-CDIP Fine Search** (high-fidelity refinement) | `scripts/optimization/coarse_search/configs/lacdip/fine_search/runs_raw.csv` | ✅ Done |
+| **5** | **Sprint 1 (LA-CDIP):** compare best config of each loss | W&B project `CaVL-Doc_LA-CDIP_Sprint1_Top5Validation` | ✅ Done |
+| **6** | **Sprint 2:** small teacher-network sweep on best losses + contrastive | Teacher sweep runs (time-bounded) | ⬜ Planned |
+| **7** | **Sprint 3:** ablation + final LA-CDIP results | `teacher off/on × 5 splits × 2 losses` | ⬜ Planned |
+| **8** | **Sprint 4:** transfer learning to RVL-CDIP + batch-size sweep | `with/without transfer × 5 batch sizes`, 5 epochs | ⬜ Planned |
+| **9** | **Sprint 5:** final zero-shot RVL-CDIP results | `1 final config × 5 splits` | ⬜ Planned |
+| **10** | **Sprint 6:** final write-up and submission closure | Final tables, plots, discussion, conclusion | ⬜ Planned |
+
+### Phase Dependencies (Operational)
+
+1. Coarse Sweep (LA-CDIP)  
+2. Fine Search (LA-CDIP)  
+3. Sprint 1: best-loss comparison (LA-CDIP)  
+4. Sprint 2: teacher sweep (small network, time-bounded)  
+5. Sprint 3: teacher ablation + final LA-CDIP  
+6. Sprint 4: transfer + batch sweep (RVL zero-shot)  
+7. Sprint 5: final RVL splits  
+8. Sprint 6: submission closure
+
+For the detailed timeline (start/end dates and runtime accounting), see `docs/cronograma_fases_pesquisa.md`.
 
 ---
 
@@ -92,13 +114,13 @@ wandb sweep scripts/optimization/coarse_search/sweep_config.yaml
 
 ## 📊 Results & Artifacts
 
-## Results
+Master results and performance benchmarks are tracked in the `results/` directory.
 
-### Performance vs. Parameters (LA-CDIP Dataset)
-
-Master results and performance benchmarks are tracked in the `results/` directory. 
-*   **EER Plots**: Available in `results/plots/`.
-*   **Sweep Analysis**: Automated reports generated in `results/sweeps/`.
+Current evidence sources:
+* **LA-CDIP Sweeps**: coarse/fine artifacts in `analysis/sweep_report/dataframes/`.
+* **Sprint 1 Comparison**: loss-level comparison artifacts in `analysis/sprint1_report/`.
+* **RVL-CDIP Sweeps**: available and fully logged in W&B/local artifacts; useful as negative/diagnostic evidence even when conversion to final gains is limited.
+* **Plots**: available in `results/plots/`.
 
 ---
 
