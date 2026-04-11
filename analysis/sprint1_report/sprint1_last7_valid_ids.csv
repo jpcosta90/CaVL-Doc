@@ -1,0 +1,8 @@
+run_id,run_name,best_eer,created_at
+e73uxpkb,Sprint1_circle_k3_E10_SPE140_prof_last5_on_seed44_main,0.04490178340656498,2026-04-02T23:09:09Z
+r3u9inup,Sprint1_circle_k3_E10_SPE140_prof_last5_on_seed43_main,0.030557633282608125,2026-04-02T19:07:49Z
+hj9znndw,Sprint1_circle_k3_E10_SPE140_prof_last5_on_seed42_main,0.04141920157000466,2026-04-02T07:15:08Z
+dk3x1b7r,Sprint1_contrastive_k3_E10_SPE140_prof_last5_on_seed44_main,0.04490178340656498,2026-04-02T03:13:54Z
+0yn6si6d,Sprint1_contrastive_k3_E10_SPE140_prof_last5_on_seed43_main,0.043099223646539925,2026-04-01T22:12:24Z
+n3bso47h,Sprint1_contrastive_k3_E10_SPE140_prof_last5_on_seed42_main,0.03582218664463153,2026-04-01T18:11:07Z
+1evpkwmc,Sprint1_triplet_k3_E10_SPE140_prof_last5_on_seed44_main,0.034104419746704584,2026-04-01T14:08:51Z
