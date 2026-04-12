@@ -60,22 +60,13 @@ sprints:
     milestone: "Phase 3"
     tasks:
       T-03-01:
-        title: "Executar Coarse Sweep (LA-CDIP)"
-        description: "173 runs de exploração de hiperparâmetros com descoberta de regiões promissoras"
+        title: "Coarse Sweep (Stage 1)"
+        description: "Exploração ampla de hiperparâmetros na LA-CDIP, com triagem inicial das regiões promissoras por loss"
         status: "done"
-        priority: "high"
+        priority: "medium"
         labels: ["phase:3", "topic:sweep", "status:done"]
         research_question: "q1,q2"
         evidence: "lacdip_coarse_all.csv (173 runs)"
-      
-      T-03-02:
-        title: "Executar Coarse Sweep (RVL-CDIP paralelo)"
-        description: "135 runs paralelos no RVL-CDIP com 135.56 h consumidas"
-        status: "done"
-        priority: "medium"
-        labels: ["phase:3", "topic:sweep", "dataset:rvl", "status:done"]
-        research_question: "q3"
-        evidence: "rvlcdip_coarse_all.csv (135 runs, 135.56 h)"
   
   sprint_1_2:
     phase: "3B"
@@ -137,33 +128,21 @@ sprints:
     start_date: "2026-04-13"
     end_date: "2026-04-14"
     duration_days: 2
-    description: "Rodar rede professor pequena nas losses com melhor desempenho + contrastive, partindo de best_siam com ~3 épocas adicionais"
+    description: "Teacher sweep na LA-CDIP com rede pequena, partindo de best_siam e 3 épocas por experimento"
     milestone: "Sprint 2"
     tasks:
       T-06-01:
-        title: "Executar sweep Bayes por loss com baseline OFF"
+        title: "Teacher sweep (rede pequena)"
         description: |
-          Realizar sweep Bayes dos hiperparâmetros do teacher para cada loss finalista.
-          - Usar runs da Sprint 1 como base (best_siam)
-          - 5 trials Bayes + 1 baseline OFF por loss
+          Rodar o sweep Bayes por loss a partir da melhor configuração da Sprint 1.
+          - Base: best_siam da Sprint 1
+          - Baseline OFF incluído
           - 3 épocas por experimento
         status: "in-progress"
         priority: "high"
         labels: ["phase:6", "topic:teacher", "status:doing"]
         research_question: "q1"
         evidence: "W&B + CSV de runs"
-      
-      T-06-02:
-        title: "Consolidar melhor configuração teacher"
-        description: |
-          Analisar resultados do sweep e selecionar a melhor configuração.
-          - Gerar report local Sprint 2
-          - Documentar ganho em EER
-        status: "todo"
-        priority: "high"
-        labels: ["phase:6", "topic:teacher", "status:todo"]
-        research_question: "q1"
-        evidence: "Report local Sprint 2"
   
   sprint_3:
     phase: 7
@@ -171,42 +150,17 @@ sprints:
     start_date: "2026-04-15"
     end_date: "2026-04-29"
     duration_days: 14
-    description: "Rodar ablação com e sem teacher + resultados finais no LA-CDIP"
+    description: "Ablação com/sem teacher na LA-CDIP, com 5 splits e 2 losses, consolidando o resultado final"
     milestone: "Sprint 3"
     tasks:
       T-07-01:
-        title: "Preparar matriz com/sem teacher × 5 splits × 2 losses"
+        title: "Ablação teacher + resultado final LA-CDIP"
         description: |
-          Configurar experimentos de ablação:
-          - com teacher / sem teacher
-          - 5 splits da LA-CDIP
-          - 2 losses (melhor seleção do Fine Search)
-          - Gerar scripts e configurações
-        status: "todo"
-        priority: "high"
-        labels: ["phase:7", "topic:ablation", "status:todo"]
-        research_question: "q1,q2"
-        evidence: "Scripts de ablação"
-      
-      T-07-02:
-        title: "Executar ablação na LA-CDIP"
-        description: |
-          Rodar o experimento de ablação completo.
-          - Matriz 2 × 5 × 2 = 20 configurações
-          - Rastrear em W&B com grupo por split
-        status: "todo"
-        priority: "high"
-        labels: ["phase:7", "topic:ablation", "status:todo"]
-        research_question: "q1,q2"
-        evidence: "W&B runs"
-      
-      T-07-03:
-        title: "Consolidar resultado final LA-CDIP"
-        description: |
-          Gerar tabela final com/sem teacher.
-          - Análise de ganho em EER
-          - Significância estatística por split
-          - Visualizações para artefato
+          Executar a ablação completa e consolidar o resultado final na LA-CDIP.
+          - Matriz com/sem teacher
+          - 5 splits
+          - 2 losses vindas do Fine Search
+          - Tabela final e análise de ganho em EER
         status: "todo"
         priority: "high"
         labels: ["phase:7", "topic:ablation"]
@@ -219,17 +173,17 @@ sprints:
     start_date: "2026-04-30"
     end_date: "2026-05-08"
     duration_days: 9
-    description: "Melhor loss/config, 5 épocas, com/sem transfer × 5 batch sizes (máx. 2h/época)"
+    description: "Transfer learning no RVL zero-shot com sweep de batch sizes e limite operacional por época"
     milestone: "Sprint 4"
     tasks:
       T-08-01:
-        title: "Rodar sweep com/sem transfer × 5 batch sizes"
+        title: "Transfer learning + sweep de batch RVL"
         description: |
-          Sweep de configuração no RVL zero-shot:
-          - Usar melhor loss/config da LA-CDIP
-          - 5 épocas de treinamento
-          - 2 × 5 = 10 configurações
-          - Limite: máx 2h/época
+          Rodar a fase de transfer learning no RVL zero-shot.
+          - Melhor loss/config da LA-CDIP
+          - Com/sem transfer
+          - 5 batch sizes
+          - Máximo de 2h por época
         status: "todo"
         priority: "medium"
         labels: ["phase:8", "topic:rvl", "topic:transfer"]
@@ -242,27 +196,16 @@ sprints:
     start_date: "2026-05-11"
     end_date: "2026-05-14"
     duration_days: 4
-    description: "1 configuração final × 5 splits RVL"
+    description: "Consolidação do resultado final RVL zero-shot com 1 configuração e 5 splits"
     milestone: "Sprint 5"
     tasks:
       T-09-01:
-        title: "Selecionar melhor configuração RVL"
+        title: "Resultado final RVL zero-shot"
         description: |
-          Analisar resultados do sweep.
-          - EER zero-shot
-          - Trade-off custo × desempenho
-        status: "todo"
-        priority: "high"
-        labels: ["phase:9", "topic:rvl", "status:todo"]
-        research_question: "q3,q4"
-        evidence: "Análise do sweep"
-      
-      T-09-02:
-        title: "Rodar config final nos 5 splits RVL"
-        description: |
-          Executar configuração final selecionada.
-          - 5 splits do protocolo RVL-CDIP zero-shot
-          - Rastrear em W&B
+          Selecionar e executar a configuração final do RVL zero-shot.
+          - 1 configuração final
+          - 5 splits do protocolo RVL-CDIP
+          - Consolidação de EER e trade-off custo × desempenho
         status: "todo"
         priority: "high"
         labels: ["phase:9", "topic:rvl", "status:todo"]
@@ -275,43 +218,16 @@ sprints:
     start_date: "2026-05-15"
     end_date: "2026-05-29"
     duration_days: 15
-    description: "Consolidar tabelas, figuras e escrita de resultados/discussão/conclusão"
+    description: "Fechamento da submissão com tabelas, figuras e escrita final"
     milestone: "Sprint 6"
     tasks:
       T-10-01:
-        title: "Consolidar tabelas e figuras finais"
+        title: "Fechamento e submissão final"
         description: |
-          Gerar artefatos de publicação:
-          - Tabela resumo LA-CDIP com/sem teacher
-          - Tabela resumo RVL zero-shot
-          - Gráficos comparativos
-          - Figuras de ablação
-        status: "todo"
-        priority: "high"
-        labels: ["phase:10", "topic:closing", "status:todo"]
-        research_question: "q1,q2,q3,q4"
-        evidence: "Arquivos de figura"
-      
-      T-10-02:
-        title: "Escrever resultados e discussão"
-        description: |
-          Consolidar texto do artigo:
-          - Seção de Resultados
-          - Seção de Discussão
-          - Interpretação dos achados
-        status: "todo"
-        priority: "high"
-        labels: ["phase:10", "topic:closing", "status:todo"]
-        research_question: "q1,q2,q3,q4"
-        evidence: "Draft do paper"
-      
-      T-10-03:
-        title: "Preparar submissão final"
-        description: |
-          Verificação final e formatação:
-          - Conferência completa de tabelas
-          - Conclusão atualizada
-          - Versão final para submissão
+          Consolidar os artefatos finais e preparar a submissão.
+          - Tabelas e figuras finais
+          - Resultados, discussão e conclusão
+          - Conferência e formatação final
         status: "todo"
         priority: "high"
         labels: ["phase:10", "topic:closing", "status:todo"]

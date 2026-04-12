@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -123,6 +124,37 @@ def setup_gpu_env(
     selected_gpu, free_mib = selected
     env["CUDA_VISIBLE_DEVICES"] = str(selected_gpu)
     return selected_gpu, free_mib
+
+
+def _run_interruptible(cmd: List[str], env: Dict[str, str], cwd: Optional[str] = None) -> int:
+    """Run command in its own process group so Ctrl+C propagates to child processes."""
+    proc = subprocess.Popen(
+        cmd,
+        env=env,
+        cwd=cwd,
+        preexec_fn=os.setsid,
+    )
+    try:
+        return proc.wait()
+    except KeyboardInterrupt:
+        print("\n⚠️ Interrupção detectada. Encerrando subprocessos...", flush=True)
+        try:
+            os.killpg(proc.pid, signal.SIGINT)
+            proc.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+                proc.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait(timeout=5)
+        raise
+
+
+def _run_interruptible_check(cmd: List[str], env: Dict[str, str], cwd: Optional[str] = None) -> None:
+    rc = _run_interruptible(cmd=cmd, env=env, cwd=cwd)
+    if rc != 0:
+        raise subprocess.CalledProcessError(rc, cmd)
 
 
 def _to_float(value: str, default: float) -> float:
@@ -1036,7 +1068,7 @@ def _run_bayes_sweep_for_loss(
 
         agent_cmd = ["wandb", "agent", sweep_id, "--count", str(runs_per_loss)]
         print("AGENT CMD:", " ".join(agent_cmd))
-        subprocess.run(agent_cmd, check=True, env=run_env, cwd=workspace_root)
+        _run_interruptible_check(agent_cmd, env=run_env, cwd=workspace_root)
 
 
 def main() -> None:
@@ -1334,7 +1366,7 @@ def main() -> None:
             )
             print("BASELINE CMD:", " ".join(baseline_cmd))
             if not args.dry_run:
-                subprocess.run(baseline_cmd, check=True, env=run_env, cwd=workspace_root)
+                _run_interruptible_check(baseline_cmd, env=run_env, cwd=workspace_root)
                 time.sleep(args.sleep)
 
 
