@@ -645,7 +645,8 @@ def run_rl_siamese_loop(
             os.makedirs(output_dir, exist_ok=True)
             torch.save(ckpt, os.path.join(output_dir, "best_siam.pt"))
             print("Saved best_siam.pt (Recovered)")
-            if use_wandb and wandb: wandb.log({"val/best_eer": best_val_eer})
+            if use_wandb and wandb:
+                wandb.log({"val/best_eer": best_val_eer, "epoch": start_epoch + 1})
         
         # --- SAVE RECOVERED STATE ---
         # Salva o checkpoint atualizado para evitar loop infinito se houver crash em seguida
@@ -928,7 +929,8 @@ def run_rl_siamese_loop(
             torch.save(ckpt, os.path.join(output_dir, "best_siam.pt"))
             print("Saved best_siam.pt")
             
-            if use_wandb and wandb: wandb.log({"val/best_eer": best_val_eer})
+            if use_wandb and wandb:
+                wandb.log({"val/best_eer": best_val_eer, "epoch": epoch + 1})
         else:
             no_improve += 1
         

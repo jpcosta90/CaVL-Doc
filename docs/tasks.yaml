@@ -132,12 +132,13 @@ sprints:
     milestone: "Sprint 2"
     tasks:
       T-06-01:
-        title: "Teacher sweep (rede pequena)"
+        title: "Teacher sweep (rede pequena) com seleção global"
         description: |
-          Rodar o sweep Bayes por loss a partir da melhor configuração da Sprint 1.
-          - Base: best_siam da Sprint 1
-          - Baseline OFF incluído
-          - 3 épocas por experimento
+          Executar busca Bayesiana dos hiperparâmetros do professor por loss, partindo dos melhores checkpoints da Sprint 1.
+          - Inicialização por `best_siam` da Sprint 1
+          - Comparação com baseline OFF
+          - 3 épocas por experimento para triagem rápida
+          - Consolidação final em uma configuração única de professor para seguir para ablação
         status: "in-progress"
         priority: "high"
         labels: ["phase:6", "topic:teacher", "status:doing"]
@@ -154,13 +155,13 @@ sprints:
     milestone: "Sprint 3"
     tasks:
       T-07-01:
-        title: "Ablação teacher + resultado final LA-CDIP"
+        title: "Ablação teacher + consolidação final LA-CDIP"
         description: |
-          Executar a ablação completa e consolidar o resultado final na LA-CDIP.
+          Executar a ablação controlada para medir o impacto do professor no LA-CDIP e fechar o resultado final do dataset.
           - Matriz com/sem teacher
-          - 5 splits
-          - 2 losses vindas do Fine Search
-          - Tabela final e análise de ganho em EER
+          - 5 splits do protocolo
+          - 2 losses finalistas
+          - Tabela final com EER, estabilidade e ganho relativo
         status: "todo"
         priority: "high"
         labels: ["phase:7", "topic:ablation"]
@@ -177,13 +178,13 @@ sprints:
     milestone: "Sprint 4"
     tasks:
       T-08-01:
-        title: "Transfer learning + sweep de batch RVL"
+        title: "Transfer learning + sweep de batch no RVL zero-shot"
         description: |
-          Rodar a fase de transfer learning no RVL zero-shot.
-          - Melhor loss/config da LA-CDIP
-          - Com/sem transfer
-          - 5 batch sizes
-          - Máximo de 2h por época
+          Avaliar transferência do melhor modelo LA-CDIP para RVL-CDIP em regime zero-shot.
+          - Melhor loss/configuração herdada da LA-CDIP
+          - Comparação com e sem transfer
+          - Sweep com 5 batch sizes
+          - Restrição operacional de até 2h por época
         status: "todo"
         priority: "medium"
         labels: ["phase:8", "topic:rvl", "topic:transfer"]
@@ -202,9 +203,9 @@ sprints:
       T-09-01:
         title: "Resultado final RVL zero-shot"
         description: |
-          Selecionar e executar a configuração final do RVL zero-shot.
-          - 1 configuração final
-          - 5 splits do protocolo RVL-CDIP
+          Selecionar uma única configuração final para RVL zero-shot e consolidar a evidência experimental.
+          - 1 configuração final escolhida por desempenho + robustez
+          - Execução nos 5 splits do protocolo RVL-CDIP
           - Consolidação de EER e trade-off custo × desempenho
         status: "todo"
         priority: "high"
@@ -216,20 +217,129 @@ sprints:
     phase: 10
     title: "Sprint 6 — Fechamento e Submissão (Fase 10)"
     start_date: "2026-05-15"
-    end_date: "2026-05-29"
-    duration_days: 15
-    description: "Fechamento da submissão com tabelas, figuras e escrita final"
+    end_date: "2026-06-12"
+    duration_days: 29
+    description: "Fechamento do artigo, preparação para seminário (22/05) e submissão antes da qualificação (15/06)"
     milestone: "Sprint 6"
     tasks:
       T-10-01:
-        title: "Fechamento e submissão final"
+        title: "Fechamento do paper + submissão pré-qualificação"
         description: |
-          Consolidar os artefatos finais e preparar a submissão.
-          - Tabelas e figuras finais
-          - Resultados, discussão e conclusão
-          - Conferência e formatação final
+          Consolidar os artefatos finais do paper e submeter antes da qualificação.
+          - Finalizar tabelas, figuras e narrativa experimental
+          - Submissão do artigo até 12/06 (marco pré-qualificação)
         status: "todo"
         priority: "high"
         labels: ["phase:10", "topic:closing", "status:todo"]
         research_question: "q1,q2,q3,q4"
         evidence: "Paper final"
+
+  sprint_6a:
+    phase: "10A"
+    title: "Sprint 6A — Preparação do Seminário"
+    start_date: "2026-05-15"
+    end_date: "2026-05-21"
+    duration_days: 7
+    description: "Confecção da apresentação do seminário na semana anterior à apresentação oficial"
+    milestone: "Sprint 6A"
+    tasks:
+      T-10A-01:
+        title: "Preparar apresentação do seminário (22/05)"
+        description: |
+          Produzir e validar os slides do seminário com foco em contribuição, método, resultados e próximos passos.
+          - Estrutura narrativa da apresentação
+          - Figuras e tabelas principais
+          - Ensaio e ajuste de tempo
+        status: "todo"
+        priority: "high"
+        labels: ["phase:10a", "topic:seminar", "status:todo"]
+        research_question: "q1,q2,q3,q4"
+        evidence: "Slides do seminário"
+
+  sprint_6b:
+    phase: "10B"
+    title: "Sprint 6B — Monografia para Qualificação"
+    start_date: "2026-04-20"
+    end_date: "2026-06-15"
+    duration_days: 57
+    description: "Redação progressiva da monografia de qualificação iniciando na semana de 20/04"
+    milestone: "Sprint 6B"
+    tasks:
+      T-10B-01:
+        title: "Confeccionar monografia para qualificação"
+        description: |
+          Desenvolver o texto da monografia de qualificação em paralelo às fases experimentais finais.
+          - Redação contínua de método, resultados e discussão
+          - Integração dos resultados mais recentes
+          - Revisão final para defesa em 15/06
+        status: "todo"
+        priority: "high"
+        labels: ["phase:10b", "topic:qualification", "status:todo"]
+        research_question: "q1,q2,q3,q4"
+        evidence: "Versão final da monografia"
+
+  sprint_7:
+    phase: 11
+    title: "Sprint 7 — Otimização de Prompt para Features Visuais (Fase 11)"
+    start_date: "2026-06-16"
+    end_date: "2026-06-30"
+    duration_days: 15
+    description: "Otimização do prompt multimodal para extrair embeddings visuais mais discriminativos"
+    milestone: "Sprint 7"
+    tasks:
+      T-11-01:
+        title: "Otimizar prompt de extração de features visuais"
+        description: |
+          Refinar prompts e instruções de entrada para melhorar a qualidade das representações visuais no backbone multimodal.
+          - Ablação de templates de prompt
+          - Medição de impacto em EER/R@1 e estabilidade
+          - Definição de prompt padrão para próximos experimentos
+        status: "todo"
+        priority: "high"
+        labels: ["phase:11", "topic:prompt", "status:todo"]
+        research_question: "q1,q4"
+        evidence: "Relatório de ablação de prompts"
+
+  sprint_8:
+    phase: 12
+    title: "Sprint 8 — Sistema Autônomo com Feedback do Usuário (Fase 12)"
+    start_date: "2026-07-01"
+    end_date: "2026-08-15"
+    duration_days: 46
+    description: "Desenvolvimento de ciclo de ajuste automático guiado por feedback humano"
+    milestone: "Sprint 8"
+    tasks:
+      T-12-01:
+        title: "Implementar sistema autônomo orientado por feedback"
+        description: |
+          Desenvolver um ciclo de melhoria contínua em que o sistema incorpora feedback do usuário para refinar decisões.
+          - Coleta e modelagem de sinais de feedback
+          - Estratégia de atualização/ajuste do professor
+          - Avaliação de ganho de desempenho ao longo de iterações
+        status: "todo"
+        priority: "medium"
+        labels: ["phase:12", "topic:autonomous", "status:todo"]
+        research_question: "q1,q4"
+        evidence: "Protótipo com loop de feedback"
+
+  sprint_9:
+    phase: 13
+    title: "Sprint 9 — Revisão da Rede para Novas Tarefas de Document Understanding (Fase 13)"
+    start_date: "2026-08-16"
+    end_date: "2026-09-30"
+    duration_days: 46
+    description: "Exploração de adaptação da arquitetura para tarefas além de verificação de pares"
+    milestone: "Sprint 9"
+    tasks:
+      T-13-01:
+        title: "Explorar generalização da rede para outras tarefas"
+        description: |
+          Revisar componentes da arquitetura e validar transferibilidade para tarefas complementares de document understanding.
+          - Seleção de tarefas-alvo (ex.: classificação/recuperação)
+          - Ajustes mínimos de arquitetura e protocolo
+          - Relatório de viabilidade técnica e ganhos esperados
+        status: "todo"
+        priority: "medium"
+        labels: ["phase:13", "topic:generalization", "status:todo"]
+        research_question: "q3,q4"
+        evidence: "Relatório de viabilidade + baseline das novas tarefas"

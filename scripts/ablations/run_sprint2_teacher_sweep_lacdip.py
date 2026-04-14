@@ -1163,7 +1163,7 @@ def main() -> None:
     parser.add_argument("--student-lr", type=float, default=1e-5)
     parser.add_argument("--scheduler-type", default="plateau", choices=["step", "cosine", "plateau", "constant"])
     parser.add_argument("--patience", type=int, default=3)
-    parser.add_argument("--student-batch-size", type=int, default=6)
+    parser.add_argument("--student-batch-size", type=int, default=4)
     parser.add_argument("--gradient-accumulation-steps", type=int, default=3)
     parser.add_argument("--val-subset-size", type=int, default=1036)
     parser.add_argument("--val-samples-per-class", type=int, default=1000000)
@@ -1172,7 +1172,7 @@ def main() -> None:
     parser.add_argument("--max-num-image-tokens", type=int, default=12)
 
     parser.add_argument("--professor-lrs", default="5e-5,1e-4")
-    parser.add_argument("--candidate-pool-sizes", default="8")
+    parser.add_argument("--candidate-pool-sizes", default="4")
     parser.add_argument("--baseline-alphas", default="0.01,0.05")
     parser.add_argument("--entropy-coeffs", default="0.005,0.02")
     parser.add_argument("--seeds", default="42")

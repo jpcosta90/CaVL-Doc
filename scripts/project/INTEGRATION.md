@@ -30,6 +30,78 @@ CaVL-Doc/
 │   └── INTEGRATION.md                    (este arquivo)
 ```
 
+## 🔄 Scripts de Sincronização
+
+### Sincronizar tasks.yaml → GitHub Project
+
+```bash
+cd /home/joaopaulo/Projects/CaVL-Doc
+python scripts/project/sync_tasks_to_github_project.py \
+    --project-number 1 \
+    --repo jpcosta90/CaVL-Doc
+```
+
+**O que faz:**
+- Lê `docs/tasks.yaml`
+- Cria/atualiza issues no repositório
+- Adiciona items ao GitHub Project 1
+- Popula campos: title, description, status, labels, dates, milestone
+
+### Sincronizar GitHub Project → tasks.yaml
+
+```bash
+cd /home/joaopaulo/Projects/CaVL-Doc
+python scripts/project/sync_project_to_tasks.py \
+    --project-number 1 \
+    --repo jpcosta90/CaVL-Doc
+```
+
+**O que faz:**
+- Lê issues atuais do repositório
+- Atualiza `docs/tasks.yaml` com status real do GitHub
+- Sincroniza labels, datas e outras métricas
+
+### ⚡ Script completo de sincronização (bidirecional)
+
+```bash
+#!/bin/bash
+# scripts/project/sync_all.sh
+
+set -e
+
+PROJECT_NUMBER=${1:-1}
+REPO=${2:-"jpcosta90/CaVL-Doc"}
+
+echo "🔄 Sincronizando GitHub Project com tasks.yaml..."
+echo ""
+
+# 1️⃣ Sincronizar tasks.yaml → GitHub Project
+echo "📤 Pushando tasks.yaml para GitHub Project..."
+python scripts/project/sync_tasks_to_github_project.py \
+    --project-number "$PROJECT_NUMBER" \
+    --repo "$REPO"
+
+echo "✅ tasks.yaml → GitHub Project concluído"
+echo ""
+
+# 2️⃣ Sincronizar GitHub Project → tasks.yaml
+echo "📥 Puxando status do GitHub Project..."
+python scripts/project/sync_project_to_tasks.py \
+    --project-number "$PROJECT_NUMBER" \
+    --repo "$REPO"
+
+echo "✅ GitHub Project → tasks.yaml concluído"
+echo ""
+echo "🎉 Sincronização bidirecional completa!"
+```
+
+**Usar:**
+```bash
+bash scripts/project/sync_all.sh 1 jpcosta90/CaVL-Doc
+```
+
+---
+
 ## Fluxo de trabalho recomendado
 
 ### 1️⃣ Setup inicial
@@ -41,9 +113,10 @@ gh project list --owner joaopaulo
 # Editar docs/tasks.yaml se necessário
 # vim docs/tasks.yaml
 
-# Sincronizar
+# Sincronizar (push inicial)
 python scripts/project/sync_tasks_to_github_project.py \
-    --project-number <SEU_NUMERO>
+    --project-number 1 \
+    --repo jpcosta90/CaVL-Doc
 ```
 
 ### 2️⃣ Durante a execução

@@ -221,3 +221,13 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 .venv/
+
+# Cronograma (artefatos de apresentação)
+docs/cronograma_orientador.tex
+docs/cronograma_orientador.pdf
+docs/cronograma_orientador.aux
+docs/cronograma_orientador.log
+docs/cronograma_orientador.out
+docs/cronograma_orientador.fdb_latexmk
+docs/cronograma_orientador.fls
+docs/cronograma_orientador.synctex.gz
