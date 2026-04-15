@@ -426,7 +426,7 @@ def run_rl_siamese_loop(
              # T_max usually epochs
              student_scheduler = optim.lr_scheduler.CosineAnnealingLR(student_optimizer, T_max=epochs)
         elif scheduler_type.lower() == "plateau":
-             student_scheduler = optim.lr_scheduler.ReduceLROnPlateau(student_optimizer, mode='min', factor=lr_reduce_factor, patience=1) # Aggressive reduction
+               student_scheduler = optim.lr_scheduler.ReduceLROnPlateau(student_optimizer, mode='min', factor=lr_reduce_factor, patience=3)
 
 
     # Debug Resume Path
