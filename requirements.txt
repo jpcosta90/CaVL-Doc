@@ -152,7 +152,7 @@ packaging==24.2
 pandas==2.2.3
 pandocfilters==1.5.1
 parso==0.8.4
-peft==0.17.1
+peft==0.19.1
 pexpect==4.9.0
 pillow==10.2.0
 platformdirs==4.3.6
@@ -232,8 +232,7 @@ tomlkit==0.13.2
 torch==2.5.1+cu121
 torchaudio==2.5.1+cu121
 torchvision==0.20.1+cu121
-# Instalar separadamente: pip install flash-attn --no-build-isolation
-flash_attn==2.7.4.post1
+# Instalar separadamente: pip install flash-attn==2.7.4.post1 --no-build-isolation
 tornado==6.4.2
 tqdm==4.67.1
 traitlets==5.14.3

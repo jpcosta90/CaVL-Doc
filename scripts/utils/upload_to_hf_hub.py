@@ -36,11 +36,12 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 def _find_best_checkpoint_local(
     checkpoint_root: Path,
     loss_filter: str = "subcenter_cosface",
-    stage_filter: str = "",
+    stage_filter: str = "Sprint3",
+    phase_filter: str = "fase2_profON",
 ) -> tuple[Path, float, str]:
     """
     Escaneia checkpoint_root procurando por best_siam.pt cujo diretório
-    contenha loss_filter (e stage_filter, se fornecido).
+    contenha loss_filter, stage_filter e phase_filter (se fornecidos).
     Lê o EER diretamente do arquivo — sem depender de W&B.
     """
     candidates = []
@@ -50,6 +51,8 @@ def _find_best_checkpoint_local(
         if loss_filter.lower() not in run_name.lower():
             continue
         if stage_filter and stage_filter not in run_name:
+            continue
+        if phase_filter and phase_filter not in run_name:
             continue
 
         try:
@@ -309,8 +312,10 @@ def parse_args() -> argparse.Namespace:
     # Auto-select W&B
     p.add_argument("--loss-filter", default="subcenter_cosface",
                    help="Filtro de loss (substring do nome do diretório de checkpoint).")
-    p.add_argument("--stage-filter", default="",
-                   help="Filtro adicional de stage (ex: 'fase2_profON'). Vazio = qualquer stage.")
+    p.add_argument("--stage-filter", default="Sprint3",
+                   help="Filtro de stage (substring do nome do run). Default: 'Sprint3'.")
+    p.add_argument("--phase-filter", default="fase2_profON",
+                   help="Filtro de fase (substring do nome do run). Default: 'fase2_profON'.")
     p.add_argument("--checkpoint-root", default=None,
                    help="Raiz dos checkpoints (default: /mnt/large/checkpoints ou ./checkpoints).")
 
@@ -347,11 +352,13 @@ def main() -> None:
             ckpt_root = WORKSPACE_ROOT / "checkpoints"
 
         stage_info = f" / stage='{args.stage_filter}'" if args.stage_filter else ""
-        print(f"Buscando melhor checkpoint '{args.loss_filter}'{stage_info} em {ckpt_root}...")
+        phase_info = f" / phase='{args.phase_filter}'" if args.phase_filter else ""
+        print(f"Buscando melhor checkpoint '{args.loss_filter}'{stage_info}{phase_info} em {ckpt_root}...")
         ckpt_path, eer, run_name = _find_best_checkpoint_local(
             checkpoint_root=ckpt_root,
             loss_filter=args.loss_filter,
             stage_filter=args.stage_filter,
+            phase_filter=args.phase_filter,
         )
         print(f"\n  ✅ Melhor run : {run_name}")
         print(f"     EER        : {eer*100:.2f}%")
