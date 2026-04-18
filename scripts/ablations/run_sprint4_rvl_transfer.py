@@ -238,7 +238,7 @@ def main() -> None:
 
     # Hiperparâmetros de treino
     p.add_argument("--epochs",                     type=int,   default=10)
-    p.add_argument("--max-steps-per-epoch",        type=int,   default=140)
+    p.add_argument("--max-steps-per-epoch",        type=int,   default=200)
     p.add_argument("--student-lr",                 type=float, default=5e-5)
     p.add_argument("--professor-lr",               type=float, default=5e-5)
     p.add_argument("--scheduler-type",             default="plateau",
