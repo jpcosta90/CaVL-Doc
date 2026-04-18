@@ -232,12 +232,12 @@ tomlkit==0.13.2
 torch==2.5.1+cu121
 torchaudio==2.5.1+cu121
 torchvision==0.20.1+cu121
-# Optional acceleration; not required for baseline training/runtime.
-# flash_attn==2.7.4.post1
+# Instalar separadamente: pip install flash-attn --no-build-isolation
+flash_attn==2.7.4.post1
 tornado==6.4.2
 tqdm==4.67.1
 traitlets==5.14.3
-transformers==4.56.1
+transformers==4.57.3
 triton==3.1.0
 typer==0.15.2
 types-python-dateutil==2.9.0.20241206
