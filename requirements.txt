@@ -111,8 +111,7 @@ MarkupSafe==3.0.2
 matplotlib==3.10.8
 matplotlib-inline==0.1.7
 mdurl==0.1.2
-mediapipe==0.10.9; python_version < "3.12"
-mediapipe==0.10.13; python_version >= "3.12"
+# mediapipe — não utilizado no pipeline de treino; instalar separadamente se necessário
 MiniSom==2.3.5
 mistune==3.1.2
 ml_dtypes==0.5.4
