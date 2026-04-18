@@ -514,6 +514,8 @@ def main() -> None:
     )
 
     parser.add_argument("--teacher-epochs", type=int, default=5)
+    parser.add_argument("--teacher-warmup-epochs", type=int, default=1,
+                        help="Épocas de shadow warmup no início do stage ON (professor aprende sem influenciar student).")
     parser.add_argument("--student-only-epochs", type=int, default=10)
     parser.add_argument("--max-steps-per-epoch", type=int, default=140)
 
@@ -625,9 +627,17 @@ def main() -> None:
         print(f"  losses (Sprint 3): {', '.join(losses)}")
         print("=" * 90)
 
+    if args.teacher_warmup_epochs >= args.teacher_epochs:
+        raise ValueError(
+            f"--teacher-warmup-epochs ({args.teacher_warmup_epochs}) deve ser menor que "
+            f"--teacher-epochs ({args.teacher_epochs}), senão o professor nunca é aplicado."
+        )
+    args.professor_warmup_steps_on = args.teacher_warmup_epochs * args.max_steps_per_epoch
+
     print("=" * 90)
     total_epochs = args.teacher_epochs + args.student_only_epochs
-    print(f"Sprint 3 | LA-CDIP | Staged {args.teacher_epochs}+{args.student_only_epochs} | total={total_epochs} | top2+contrastive")
+    active_epochs = args.teacher_epochs - args.teacher_warmup_epochs
+    print(f"Sprint 3 | LA-CDIP | warmup={args.student_only_epochs} + shadow={args.teacher_warmup_epochs} + ativo={active_epochs} | total={total_epochs}")
     print("=" * 90)
     print(f"Splits: {splits}")
     print(f"Losses: {losses}")
@@ -667,12 +677,13 @@ def main() -> None:
             for seed in seeds:
                 suffix = f"_{args.run_suffix}" if args.run_suffix else ""
                 base_name = f"Sprint3_S{split_idx}_{loss_name}_seed{seed}{suffix}"
-                run_off = f"{base_name}_prof_off_E{args.student_only_epochs}"
-                run_on = f"{base_name}_prof_on_E{args.teacher_epochs}"
+                run_warmup = f"{base_name}_fase1_E{args.student_only_epochs}"
+                run_on = f"{base_name}_fase2_profON_E{args.teacher_epochs}"
+                run_off_cont = f"{base_name}_fase2_profOFF_E{args.teacher_epochs}"
 
-                cmd_off = _build_train_cmd(
+                cmd_warmup = _build_train_cmd(
                     python_bin=args.python_bin,
-                    run_name=run_off,
+                    run_name=run_warmup,
                     pairs_csv=pairs_csv,
                     base_image_dir=args.base_image_dir,
                     wandb_project=args.wandb_project,
@@ -688,7 +699,7 @@ def main() -> None:
                     seed=seed,
                 )
 
-                ckpt_off = checkpoint_root / run_off / "last_checkpoint.pt"
+                ckpt_warmup = checkpoint_root / run_warmup / "last_checkpoint.pt"
                 cmd_on = _build_train_cmd(
                     python_bin=args.python_bin,
                     run_name=run_on,
@@ -703,25 +714,59 @@ def main() -> None:
                     num_workers=args.teacher_num_workers,
                     stage_epochs=args.teacher_epochs,
                     teacher_enabled=True,
-                    init_from_checkpoint=ckpt_off,
+                    init_from_checkpoint=ckpt_warmup,
+                    seed=seed,
+                )
+
+                cmd_off_cont = _build_train_cmd(
+                    python_bin=args.python_bin,
+                    run_name=run_off_cont,
+                    pairs_csv=pairs_csv,
+                    base_image_dir=args.base_image_dir,
+                    wandb_project=args.wandb_project,
+                    loss_type=loss_name,
+                    args=args,
+                    candidate_pool_size=args.teacher_candidate_pool_size,
+                    student_batch_size=args.teacher_student_batch_size,
+                    gradient_accumulation_steps=args.teacher_gradient_accumulation_steps,
+                    num_workers=args.teacher_num_workers,
+                    stage_epochs=args.teacher_epochs,
+                    teacher_enabled=False,
+                    init_from_checkpoint=ckpt_warmup,
                     seed=seed,
                 )
 
                 print("-" * 90)
                 print(f"[Split {split_idx}] loss={loss_name} seed={seed}")
-                print("[OFF]", " ".join(cmd_off))
-                print("[ON ]", " ".join(cmd_on))
+                print("[WARMUP  ]", " ".join(cmd_warmup))
+                print("[ON      ]", " ".join(cmd_on))
+                print("[OFF_CONT]", " ".join(cmd_off_cont))
 
                 if args.dry_run:
                     continue
 
-                subprocess.run(cmd_off, check=True)
-                if not ckpt_off.exists():
-                    raise FileNotFoundError(f"Checkpoint stage OFF não encontrado para stage ON: {ckpt_off}")
+                ckpt_on      = checkpoint_root / run_on      / "last_checkpoint.pt"
+                ckpt_off_cont_path = checkpoint_root / run_off_cont / "last_checkpoint.pt"
 
-                time.sleep(args.sleep)
-                subprocess.run(cmd_on, check=True)
-                time.sleep(args.sleep)
+                if ckpt_warmup.exists():
+                    print(f"[SKIP] {run_warmup} — last_checkpoint.pt já existe.")
+                else:
+                    subprocess.run(cmd_warmup, check=True)
+                    if not ckpt_warmup.exists():
+                        raise FileNotFoundError(f"Checkpoint warmup não encontrado para branches ON/OFF: {ckpt_warmup}")
+                    time.sleep(args.sleep)
+
+                if ckpt_on.exists():
+                    print(f"[SKIP] {run_on} — last_checkpoint.pt já existe.")
+                else:
+                    subprocess.run(cmd_on, check=True)
+                    time.sleep(args.sleep)
+
+                if ckpt_off_cont_path.exists():
+                    print(f"[SKIP] {run_off_cont} — last_checkpoint.pt já existe.")
+                else:
+                    subprocess.run(cmd_off_cont, check=True)
+                    time.sleep(args.sleep)
 
     print("\n✅ Sprint 3 concluída.")
 

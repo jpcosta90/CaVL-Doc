@@ -715,15 +715,39 @@ def run_rl_siamese_loop(
             
             # Decide Indices
             log_probs = None
-            
+            shadow_log_probs = None
+            shadow_dist = None
+            shadow_ea_pool = None
+            shadow_eb_pool = None
+            shadow_idxs = None
+
             if is_warmup:
-                 # Otimização: Pular forward pass caro do professor se estamos em warmup (random)
                  if len(img_a) <= student_batch_size:
-                      # Se o batch carregado for menor ou igual ao target, usa tudo (sem desperdício)
                       idxs = torch.arange(len(img_a), device=device)
                  else:
-                      # Random sampling SEM reposição (melhor cobertura que randint)
                       idxs = torch.randperm(len(img_a), device=device)[:student_batch_size]
+                      # Shadow: professor aprende a selecionar sem influenciar o student
+                      if professor_lr > 0.0:
+                          with torch.no_grad():
+                              shadow_ea_pool, shadow_eb_pool = student_forward_pass(img_a, img_b, False)
+                              if loss_type in ['contrastive', 'angular']:
+                                  sl = student_criterion.forward_individual(shadow_ea_pool, shadow_eb_pool, labels)
+                              elif loss_type == 'triplet':
+                                  full_emb = torch.cat([shadow_ea_pool, shadow_eb_pool], dim=0)
+                                  full_cls = torch.cat([cls_a, cls_b], dim=0)
+                                  full_loss = student_criterion.forward_individual(full_emb, full_cls)
+                                  sl = (full_loss[:len(shadow_ea_pool)] + full_loss[len(shadow_ea_pool):]) / 2.0
+                              else:
+                                  loss_a = student_criterion.forward_individual(shadow_ea_pool, cls_a)
+                                  loss_b = student_criterion.forward_individual(shadow_eb_pool, cls_b)
+                                  sl = (loss_a + loss_b) / 2.0
+                              denom = (sl.max() - sl.min()).item() or 1.0
+                              sl_norm = (sl - sl.min()) / (denom + 1e-6)
+                              shadow_state = sl_norm.unsqueeze(-1)
+                          shadow_logits = professor_model(shadow_state).squeeze(-1)
+                          shadow_dist = Categorical(logits=shadow_logits)
+                          shadow_idxs = shadow_dist.sample((student_batch_size,))
+                          shadow_log_probs = shadow_dist.log_prob(shadow_idxs)
             else:
                 with torch.no_grad():
                     ea, eb = student_forward_pass(img_a, img_b, False)
@@ -821,12 +845,39 @@ def run_rl_siamese_loop(
                 adv = rew - baseline
                 adv_std_val = adv.std(unbiased=False).clamp(min=1e-6)
                 adv_norm = (adv - adv.mean()) / (adv_std_val + 1e-6)
-                
+
                 professor_optimizer.zero_grad()
                 ploss = - (log_probs * adv_norm).mean() - entropy_coeff * dist.entropy().mean()
                 ploss.backward()
                 professor_optimizer.step()
                 ploss_val = ploss.item()
+            elif is_warmup and shadow_log_probs is not None:
+                # Shadow update: professor aprende com suas próprias seleções sem influenciar o student
+                with torch.no_grad():
+                    shadow_labels_sel = labels[shadow_idxs]
+                    shadow_cls_a_sel = cls_a[shadow_idxs]
+                    shadow_cls_b_sel = cls_b[shadow_idxs]
+                    shadow_ea = shadow_ea_pool[shadow_idxs]
+                    shadow_eb = shadow_eb_pool[shadow_idxs]
+                    if loss_type in ['contrastive', 'angular']:
+                        shadow_ind = student_criterion.forward_individual(shadow_ea, shadow_eb, shadow_labels_sel)
+                    elif loss_type == 'triplet':
+                        shadow_full = torch.cat([shadow_ea, shadow_eb], dim=0)
+                        shadow_full_cls = torch.cat([shadow_cls_a_sel, shadow_cls_b_sel], dim=0)
+                        shadow_full_loss = student_criterion.forward_individual(shadow_full, shadow_full_cls)
+                        shadow_ind = (shadow_full_loss[:len(shadow_ea)] + shadow_full_loss[len(shadow_ea):]) / 2.0
+                    else:
+                        shadow_la = student_criterion.forward_individual(shadow_ea, shadow_cls_a_sel)
+                        shadow_lb = student_criterion.forward_individual(shadow_eb, shadow_cls_b_sel)
+                        shadow_ind = (shadow_la + shadow_lb) / 2.0
+                shadow_rew = -shadow_ind.detach() if is_easy_mining else shadow_ind.detach()
+                shadow_adv = shadow_rew - baseline
+                shadow_adv_norm = (shadow_adv - shadow_adv.mean()) / (shadow_adv.std(unbiased=False).clamp(min=1e-6) + 1e-6)
+                professor_optimizer.zero_grad()
+                shadow_ploss = -(shadow_log_probs * shadow_adv_norm).mean() - entropy_coeff * shadow_dist.entropy().mean()
+                shadow_ploss.backward()
+                professor_optimizer.step()
+                ploss_val = shadow_ploss.item()
 
             baseline = (1 - baseline_alpha) * baseline + baseline_alpha * avg_r
             

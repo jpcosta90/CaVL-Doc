@@ -109,7 +109,7 @@ def main(args):
             "name": args.wandb_run_name,
             "config": vars(args),
             "group": default_group,
-            "settings": wandb.Settings(init_timeout=300)
+            "settings": wandb.Settings(init_timeout=600)
         }
         
         if final_wandb_id:
