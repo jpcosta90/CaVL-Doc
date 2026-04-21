@@ -45,7 +45,10 @@ PROJECTS = {
     "exp4":           "CaVL-Doc_RVL_Sprint4_Transfer",
 }
 
-KNOWN_LOSSES = ["subcenter_cosface", "subcenter_arcface", "contrastive", "cosface", "arcface"]
+KNOWN_LOSSES = [
+    "subcenter_cosface", "subcenter_arcface",
+    "contrastive", "cosface", "arcface", "triplet", "circle",
+]
 
 LOSS_LABELS = {
     "subcenter_cosface":  "Sub-Center CosFace",
@@ -53,6 +56,8 @@ LOSS_LABELS = {
     "contrastive":        "Contrastive",
     "cosface":            "CosFace",
     "arcface":            "ArcFace",
+    "triplet":            "Triplet",
+    "circle":             "Circle",
     "unknown":            "Unknown",
 }
 
@@ -181,19 +186,48 @@ def _grouped_bar_chart(
     return _b64_png(fig)
 
 
-def _box_chart(groups: Dict[str, List[float]], title: str, ylabel: str = "Passos por época") -> str:
-    labels = list(groups.keys())
-    data   = [groups[k] for k in labels]
-    fig, ax = plt.subplots(figsize=(max(5, len(labels) * 1.5), 4))
-    bp = ax.boxplot(data, labels=labels, patch_artist=True,
-                    medianprops={"color": "black", "linewidth": 1.5})
-    colors = ["#4C78A8", "#F58518", "#54A24B", "#E45756"]
-    for patch, color in zip(bp["boxes"], colors):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.7)
-    ax.set_ylabel(ylabel)
-    ax.set_title(title, fontsize=11)
-    ax.grid(axis="y", alpha=0.3)
+def _sweep_progression_chart(runs_coarse: List, runs_fine: List) -> str:
+    """Scatter: trial index vs EER, separated by phase, with running-best line."""
+    palette = {"Coarse Search": "#4C78A8", "Fine Search": "#F58518"}
+
+    def _sorted_records(runs, label):
+        recs = []
+        for r in runs:
+            eer = _eer(r)
+            if eer is None:
+                continue
+            recs.append({"phase": label, "eer": eer * 100, "ts": _created_at(r)})
+        recs.sort(key=lambda x: x["ts"])
+        for i, rec in enumerate(recs):
+            rec["idx"] = i + 1
+        return recs
+
+    coarse_recs = _sorted_records(runs_coarse, "Coarse Search")
+    fine_recs   = _sorted_records(runs_fine,   "Fine Search")
+    if not coarse_recs and not fine_recs:
+        return ""
+
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    for label, recs in [("Coarse Search", coarse_recs), ("Fine Search", fine_recs)]:
+        if not recs:
+            continue
+        xs   = [r["idx"] for r in recs]
+        ys   = [r["eer"]  for r in recs]
+        color = palette[label]
+        ax.scatter(xs, ys, label=label, color=color, alpha=0.65, s=22, zorder=3)
+        # running best
+        best = []
+        cur  = float("inf")
+        for y in ys:
+            cur = min(cur, y)
+            best.append(cur)
+        ax.plot(xs, best, color=color, linewidth=1.2, linestyle="--", alpha=0.8)
+
+    ax.set_xlabel("Trial (ordem cronológica)")
+    ax.set_ylabel("EER (%)")
+    ax.set_title("Progressão do Sweep — Coarse Search vs Fine Search (LA-CDIP)", fontsize=10)
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.3)
     fig.tight_layout()
     return _b64_png(fig)
 
@@ -225,55 +259,36 @@ def _scatter_steps_eer(records: List[dict], title: str) -> str:
 # Experiment 0 — Coarse + Fine Search
 # ---------------------------------------------------------------------------
 
-def _build_exp0(runs_coarse: List, runs_fine: List) -> Tuple[str, str, pd.DataFrame]:
+def _build_exp0(runs_coarse: List, runs_fine: List) -> Tuple[str, pd.DataFrame]:
     """
-    Compara as duas fases de busca de hiperparâmetros pelo budget de passos por época.
-    Retorna: chart_box (distribuição passos), chart_scatter (passos vs EER), tabela_best.
+    Retorna: chart_progression (progressão do sweep: trial vs EER), tabela_best.
     """
+    chart_prog = _sweep_progression_chart(runs_coarse, runs_fine)
+
     def _extract(runs, phase_label):
         out = []
         for r in runs:
             loss = _loss_from_name(r.name or "")
             eer  = _eer(r)
-            spe  = _steps_per_epoch(r)
-            if eer is None or spe is None:
+            if eer is None:
                 continue
-            out.append({"phase": phase_label, "loss": loss, "eer": eer,
-                         "steps_per_epoch": spe, "run": r.name})
+            out.append({"phase": phase_label, "loss": loss, "eer": eer, "run": r.name})
         return out
 
-    coarse_recs = _extract(runs_coarse, "Coarse Search")
-    fine_recs   = _extract(runs_fine,   "Fine Search")
-    all_recs    = coarse_recs + fine_recs
+    all_recs = _extract(runs_coarse, "Coarse Search") + _extract(runs_fine, "Fine Search")
 
-    # Box plot: distribuição de steps/epoch por fase
-    box_data = {}
-    if coarse_recs:
-        box_data["Coarse Search"] = [r["steps_per_epoch"] for r in coarse_recs]
-    if fine_recs:
-        box_data["Fine Search"]   = [r["steps_per_epoch"] for r in fine_recs]
-    chart_box = _box_chart(box_data,
-                            "Distribuição do budget de passos por fase de busca",
-                            ylabel="Passos por época") if box_data else ""
-
-    # Scatter: steps/epoch vs EER por fase
-    chart_scatter = _scatter_steps_eer(all_recs,
-                                        "Steps por época × EER — Coarse e Fine Search (LA-CDIP)")
-
-    # Melhor EER por loss em cada fase
     rows = []
     if all_recs:
         df = pd.DataFrame(all_recs)
         for (phase, loss), grp in df.groupby(["phase", "loss"]):
             best = grp.loc[grp["eer"].idxmin()]
             rows.append({
-                "Fase":            phase,
-                "Loss Function":   LOSS_LABELS.get(loss, loss),
-                "Melhor EER":      _fmt_eer(best["eer"]),
-                "Steps/época":     f'{best["steps_per_epoch"]:.0f}',
+                "Fase":           phase,
+                "Loss Function":  LOSS_LABELS.get(loss, loss),
+                "Melhor EER":     _fmt_eer(best["eer"]),
             })
     table_df = pd.DataFrame(rows) if rows else pd.DataFrame()
-    return chart_box, chart_scatter, table_df
+    return chart_prog, table_df
 
 
 # ---------------------------------------------------------------------------
@@ -282,8 +297,7 @@ def _build_exp0(runs_coarse: List, runs_fine: List) -> Tuple[str, str, pd.DataFr
 
 def _build_exp1(runs: List) -> Tuple[pd.DataFrame, str]:
     """
-    Últimas 5 runs por loss SEM professor (prof_off / prof_last5_off).
-    Todas as losses devem ter o mesmo tratamento.
+    Última run (mais recente) por loss SEM professor (prof_off / prof_last5_off).
     """
     records = []
     for r in runs:
@@ -291,9 +305,7 @@ def _build_exp1(runs: List) -> Tuple[pd.DataFrame, str]:
         if not name.startswith("Sprint1_"):
             continue
         name_l = name.lower()
-        # Filtra apenas runs SEM hard mining
-        has_prof = ("prof_on" in name_l or "prof_last5_on" in name_l)
-        if has_prof:
+        if "prof_on" in name_l or "prof_last5_on" in name_l:
             continue
         eer = _eer(r)
         if eer is None:
@@ -309,35 +321,23 @@ def _build_exp1(runs: List) -> Tuple[pd.DataFrame, str]:
     if not records:
         return pd.DataFrame(), ""
 
+    # Última run por loss (mais recente)
     df = pd.DataFrame(records).sort_values("created_at", ascending=False)
-
-    # Últimas 5 runs por loss
-    df_top = df.groupby("loss").head(5)
-
-    agg = df_top.groupby("loss").agg(
-        eer_mean=("eer", "mean"),
-        eer_std=("eer", "std"),
-        eer_best=("eer", "min"),
-        recall_mean=("recall", "mean"),
-        n=("eer", "count"),
-    ).reset_index()
+    df_top = df.groupby("loss").first().reset_index()
 
     table_rows = []
-    for _, row in agg.sort_values("eer_mean").iterrows():
-        std = row["eer_std"] if not np.isnan(row["eer_std"]) else 0.0
+    for _, row in df_top.sort_values("eer").iterrows():
         table_rows.append({
-            "Loss Function":    LOSS_LABELS.get(row["loss"], row["loss"]),
-            "EER médio":        f'{row["eer_mean"]*100:.2f}%',
-            "± std":            f'{std*100:.2f} pp',
-            "Melhor EER":       _fmt_eer(row["eer_best"]),
-            "Recall@1 médio":   _fmt_eer(row["recall_mean"]) if row["recall_mean"] else "—",
-            "N runs":           int(row["n"]),
+            "Loss Function":  LOSS_LABELS.get(row["loss"], row["loss"]),
+            "EER":            _fmt_eer(row["eer"]),
+            "Recall@1":       _fmt_eer(row["recall"]) if row["recall"] else "—",
+            "Run":            row["run"],
         })
     table_df = pd.DataFrame(table_rows)
 
-    losses = [LOSS_LABELS.get(r["loss"], r["loss"]) for _, r in agg.iterrows()]
-    series = {"EER médio": [r["eer_mean"] for _, r in agg.iterrows()]}
-    chart = _grouped_bar_chart(losses, series,
+    df_s = df_top.sort_values("eer")
+    losses = [LOSS_LABELS.get(l, l) for l in df_s["loss"]]
+    chart = _grouped_bar_chart(losses, {"EER": list(df_s["eer"])},
                                 "LA-CDIP: EER por função de perda (sem hard mining)")
     return table_df, chart
 
@@ -550,7 +550,7 @@ def _chart_html(b64: str) -> str:
 
 
 def build_html(
-    exp0_box: str, exp0_scatter: str, exp0_table: pd.DataFrame,
+    exp0_prog: str, exp0_table: pd.DataFrame,
     exp1_table: pd.DataFrame, exp1_chart: str,
     exp3_t1: pd.DataFrame, exp3_t2: pd.DataFrame,
     exp3_c1: str, exp3_c2: str, exp3_partial: bool, exp3_missing: List[int],
@@ -569,13 +569,14 @@ def build_html(
   <h2>0. Busca de Hiperparâmetros (Coarse Search + Fine Search)</h2>
   <p class="desc">
     A busca de hiperparâmetros foi conduzida em dois estágios para o dataset LA-CDIP.
-    A <strong>Coarse Search</strong> explorou amplamente o espaço de configurações com budget de passos reduzido.
-    A <strong>Fine Search</strong> refinou os melhores candidatos com budgets maiores.
-    O gráfico compara a distribuição de passos por época entre as duas fases e a relação entre
-    budget de treinamento e EER obtido.
+    A <strong>Coarse Search</strong> explorou amplamente o espaço de configurações com
+    <strong>50 steps por época</strong>.
+    A <strong>Fine Search</strong> refinou os melhores candidatos com
+    <strong>100 steps por época</strong>.
+    O gráfico mostra a progressão de cada fase ao longo dos trials (ordem cronológica),
+    com a linha tracejada indicando o melhor EER acumulado até cada trial.
   </p>
-  {_chart_html(exp0_box)}
-  {_chart_html(exp0_scatter)}
+  {_chart_html(exp0_prog)}
   <h3>Melhor EER por loss e fase de busca</h3>
   {_table_html(exp0_table)}
 </div>""")
@@ -680,7 +681,7 @@ def main() -> None:
     runs4     = _fetch_runs(PROJECTS["exp4"])
 
     print("Construindo seções...")
-    exp0_box, exp0_scatter, exp0_table = _build_exp0(runs0_cla, runs0_fla)
+    exp0_prog, exp0_table              = _build_exp0(runs0_cla, runs0_fla)
     exp1_table, exp1_chart             = _build_exp1(runs1)
     exp3_t1, exp3_t2, exp3_c1, exp3_c2, exp3_partial, exp3_missing = _build_exp3(runs3)
     exp4_table, exp4_chart, exp4_partial, exp4_missing = _build_exp4(runs4)
@@ -691,7 +692,7 @@ def main() -> None:
         print(f"  Exp. 4 PARCIAL — splits pendentes: {exp4_missing}")
 
     html = build_html(
-        exp0_box, exp0_scatter, exp0_table,
+        exp0_prog, exp0_table,
         exp1_table, exp1_chart,
         exp3_t1, exp3_t2, exp3_c1, exp3_c2, exp3_partial, exp3_missing,
         exp4_table, exp4_chart, exp4_partial, exp4_missing,
