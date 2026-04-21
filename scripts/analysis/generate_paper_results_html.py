@@ -61,7 +61,7 @@ LOSS_LABELS = {
     "unknown":            "Unknown",
 }
 
-ALL_SPLITS = [0, 1, 2, 3]
+ALL_SPLITS = [0, 1, 2, 3, 4]
 
 
 # ---------------------------------------------------------------------------
@@ -442,17 +442,24 @@ def _build_exp3(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, str, str, bool,
     missing   = sorted(set(ALL_SPLITS) - set(completed))
     is_partial = bool(missing)
 
+    def _stats_row(label: str, series: pd.Series) -> dict:
+        if series.empty:
+            return {k: "—" for k in ["Loss Function", "Média", "Std", "Mediana", "Mín", "Máx"]}
+        return {
+            "Loss Function": label,
+            "Média":   _fmt_eer(series.mean()),
+            "Std":     f'{series.std()*100:.2f} pp' if len(series) > 1 else "—",
+            "Mediana": _fmt_eer(series.median()),
+            "Mín":     _fmt_eer(series.min()),
+            "Máx":     _fmt_eer(series.max()),
+        }
+
     # --- Part A: phase1 por loss ---
     p1 = df[df["phase"] == "phase1"].groupby("loss")["eer"].agg(["mean", "std", "min"]).reset_index()
     rows_a = []
     for _, row in p1.sort_values("mean").iterrows():
-        std = row["std"] if not np.isnan(row["std"]) else 0.0
-        rows_a.append({
-            "Loss Function": LOSS_LABELS.get(row["loss"], row["loss"]),
-            "EER médio":     f'{row["mean"]*100:.2f}%',
-            "± std":         f'{std*100:.2f} pp',
-            "Melhor EER":    _fmt_eer(row["min"]),
-        })
+        sub = df[(df["phase"] == "phase1") & (df["loss"] == row["loss"])]["eer"]
+        rows_a.append(_stats_row(LOSS_LABELS.get(row["loss"], row["loss"]), sub))
     table_p1 = pd.DataFrame(rows_a)
 
     labels_a = [LOSS_LABELS.get(r["loss"], r["loss"]) for _, r in p1.sort_values("mean").iterrows()]
@@ -463,26 +470,41 @@ def _build_exp3(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, str, str, bool,
     )
 
     # --- Part B: phase2 prof_on vs prof_off por loss ---
-    p2_on  = df[df["phase"] == "phase2_on"].groupby("loss")["eer"].mean()
-    p2_off = df[df["phase"] == "phase2_off"].groupby("loss")["eer"].mean()
-    all_losses_p2 = sorted(set(list(p2_on.index) + list(p2_off.index)))
+    p2_stats = {}
+    for phase_key in ("phase2_on", "phase2_off"):
+        p2_stats[phase_key] = df[df["phase"] == phase_key].groupby("loss")["eer"]
+
+    p2_on_mean  = df[df["phase"] == "phase2_on"].groupby("loss")["eer"].mean()
+    p2_off_mean = df[df["phase"] == "phase2_off"].groupby("loss")["eer"].mean()
+    all_losses_p2 = sorted(set(list(p2_on_mean.index) + list(p2_off_mean.index)))
 
     rows_b = []
     for loss in all_losses_p2:
-        on_v  = p2_on.get(loss)
-        off_v = p2_off.get(loss)
+        label  = LOSS_LABELS.get(loss, loss)
+        on_s   = p2_stats["phase2_on"].get_group(loss) if loss in p2_stats["phase2_on"].groups else pd.Series(dtype=float)
+        off_s  = p2_stats["phase2_off"].get_group(loss) if loss in p2_stats["phase2_off"].groups else pd.Series(dtype=float)
+        on_m   = on_s.mean()  if not on_s.empty  else None
+        off_m  = off_s.mean() if not off_s.empty else None
         rows_b.append({
-            "Loss Function":     LOSS_LABELS.get(loss, loss),
-            "Com Mineração":     _fmt_eer(on_v),
-            "Sem Mineração":     _fmt_eer(off_v),
-            "Δ Mineração (pp)":  _fmt_delta(on_v, off_v) if on_v and off_v else "—",
+            "Loss Function":        label,
+            "Com Min. Média":       _fmt_eer(on_m),
+            "Com Min. Std":         f'{on_s.std()*100:.2f} pp'  if len(on_s) > 1  else "—",
+            "Com Min. Mediana":     _fmt_eer(on_s.median()  if not on_s.empty  else None),
+            "Com Min. Mín":         _fmt_eer(on_s.min()     if not on_s.empty  else None),
+            "Com Min. Máx":         _fmt_eer(on_s.max()     if not on_s.empty  else None),
+            "Sem Min. Média":       _fmt_eer(off_m),
+            "Sem Min. Std":         f'{off_s.std()*100:.2f} pp' if len(off_s) > 1 else "—",
+            "Sem Min. Mediana":     _fmt_eer(off_s.median() if not off_s.empty else None),
+            "Sem Min. Mín":         _fmt_eer(off_s.min()    if not off_s.empty else None),
+            "Sem Min. Máx":         _fmt_eer(off_s.max()    if not off_s.empty else None),
+            "Δ média (pp)":         _fmt_delta(on_m, off_m) if on_m is not None and off_m is not None else "—",
         })
     table_p2 = pd.DataFrame(rows_b)
 
     labels_b = [LOSS_LABELS.get(l, l) for l in all_losses_p2]
     series_b = {
-        "Com Mineração":  [p2_on.get(l)  for l in all_losses_p2],
-        "Sem Mineração":  [p2_off.get(l) for l in all_losses_p2],
+        "Com Mineração":  [p2_on_mean.get(l)  for l in all_losses_p2],
+        "Sem Mineração":  [p2_off_mean.get(l) for l in all_losses_p2],
     }
     chart_p2 = _grouped_bar_chart(
         labels_b, series_b,
