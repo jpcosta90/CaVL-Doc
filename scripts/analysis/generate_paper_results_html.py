@@ -89,27 +89,33 @@ def _summary(run) -> dict:
         return {}
 
 
+def _scalar(v) -> Optional[float]:
+    """Extract a float from a W&B summary value (may be a dict like {'min': 0.02})."""
+    if v is None:
+        return None
+    if isinstance(v, dict):
+        v = v.get("min") or v.get("last") or next(iter(v.values()), None)
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _eer(run) -> Optional[float]:
     s = _summary(run)
     for key in ["val/best_eer", "best_eer", "val/eer", "eer"]:
-        v = s.get(key)
+        v = _scalar(s.get(key))
         if v is not None:
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                continue
+            return v
     return None
 
 
 def _recall(run) -> Optional[float]:
     s = _summary(run)
     for key in ["val/recall_at_1", "recall_at_1"]:
-        v = s.get(key)
+        v = _scalar(s.get(key))
         if v is not None:
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                continue
+            return v
     return None
 
 
@@ -126,12 +132,19 @@ def _epoch_count_from_name(name: str) -> int:
     return int(m.group(1)) if m else -1
 
 
+def _config(run) -> dict:
+    try:
+        return dict(run.config)
+    except Exception:
+        return {}
+
+
 def _steps_per_epoch(run) -> Optional[float]:
     s = _summary(run)
-    epoch = s.get("epoch")
-    step  = s.get("step")
-    if epoch and step and float(epoch) > 0:
-        return float(step) / float(epoch)
+    epoch = _scalar(s.get("epoch"))
+    step  = _scalar(s.get("step"))
+    if epoch and step and epoch > 0:
+        return step / epoch
     return None
 
 
@@ -265,6 +278,8 @@ def _build_exp0(runs_coarse: List, runs_fine: List) -> Tuple[str, pd.DataFrame]:
     """
     chart_prog = _sweep_progression_chart(runs_coarse, runs_fine)
 
+    STEPS_PER_EPOCH = {"Coarse Search": 50, "Fine Search": 100}
+
     def _extract(runs, phase_label):
         out = []
         for r in runs:
@@ -272,7 +287,15 @@ def _build_exp0(runs_coarse: List, runs_fine: List) -> Tuple[str, pd.DataFrame]:
             eer  = _eer(r)
             if eer is None:
                 continue
-            out.append({"phase": phase_label, "loss": loss, "eer": eer, "run": r.name})
+            cfg = _config(r)
+            out.append({
+                "phase":  phase_label,
+                "loss":   loss,
+                "eer":    eer,
+                "scale":  cfg.get("scale"),
+                "margin": cfg.get("margin"),
+                "run":    r.name,
+            })
         return out
 
     all_recs = _extract(runs_coarse, "Coarse Search") + _extract(runs_fine, "Fine Search")
@@ -285,6 +308,9 @@ def _build_exp0(runs_coarse: List, runs_fine: List) -> Tuple[str, pd.DataFrame]:
             rows.append({
                 "Fase":           phase,
                 "Loss Function":  LOSS_LABELS.get(loss, loss),
+                "Steps/época":    STEPS_PER_EPOCH.get(phase, "—"),
+                "Scale":          f'{best["scale"]:.1f}' if best["scale"] is not None else "—",
+                "Margin":         f'{best["margin"]:.4f}' if best["margin"] is not None else "—",
                 "Melhor EER":     _fmt_eer(best["eer"]),
             })
     table_df = pd.DataFrame(rows) if rows else pd.DataFrame()
@@ -321,8 +347,17 @@ def _build_exp1(runs: List) -> Tuple[pd.DataFrame, str]:
     if not records:
         return pd.DataFrame(), ""
 
-    # Última run por loss (mais recente)
-    df = pd.DataFrame(records).sort_values("created_at", ascending=False)
+    # Preferir _main_memfix sobre _unb_memfix; depois mais recente
+    def _run_priority(name: str) -> int:
+        if "_main_memfix" in name or "_main" in name:
+            return 0
+        if "_unb_memfix" in name or "_unb" in name:
+            return 1
+        return 2
+
+    df = pd.DataFrame(records)
+    df["priority"] = df["run"].apply(_run_priority)
+    df = df.sort_values(["priority", "created_at"], ascending=[True, False])
     df_top = df.groupby("loss").first().reset_index()
 
     table_rows = []
