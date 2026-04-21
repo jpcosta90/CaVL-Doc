@@ -224,7 +224,10 @@ def main() -> None:
     p.add_argument("--hf-cache-dir", default=None,
                    help="Diretório local para cache do modelo HF.")
     p.add_argument("--loss-type", default=None,
-                   help="Loss para o RVL-CDIP. Se vazio, lido do config do modelo HF.")
+                   help="Loss única (mantido por compatibilidade). Use --losses para múltiplas.")
+    p.add_argument("--losses", default=None,
+                   help="Lista de losses separadas por vírgula (ex: subcenter_cosface,subcenter_arcface,contrastive). "
+                        "Se vazio, usa --loss-type ou o config do modelo HF.")
 
     # Dados RVL-CDIP
     p.add_argument("--rvl-data-root",   default="/mnt/data/zs_rvl_cdip")
@@ -323,56 +326,61 @@ def main() -> None:
         hf_config = {}
         print(f"[DRY-RUN] Checkpoint HF seria baixado para: {hf_ckpt_path}")
 
-    # Loss: argumento > config do modelo > fallback
-    loss_type = args.loss_type or hf_config.get("loss_type") or "subcenter_cosface"
-    print(f"Loss: {loss_type}")
+    # Losses: --losses > --loss-type > config do modelo HF > fallback
+    if args.losses:
+        loss_list = [l.strip() for l in args.losses.split(",") if l.strip()]
+    else:
+        loss_list = [args.loss_type or hf_config.get("loss_type") or "subcenter_cosface"]
+
+    print(f"Losses: {loss_list}")
     print(f"Splits: {splits} | Épocas: {args.epochs} | Warmup professor: {args.professor_warmup_epochs} épocas")
     print(f"Checkpoint root: {ckpt_root}")
     print("=" * 80)
 
-    for split_idx in splits:
-        split_dir = _ensure_split(split_idx, args.protocol, args.rvl_data_root, args.pairs_per_class)
-        pairs_csv = split_dir / "train_pairs.csv"
+    for loss_type in loss_list:
+        for split_idx in splits:
+            split_dir = _ensure_split(split_idx, args.protocol, args.rvl_data_root, args.pairs_per_class)
+            pairs_csv = split_dir / "train_pairs.csv"
 
-        run_transfer = f"Sprint4_S{split_idx}_{loss_type}_transfer_E{args.epochs}"
-        run_direct   = f"Sprint4_S{split_idx}_{loss_type}_direct_E{args.epochs}"
+            run_transfer = f"Sprint4_S{split_idx}_{loss_type}_transfer_E{args.epochs}"
+            run_direct   = f"Sprint4_S{split_idx}_{loss_type}_direct_E{args.epochs}"
 
-        cmd_transfer = _build_cmd(
-            run_name=run_transfer,
-            pairs_csv=pairs_csv,
-            args=args,
-            loss_type=loss_type,
-            init_checkpoint=hf_ckpt_path,
-            professor_lr=args.professor_lr,
-            warmup_steps=professor_warmup_steps,
-        )
-        cmd_direct = _build_cmd(
-            run_name=run_direct,
-            pairs_csv=pairs_csv,
-            args=args,
-            loss_type=loss_type,
-            init_checkpoint=None,
-            professor_lr=args.professor_lr,
-            warmup_steps=professor_warmup_steps,
-        )
+            cmd_transfer = _build_cmd(
+                run_name=run_transfer,
+                pairs_csv=pairs_csv,
+                args=args,
+                loss_type=loss_type,
+                init_checkpoint=hf_ckpt_path,
+                professor_lr=args.professor_lr,
+                warmup_steps=professor_warmup_steps,
+            )
+            cmd_direct = _build_cmd(
+                run_name=run_direct,
+                pairs_csv=pairs_csv,
+                args=args,
+                loss_type=loss_type,
+                init_checkpoint=None,
+                professor_lr=args.professor_lr,
+                warmup_steps=professor_warmup_steps,
+            )
 
-        print("-" * 80)
-        print(f"[Split {split_idx}] GPU {selected_gpu[0]}")
-        print(f"  [TRANSFER] {run_transfer}")
-        print(f"  [DIRECT  ] {run_direct}")
+            print("-" * 80)
+            print(f"[{loss_type} | Split {split_idx}] GPU {selected_gpu[0]}")
+            print(f"  [TRANSFER] {run_transfer}")
+            print(f"  [DIRECT  ] {run_direct}")
 
-        if args.dry_run:
-            print("  CMD transfer:", " ".join(cmd_transfer))
-            print("  CMD direct  :", " ".join(cmd_direct))
-            continue
+            if args.dry_run:
+                print("  CMD transfer:", " ".join(cmd_transfer))
+                print("  CMD direct  :", " ".join(cmd_direct))
+                continue
 
-        if not _should_skip(ckpt_root, run_transfer):
-            subprocess.run(cmd_transfer, check=True, env=gpu_env)
-            time.sleep(args.sleep)
+            if not _should_skip(ckpt_root, run_transfer):
+                subprocess.run(cmd_transfer, check=True, env=gpu_env)
+                time.sleep(args.sleep)
 
-        if not _should_skip(ckpt_root, run_direct):
-            subprocess.run(cmd_direct, check=True, env=gpu_env)
-            time.sleep(args.sleep)
+            if not _should_skip(ckpt_root, run_direct):
+                subprocess.run(cmd_direct, check=True, env=gpu_env)
+                time.sleep(args.sleep)
 
     print("\n✅ Sprint 4 concluída.")
 
