@@ -90,15 +90,34 @@ def _summary(run) -> dict:
 
 
 def _scalar(v) -> Optional[float]:
-    """Extract a float from a W&B summary value (may be a dict like {'min': 0.02})."""
+    """Extract a float from a W&B summary value.
+
+    W&B may return a SummarySubDict (not a real dict) with shape {'min': val}
+    for metrics logged with wandb.log() — isinstance(v, dict) is False for it.
+    """
     if v is None:
         return None
-    if isinstance(v, dict):
-        v = v.get("min") or v.get("last") or next(iter(v.values()), None)
+    # Try direct conversion first (plain int/float)
     try:
         return float(v)
     except (TypeError, ValueError):
-        return None
+        pass
+    # Duck-type dict-like: wandb.old.summary.SummarySubDict
+    if hasattr(v, "get"):
+        for key in ("min", "last"):
+            candidate = v.get(key)
+            if candidate is not None:
+                try:
+                    return float(candidate)
+                except (TypeError, ValueError):
+                    pass
+        if hasattr(v, "values"):
+            for candidate in v.values():
+                try:
+                    return float(candidate)
+                except (TypeError, ValueError):
+                    pass
+    return None
 
 
 def _eer(run) -> Optional[float]:
