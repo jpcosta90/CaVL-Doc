@@ -421,14 +421,16 @@ def _build_exp3(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, str, str, bool,
         name_l = name.lower()
         if "fase1" in name_l:
             phase = "phase1"
-        elif "fase2_profon" in name_l or "prof_on" in name_l:
+        elif "fase2_profon" in name_l:
             phase = "phase2_on"
         elif "fase2_profoff" in name_l:
             phase = "phase2_off"
         elif "prof_off" in name_l:
+            # old naming: prof_off_E10 → phase1; prof_off_E5 → phase2_off
             epochs = _epoch_count_from_name(name)
             phase  = "phase1" if epochs < 0 or epochs > 6 else "phase2_off"
         else:
+            # skip old prof_on_E5 runs (no matching prof_off_E5 counterpart)
             continue
 
         records.append({"loss": loss, "split": split, "phase": phase,
