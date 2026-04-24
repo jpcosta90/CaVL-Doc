@@ -513,7 +513,76 @@ def _build_exp3(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, str, str, bool,
         "Estágio 2 (5 épocas): Efeito do Hard Negative Mining",
     )
 
-    return table_p1, table_p2, chart_p1, chart_p2, is_partial, missing
+    # --- Part C: melhor EER ao longo de todo o treino (fase1 + fase2) por split ---
+    # Usa somente runs com nomenclatura nova (fase1 / fase2_profON / fase2_profOFF)
+    df_new   = df[df["run"].str.lower().str.contains("fase")]
+    df_p1    = df_new[df_new["phase"] == "phase1"].set_index(["loss", "split"])["eer"]
+    df_p2on  = df_new[df_new["phase"] == "phase2_on"].set_index(["loss", "split"])["eer"]
+    df_p2off = df_new[df_new["phase"] == "phase2_off"].set_index(["loss", "split"])["eer"]
+
+    all_losses_c = sorted(set(df_p2on.index.get_level_values("loss"))
+                          | set(df_p2off.index.get_level_values("loss")))
+    all_splits_c = sorted(df["split"].dropna().unique().astype(int))
+
+    best_on_by_loss: Dict[str, List[float]] = {}
+    best_off_by_loss: Dict[str, List[float]] = {}
+
+    for loss in all_losses_c:
+        on_vals, off_vals = [], []
+        for split in all_splits_c:
+            idx = (loss, split)
+            p1_eer  = df_p1.get(idx)
+            on_eer  = df_p2on.get(idx)
+            off_eer = df_p2off.get(idx)
+            if on_eer is not None and p1_eer is not None:
+                on_vals.append(min(p1_eer, on_eer))
+            elif on_eer is not None:
+                on_vals.append(on_eer)
+            if off_eer is not None and p1_eer is not None:
+                off_vals.append(min(p1_eer, off_eer))
+            elif off_eer is not None:
+                off_vals.append(off_eer)
+        best_on_by_loss[loss]  = on_vals
+        best_off_by_loss[loss] = off_vals
+
+    rows_c = []
+    for loss in all_losses_c:
+        label   = LOSS_LABELS.get(loss, loss)
+        on_s    = pd.Series(best_on_by_loss[loss],  dtype=float)
+        off_s   = pd.Series(best_off_by_loss[loss], dtype=float)
+        on_m    = on_s.mean()  if not on_s.empty  else None
+        off_m   = off_s.mean() if not off_s.empty else None
+        rows_c.append({
+            "Loss Function":        label,
+            "Com Min. Média":       _fmt_eer(on_m),
+            "Com Min. Std":         f'{on_s.std()*100:.2f} pp'  if len(on_s) > 1  else "—",
+            "Com Min. Mediana":     _fmt_eer(on_s.median()  if not on_s.empty  else None),
+            "Com Min. Mín":         _fmt_eer(on_s.min()     if not on_s.empty  else None),
+            "Com Min. Máx":         _fmt_eer(on_s.max()     if not on_s.empty  else None),
+            "Sem Min. Média":       _fmt_eer(off_m),
+            "Sem Min. Std":         f'{off_s.std()*100:.2f} pp' if len(off_s) > 1 else "—",
+            "Sem Min. Mediana":     _fmt_eer(off_s.median() if not off_s.empty else None),
+            "Sem Min. Mín":         _fmt_eer(off_s.min()    if not off_s.empty else None),
+            "Sem Min. Máx":         _fmt_eer(off_s.max()    if not off_s.empty else None),
+            "Δ média (pp)":         _fmt_delta(on_m, off_m) if on_m is not None and off_m is not None else "—",
+        })
+    table_p3 = pd.DataFrame(rows_c)
+
+    sort_key_c = {loss: best_on_by_loss[loss][0] if best_on_by_loss[loss] else 1.0
+                  for loss in all_losses_c}
+    labels_c = [LOSS_LABELS.get(l, l) for l in sorted(all_losses_c, key=lambda l: sort_key_c[l])]
+    chart_p3 = _grouped_bar_chart(
+        labels_c,
+        {
+            "Com Mineração":  [np.mean(best_on_by_loss[l])  if best_on_by_loss[l]  else None
+                               for l in sorted(all_losses_c, key=lambda l: sort_key_c[l])],
+            "Sem Mineração":  [np.mean(best_off_by_loss[l]) if best_off_by_loss[l] else None
+                               for l in sorted(all_losses_c, key=lambda l: sort_key_c[l])],
+        },
+        "Melhor EER acumulado (Estágio 1 + 2): Com vs Sem Mineração",
+    )
+
+    return table_p1, table_p2, table_p3, chart_p1, chart_p2, chart_p3, is_partial, missing
 
 
 # ---------------------------------------------------------------------------
@@ -630,8 +699,8 @@ def _chart_html(b64: str) -> str:
 def build_html(
     exp0_prog: str, exp0_table: pd.DataFrame,
     exp1_table: pd.DataFrame, exp1_chart: str,
-    exp3_t1: pd.DataFrame, exp3_t2: pd.DataFrame,
-    exp3_c1: str, exp3_c2: str, exp3_partial: bool, exp3_missing: List[int],
+    exp3_t1: pd.DataFrame, exp3_t2: pd.DataFrame, exp3_t3: pd.DataFrame,
+    exp3_c1: str, exp3_c2: str, exp3_c3: str, exp3_partial: bool, exp3_missing: List[int],
     exp4_table: pd.DataFrame, exp4_chart: str, exp4_partial: bool, exp4_missing: List[int],
 ) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -702,10 +771,19 @@ def build_html(
   <h3>Estágio 2 — Efeito do Hard Negative Mining (5 épocas)</h3>
   <p class="desc">
     Comparação entre treinamento com mineração ativa (professor ON) e sem mineração (professor OFF),
-    partindo do mesmo checkpoint do Estágio 1. Δ Mineração indica o ganho em pontos percentuais.
+    partindo do mesmo checkpoint do Estágio 1. Δ média indica o ganho em pontos percentuais.
   </p>
   {_chart_html(exp3_c2)}
   {_table_html(exp3_t2)}
+  <h3>Melhor EER acumulado — Estágio 1 + Estágio 2</h3>
+  <p class="desc">
+    Para cada loss e split, o melhor EER obtido ao longo de todo o treinamento:
+    <code>min(EER_estágio1, EER_estágio2)</code>.
+    Se o melhor resultado ocorreu nas 10 épocas iniciais, o valor é igual para ambos os ramos.
+    Isso reflete a melhor configuração que o modelo atingiu independentemente de quando ocorreu.
+  </p>
+  {_chart_html(exp3_c3)}
+  {_table_html(exp3_t3)}
 </div>""")
 
     # --- Exp 4 ---
@@ -761,7 +839,7 @@ def main() -> None:
     print("Construindo seções...")
     exp0_prog, exp0_table              = _build_exp0(runs0_cla, runs0_fla)
     exp1_table, exp1_chart             = _build_exp1(runs1)
-    exp3_t1, exp3_t2, exp3_c1, exp3_c2, exp3_partial, exp3_missing = _build_exp3(runs3)
+    exp3_t1, exp3_t2, exp3_t3, exp3_c1, exp3_c2, exp3_c3, exp3_partial, exp3_missing = _build_exp3(runs3)
     exp4_table, exp4_chart, exp4_partial, exp4_missing = _build_exp4(runs4)
 
     if exp3_partial:
@@ -772,7 +850,7 @@ def main() -> None:
     html = build_html(
         exp0_prog, exp0_table,
         exp1_table, exp1_chart,
-        exp3_t1, exp3_t2, exp3_c1, exp3_c2, exp3_partial, exp3_missing,
+        exp3_t1, exp3_t2, exp3_t3, exp3_c1, exp3_c2, exp3_c3, exp3_partial, exp3_missing,
         exp4_table, exp4_chart, exp4_partial, exp4_missing,
     )
 
