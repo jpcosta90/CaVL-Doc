@@ -16,6 +16,46 @@ TRAIN_SCRIPT = WORKSPACE_ROOT / "scripts" / "training" / "run_cavl_training.py"
 PREP_PROTOCOL_SPLIT_SCRIPT = WORKSPACE_ROOT / "scripts" / "utils" / "prepare_protocol_split.py"
 
 
+def _parse_nvidia_smi_free_memory() -> List[Tuple[int, int]]:
+    try:
+        output = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=index,memory.free", "--format=csv,noheader,nounits"],
+            stderr=subprocess.DEVNULL,
+        ).decode()
+        result = []
+        for line in output.strip().splitlines():
+            idx, free = line.split(",")
+            result.append((int(idx.strip()), int(free.strip())))
+        return result
+    except Exception:
+        return []
+
+
+def _select_gpu(
+    gpu_id: Optional[int] = None,
+    min_free_mib: int = 10_000,
+    wait_seconds: float = 0.0,
+) -> Optional[Tuple[int, int]]:
+    """Seleciona a GPU com mais memória livre. Aguarda até wait_seconds se necessário."""
+    if gpu_id is not None:
+        gpus = _parse_nvidia_smi_free_memory()
+        match = next((g for g in gpus if g[0] == gpu_id), None)
+        return match
+
+    deadline = time.time() + max(0.0, wait_seconds)
+    while True:
+        gpus = _parse_nvidia_smi_free_memory()
+        candidates = [(idx, free) for idx, free in gpus if free >= min_free_mib]
+        if candidates:
+            return max(candidates, key=lambda x: (x[1], -x[0]))
+        if time.time() >= deadline:
+            if gpus:
+                return max(gpus, key=lambda x: (x[1], -x[0]))
+            return None
+        print(f"  Aguardando GPU com ≥{min_free_mib} MiB livres...")
+        time.sleep(30)
+
+
 @dataclass
 class TeacherConfig:
     professor_lr: float
@@ -569,6 +609,15 @@ def main() -> None:
     parser.add_argument("--run-suffix", default="")
     parser.add_argument("--sleep", type=float, default=3.0)
     parser.add_argument("--dry-run", action="store_true")
+
+    # GPU
+    parser.add_argument("--gpu-id",       type=int, default=None,
+                        help="ID físico da GPU a usar (default: seleção automática por memória livre).")
+    parser.add_argument("--min-free-mib", type=int, default=10_000,
+                        help="Memória mínima livre (MiB) para seleção automática de GPU.")
+    parser.add_argument("--gpu-wait",     type=float, default=0.0,
+                        help="Segundos para aguardar GPU com memória suficiente.")
+
     args = parser.parse_args()
 
     losses = [item for item in _parse_csv_list(args.losses)]
@@ -633,6 +682,22 @@ def main() -> None:
             f"--teacher-epochs ({args.teacher_epochs}), senão o professor nunca é aplicado."
         )
     args.professor_warmup_steps_on = args.teacher_warmup_epochs * args.max_steps_per_epoch
+
+    # Seleção de GPU
+    if args.dry_run:
+        selected_gpu = (args.gpu_id or 0, 0)
+        print(f"[DRY-RUN] GPU: {selected_gpu[0]}")
+    else:
+        selected_gpu = _select_gpu(args.gpu_id, args.min_free_mib, args.gpu_wait)
+        if selected_gpu is None:
+            print("❌ Nenhuma GPU disponível.")
+            sys.exit(1)
+        if args.gpu_id is not None:
+            print(f"GPU fixa selecionada: física {selected_gpu[0]}")
+        else:
+            print(f"GPU selecionada automaticamente: física {selected_gpu[0]} com {selected_gpu[1]} MiB livres")
+
+    gpu_env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(selected_gpu[0])}
 
     print("=" * 90)
     total_epochs = args.teacher_epochs + args.student_only_epochs
@@ -751,7 +816,7 @@ def main() -> None:
                 if ckpt_warmup.exists():
                     print(f"[SKIP] {run_warmup} — last_checkpoint.pt já existe.")
                 else:
-                    subprocess.run(cmd_warmup, check=True)
+                    subprocess.run(cmd_warmup, check=True, env=gpu_env)
                     if not ckpt_warmup.exists():
                         raise FileNotFoundError(f"Checkpoint warmup não encontrado para branches ON/OFF: {ckpt_warmup}")
                     time.sleep(args.sleep)
@@ -759,13 +824,13 @@ def main() -> None:
                 if ckpt_on.exists():
                     print(f"[SKIP] {run_on} — last_checkpoint.pt já existe.")
                 else:
-                    subprocess.run(cmd_on, check=True)
+                    subprocess.run(cmd_on, check=True, env=gpu_env)
                     time.sleep(args.sleep)
 
                 if ckpt_off_cont_path.exists():
                     print(f"[SKIP] {run_off_cont} — last_checkpoint.pt já existe.")
                 else:
-                    subprocess.run(cmd_off_cont, check=True)
+                    subprocess.run(cmd_off_cont, check=True, env=gpu_env)
                     time.sleep(args.sleep)
 
     print("\n✅ Sprint 3 concluída.")
