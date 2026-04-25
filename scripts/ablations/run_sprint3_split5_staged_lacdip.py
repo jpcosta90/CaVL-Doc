@@ -16,6 +16,16 @@ TRAIN_SCRIPT = WORKSPACE_ROOT / "scripts" / "training" / "run_cavl_training.py"
 PREP_PROTOCOL_SPLIT_SCRIPT = WORKSPACE_ROOT / "scripts" / "utils" / "prepare_protocol_split.py"
 
 
+def _checkpoint_epoch(ckpt_path: Path) -> int:
+    """Returns the last completed epoch (0-indexed) from a checkpoint, or -1 on failure."""
+    try:
+        import torch
+        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        return int(ckpt.get("epoch", -1))
+    except Exception:
+        return -1
+
+
 def _parse_nvidia_smi_free_memory() -> List[Tuple[int, int]]:
     try:
         output = subprocess.check_output(
@@ -434,6 +444,7 @@ def _build_train_cmd(
     teacher_enabled: bool,
     init_from_checkpoint: Optional[Path],
     seed: int,
+    resume_from: Optional[Path] = None,
 ) -> List[str]:
     professor_lr = args.professor_lr if teacher_enabled else 0.0
     warmup_steps = args.professor_warmup_steps_on if teacher_enabled else args.professor_warmup_steps_off
@@ -516,7 +527,9 @@ def _build_train_cmd(
     else:
         cmd.extend(["--val-samples-per-class", str(args.val_samples_per_class)])
 
-    if init_from_checkpoint is not None:
+    if resume_from is not None:
+        cmd.extend(["--resume-from", str(resume_from)])
+    elif init_from_checkpoint is not None:
         cmd.extend(["--init-from-checkpoint", str(init_from_checkpoint)])
 
     if args.init_load_professor:
@@ -813,22 +826,110 @@ def main() -> None:
                 ckpt_on      = checkpoint_root / run_on      / "last_checkpoint.pt"
                 ckpt_off_cont_path = checkpoint_root / run_off_cont / "last_checkpoint.pt"
 
-                if ckpt_warmup.exists():
-                    print(f"[SKIP] {run_warmup} — last_checkpoint.pt já existe.")
-                else:
-                    subprocess.run(cmd_warmup, check=True, env=gpu_env)
-                    if not ckpt_warmup.exists():
-                        raise FileNotFoundError(f"Checkpoint warmup não encontrado para branches ON/OFF: {ckpt_warmup}")
+                def _run_or_resume(run_name, ckpt_path, base_cmd, target_epochs, init_ckpt):
+                    if ckpt_path.exists():
+                        done_epoch = _checkpoint_epoch(ckpt_path)
+                        if done_epoch >= target_epochs - 1:
+                            print(f"[SKIP] {run_name} — completo (época {done_epoch+1}/{target_epochs}).")
+                            return
+                        print(f"[RESUME] {run_name} — interrompido na época {done_epoch+1}/{target_epochs}, retomando...")
+                        resume_cmd = _build_train_cmd(
+                            python_bin=args.python_bin,
+                            run_name=run_name,
+                            pairs_csv=pairs_csv,
+                            base_image_dir=args.base_image_dir,
+                            wandb_project=args.wandb_project,
+                            loss_type=loss_name,
+                            args=args,
+                            candidate_pool_size=base_cmd._pool,
+                            student_batch_size=base_cmd._batch,
+                            gradient_accumulation_steps=base_cmd._grad_acc,
+                            num_workers=base_cmd._workers,
+                            stage_epochs=target_epochs,
+                            teacher_enabled=base_cmd._teacher,
+                            init_from_checkpoint=init_ckpt,
+                            seed=seed,
+                            resume_from=ckpt_path,
+                        )
+                        subprocess.run(resume_cmd, check=True, env=gpu_env)
+                    else:
+                        subprocess.run(base_cmd._cmd, check=True, env=gpu_env)
                     time.sleep(args.sleep)
 
+                # Warmup
+                if ckpt_warmup.exists():
+                    done = _checkpoint_epoch(ckpt_warmup)
+                    if done >= args.student_only_epochs - 1:
+                        print(f"[SKIP] {run_warmup} — completo (época {done+1}/{args.student_only_epochs}).")
+                    else:
+                        print(f"[RESUME] {run_warmup} — interrompido na época {done+1}/{args.student_only_epochs}, retomando...")
+                        cmd_warmup_resume = _build_train_cmd(
+                            python_bin=args.python_bin, run_name=run_warmup, pairs_csv=pairs_csv,
+                            base_image_dir=args.base_image_dir, wandb_project=args.wandb_project,
+                            loss_type=loss_name, args=args,
+                            candidate_pool_size=args.warmup_student_batch_size,
+                            student_batch_size=args.warmup_student_batch_size,
+                            gradient_accumulation_steps=args.warmup_gradient_accumulation_steps,
+                            num_workers=args.warmup_num_workers,
+                            stage_epochs=args.student_only_epochs, teacher_enabled=False,
+                            init_from_checkpoint=source_ckpt, seed=seed,
+                            resume_from=ckpt_warmup,
+                        )
+                        subprocess.run(cmd_warmup_resume, check=True, env=gpu_env)
+                        time.sleep(args.sleep)
+                else:
+                    subprocess.run(cmd_warmup, check=True, env=gpu_env)
+                    time.sleep(args.sleep)
+
+                if not ckpt_warmup.exists():
+                    raise FileNotFoundError(f"Checkpoint warmup não encontrado para branches ON/OFF: {ckpt_warmup}")
+
+                # ON branch
                 if ckpt_on.exists():
-                    print(f"[SKIP] {run_on} — last_checkpoint.pt já existe.")
+                    done = _checkpoint_epoch(ckpt_on)
+                    if done >= args.teacher_epochs - 1:
+                        print(f"[SKIP] {run_on} — completo (época {done+1}/{args.teacher_epochs}).")
+                    else:
+                        print(f"[RESUME] {run_on} — interrompido na época {done+1}/{args.teacher_epochs}, retomando...")
+                        cmd_on_resume = _build_train_cmd(
+                            python_bin=args.python_bin, run_name=run_on, pairs_csv=pairs_csv,
+                            base_image_dir=args.base_image_dir, wandb_project=args.wandb_project,
+                            loss_type=loss_name, args=args,
+                            candidate_pool_size=args.teacher_candidate_pool_size,
+                            student_batch_size=args.teacher_student_batch_size,
+                            gradient_accumulation_steps=args.teacher_gradient_accumulation_steps,
+                            num_workers=args.teacher_num_workers,
+                            stage_epochs=args.teacher_epochs, teacher_enabled=True,
+                            init_from_checkpoint=ckpt_warmup, seed=seed,
+                            resume_from=ckpt_on,
+                        )
+                        subprocess.run(cmd_on_resume, check=True, env=gpu_env)
+                        time.sleep(args.sleep)
                 else:
                     subprocess.run(cmd_on, check=True, env=gpu_env)
                     time.sleep(args.sleep)
 
+                # OFF branch
                 if ckpt_off_cont_path.exists():
-                    print(f"[SKIP] {run_off_cont} — last_checkpoint.pt já existe.")
+                    done = _checkpoint_epoch(ckpt_off_cont_path)
+                    if done >= args.teacher_epochs - 1:
+                        print(f"[SKIP] {run_off_cont} — completo (época {done+1}/{args.teacher_epochs}).")
+                    else:
+                        print(f"[RESUME] {run_off_cont} — interrompido na época {done+1}/{args.teacher_epochs}, retomando...")
+                        cmd_off_resume = _build_train_cmd(
+                            python_bin=args.python_bin, run_name=run_off_cont, pairs_csv=pairs_csv,
+                            base_image_dir=args.base_image_dir, wandb_project=args.wandb_project,
+                            loss_type=loss_name, args=args,
+                            candidate_pool_size=args.teacher_candidate_pool_size,
+                            student_batch_size=args.teacher_student_batch_size,
+                            gradient_accumulation_steps=args.teacher_gradient_accumulation_steps,
+                            num_workers=args.teacher_num_workers,
+                            stage_epochs=args.teacher_epochs, teacher_enabled=False,
+                            init_from_checkpoint=ckpt_warmup, seed=seed,
+                            resume_from=ckpt_off_cont_path,
+                        )
+                        subprocess.run(cmd_off_resume, check=True, env=gpu_env)
+                        time.sleep(args.sleep)
                 else:
                     subprocess.run(cmd_off_cont, check=True, env=gpu_env)
                     time.sleep(args.sleep)
