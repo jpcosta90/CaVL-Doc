@@ -73,13 +73,16 @@ Respond **only** with a JSON object structured as follows:
 ```"""
 
 MODEL_REGISTRY = {
-    "internvl3-2b":  "OpenGVLab/InternVL3-2B",
-    "internvl3-8b":  "OpenGVLab/InternVL3-8B",
-    "qwen25vl-3b":   "Qwen/Qwen2.5-VL-3B-Instruct",
-    "qwen25vl-7b":   "Qwen/Qwen2.5-VL-7B-Instruct",
-    "qwen3vl-7b":    "Qwen/Qwen3-VL-7B-Instruct",
-    "minicpm-v26":   "openbmb/MiniCPM-V-2_6",
-    "pixtral-12b":   "mistralai/Pixtral-12B-2409",
+    "internvl3-2b":   "OpenGVLab/InternVL3-2B",
+    "internvl3-8b":   "OpenGVLab/InternVL3-8B",
+    "qwen25vl-3b":    "Qwen/Qwen2.5-VL-3B-Instruct",
+    "qwen25vl-7b":    "Qwen/Qwen2.5-VL-7B-Instruct",
+    "qwen3vl-7b":     "Qwen/Qwen3-VL-7B-Instruct",
+    "minicpm-v26":    "openbmb/MiniCPM-V-2_6",
+    "pixtral-12b":    "mistralai/Pixtral-12B-2409",
+    "ministral-3b":   "mistralai/Ministral-3-3B-Instruct-2512",
+    "gemma4-9b":      "google/gemma-4-9b-it",
+    "gemma4-27b":     "google/gemma-4-27b-it",
 }
 
 
@@ -163,7 +166,10 @@ class _QwenVLAdapter:
         ).eval()
 
     def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
-        from qwen_vl_utils import process_vision_info
+        try:
+            from qwen_vl_utils import process_vision_info
+        except ImportError:
+            raise ImportError("Instale qwen_vl_utils: pip install qwen-vl-utils")
 
         messages = [{
             "role": "user",
@@ -211,6 +217,72 @@ class _MiniCPMAdapter:
         return response
 
 
+class _MistralVLAdapter:
+    """Adapter for Mistral vision models (Ministral-3, Pixtral) via transformers."""
+
+    def __init__(self, model_id: str, device: str):
+        from transformers import AutoProcessor, LlavaForConditionalGeneration
+        self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        self.model = LlavaForConditionalGeneration.from_pretrained(
+            model_id,
+            torch_dtype=torch.bfloat16,
+            device_map=device,
+        ).eval()
+
+    def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
+        prompt_text = SIMILARITY_PROMPT.replace("<image>", "[IMG]")
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image"},
+                {"type": "image"},
+                {"type": "text", "text": prompt_text.replace("[IMG]", "").strip()},
+            ],
+        }]
+        text = self.processor.apply_chat_template(messages, add_generation_prompt=True)
+        inputs = self.processor(
+            text=text, images=[img_a, img_b],
+            return_tensors="pt",
+        ).to(next(self.model.parameters()).device)
+        out_ids = self.model.generate(**inputs, max_new_tokens=256, do_sample=False)
+        trimmed = out_ids[0][inputs.input_ids.shape[-1]:]
+        return self.processor.decode(trimmed, skip_special_tokens=True)
+
+
+class _Gemma4Adapter:
+    """Adapter for Gemma 4 vision models."""
+
+    def __init__(self, model_id: str, device: str):
+        from transformers import AutoProcessor, Gemma4ForConditionalGeneration
+        self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        self.model = Gemma4ForConditionalGeneration.from_pretrained(
+            model_id,
+            torch_dtype=torch.bfloat16,
+            device_map=device,
+        ).eval()
+
+    def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
+        prompt_text = SIMILARITY_PROMPT.replace("Image-1: <image>\nImage-2: <image>\n\n", "")
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": img_a},
+                {"type": "image", "image": img_b},
+                {"type": "text",  "text": prompt_text},
+            ],
+        }]
+        inputs = self.processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+        ).to(next(self.model.parameters()).device)
+        out_ids = self.model.generate(**inputs, max_new_tokens=256, do_sample=False)
+        trimmed = out_ids[0][inputs["input_ids"].shape[-1]:]
+        return self.processor.decode(trimmed, skip_special_tokens=True)
+
+
 def _build_adapter(model_key: str, device: str):
     model_id = MODEL_REGISTRY[model_key]
     print(f"Carregando {model_id} ...")
@@ -220,6 +292,10 @@ def _build_adapter(model_key: str, device: str):
         return _QwenVLAdapter(model_id, device), model_id
     elif model_key.startswith("minicpm"):
         return _MiniCPMAdapter(model_id, device), model_id
+    elif model_key.startswith("ministral") or model_key.startswith("pixtral"):
+        return _MistralVLAdapter(model_id, device), model_id
+    elif model_key.startswith("gemma"):
+        return _Gemma4Adapter(model_id, device), model_id
     else:
         raise ValueError(f"Adapter não implementado para {model_key}. "
                          f"Opções: {list(MODEL_REGISTRY)}")
