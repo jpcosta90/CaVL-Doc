@@ -73,16 +73,20 @@ Respond **only** with a JSON object structured as follows:
 ```"""
 
 MODEL_REGISTRY = {
+    # InternVL3 — 2B e 14B confirmados funcionando; 9B não funciona
     "internvl3-2b":   "OpenGVLab/InternVL3-2B",
-    "internvl3-8b":   "OpenGVLab/InternVL3-8B",
+    "internvl3-14b":  "OpenGVLab/InternVL3-14B",
+    # Qwen-VL
     "qwen25vl-3b":    "Qwen/Qwen2.5-VL-3B-Instruct",
     "qwen25vl-7b":    "Qwen/Qwen2.5-VL-7B-Instruct",
     "qwen3vl-7b":     "Qwen/Qwen3-VL-7B-Instruct",
+    # MiniCPM
     "minicpm-v26":    "openbmb/MiniCPM-V-2_6",
+    # Mistral — pixtral a testar; ministral-3b confirmado multimodal
     "pixtral-12b":    "mistralai/Pixtral-12B-2409",
     "ministral-3b":   "mistralai/Ministral-3-3B-Instruct-2512",
-    "gemma4-9b":      "google/gemma-4-9b-it",
-    "gemma4-27b":     "google/gemma-4-27b-it",
+    # Gemma 4 — E4B (~4B params eficientes, cabe em 16GB); 31B não cabe
+    "gemma4-e4b":     "google/gemma-4-E4B-it",
 }
 
 
@@ -294,7 +298,7 @@ def _build_adapter(model_key: str, device: str):
         return _MiniCPMAdapter(model_id, device), model_id
     elif model_key.startswith("ministral") or model_key.startswith("pixtral"):
         return _MistralVLAdapter(model_id, device), model_id
-    elif model_key.startswith("gemma"):
+    elif model_key.startswith("gemma4"):
         return _Gemma4Adapter(model_id, device), model_id
     else:
         raise ValueError(f"Adapter não implementado para {model_key}. "
