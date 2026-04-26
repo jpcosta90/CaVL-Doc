@@ -3,9 +3,9 @@
 # It syncs automatically to GitHub Projects via sync_tasks_to_github_project.py
 
 project_config:
-  owner: "joaopaulo"  # GitHub username
-  repo: "CaVL-Doc"    # Repository name
-  project_number: null  # Set this to your GitHub Project number after creation
+  owner: "jpcosta90"   # GitHub username
+  repo: "CaVL-Doc"     # Repository name
+  project_number: 1
   
 research_questions:
   q1: "Efeito do teacher na LA-CDIP"
@@ -155,18 +155,92 @@ sprints:
     milestone: "Sprint 3"
     tasks:
       T-07-01:
-        title: "Ablação teacher + consolidação final LA-CDIP"
+        title: "Treino da ablação teacher (Sprint3, 5 splits, 7 losses)"
         description: |
-          Executar a ablação controlada para medir o impacto do professor no LA-CDIP e fechar o resultado final do dataset.
-          - Matriz com/sem teacher
-          - 5 splits do protocolo
-          - 2 losses finalistas
-          - Tabela final com EER, estabilidade e ganho relativo
+          Treinamento concluído da ablação com/sem teacher na LA-CDIP.
+          - 5 splits do protocolo ZSL (S0–S4), split 5 reservado para teste
+          - 7 losses (contrastive, arcface, cosface, subcenter_arcface, subcenter_cosface, triplet, circle)
+          - Fase 1: 10 épocas sem mineração; Fase 2: 5 épocas com/sem professor
+          - 33 checkpoints gerados (best_siam.pt por run)
+          - Melhor checkpoint por (loss, split) selecionado via EER acumulado do W&B
+        status: "done"
+        priority: "high"
+        labels: ["phase:7", "topic:ablation", "status:done"]
+        research_question: "q1,q2"
+        evidence: "W&B: CaVL-Doc_LA-CDIP_Sprint3_Staged5x5 (33 checkpoints)"
+
+      T-07-02:
+        title: "Avaliação CaVL-Doc no split de teste 5"
+        description: |
+          Inferência de todos os checkpoints Sprint3 no split 5 (nunca visto durante treino).
+          Script: scripts/evaluation/eval_test_split5.py
+          - Carrega backbone uma vez; troca apenas pool/head por checkpoint
+          - Seleciona acumulado melhor via EER de treino do W&B (fase1 vs fase2)
+          - Resume automático via cache JSON (eval_test_split5_cache.json)
+          - Deduplicação: mesmo checkpoint profOFF/profON → 1 inferência, 2 logs W&B
+          - Estimativa: ~22 inferências únicas × ~20 min = ~7h
+          - Resultado: EER, R@1, threshold por (loss, split, accum_mode)
+          - Logs no W&B: CaVL-Doc_LA-CDIP_Sprint3_TestSplit5
+        status: "in-progress"
+        priority: "high"
+        labels: ["phase:7", "topic:evaluation", "status:doing"]
+        research_question: "q1,q2"
+        evidence: "W&B: CaVL-Doc_LA-CDIP_Sprint3_TestSplit5"
+
+      T-07-03:
+        title: "Baselines de embedding (Jina-v4, InternVL3 in/out, pixel) — todos os splits"
+        description: |
+          Avaliação de métodos de embedding sem fine-tuning como linha de base.
+          Script: scripts/baselines/eval_embeddings.py
+          Métodos (--method):
+            jina-v4       jinaai/jina-embeddings-v4 multimodal retrieval
+            internvl3-in  InternVL3-2B tokens de entrada (hidden[0]), mean-pool
+            internvl3-out InternVL3-2B saída na cut_layer=27, mean-pool
+            pixel-cosine  cosseno entre pixels achatados (448×448)
+            pixel-l2      distância L2 normalizada
+          - 6 splits (0–5); split 5 = teste, splits 0–4 = validação cruzada
+          - Estimativa: pixel ~30 min, Jina ~3h, InternVL3 in/out ~2h → total ~6h
+          - Logs no W&B: CaVL-Doc_LA-CDIP_Embedding_Baseline
+          Comando:
+            for METHOD in jina-v4 internvl3-in internvl3-out pixel-cosine pixel-l2; do
+              python scripts/baselines/eval_embeddings.py --method $METHOD \
+                --data-root /mnt/data/la-cdip \
+                --base-image-dir /mnt/data/la-cdip/data --splits all
+            done
         status: "todo"
         priority: "high"
-        labels: ["phase:7", "topic:ablation"]
-        research_question: "q1,q2"
-        evidence: "Tabela final LA-CDIP"
+        labels: ["phase:7", "topic:baseline", "topic:embedding", "status:todo"]
+        research_question: "q1,q4"
+        evidence: "W&B: CaVL-Doc_LA-CDIP_Embedding_Baseline"
+
+      T-07-04:
+        title: "Baseline VLM prompt (modelos selecionados, todos os splits)"
+        description: |
+          Avaliação de VLMs zero-shot via prompt de similaridade como baseline superior.
+          Script: scripts/baselines/eval_vlm_prompt.py
+          Modelos prioritários (~2B, comparação direta com CaVL-Doc):
+            internvl3-2b, qwen3vl-2b, gemma4-e2b
+          Modelos médios (cabem em 16 GB VRAM sem quantização):
+            qwen3vl-4b, gemma4-e4b, ministral-3b, minicpm-v26
+          Modelos grandes (--load-in-4bit):
+            internvl3-14b, pixtral-12b
+          - 6 splits (0–5) por modelo
+          - Estimativa por modelo: 2B ~5h/split × 6 splits ≈ 30h; 14B ~18h/split
+          - Total estimado (9 modelos prioritários): ~48-80h de GPU
+          - Modelo excluído do disco após avaliação (HF cache deletado automaticamente)
+          - Logs no W&B: CaVL-Doc_LA-CDIP_VLM_Baseline
+          Comando:
+            for MODEL in internvl3-2b qwen3vl-2b gemma4-e2b qwen3vl-4b \
+                         gemma4-e4b ministral-3b minicpm-v26 internvl3-14b pixtral-12b; do
+              python scripts/baselines/eval_vlm_prompt.py --model $MODEL \
+                --data-root /mnt/data/la-cdip \
+                --base-image-dir /mnt/data/la-cdip/data --splits all --load-in-4bit
+            done
+        status: "todo"
+        priority: "medium"
+        labels: ["phase:7", "topic:baseline", "topic:vlm", "status:todo"]
+        research_question: "q1,q4"
+        evidence: "W&B: CaVL-Doc_LA-CDIP_VLM_Baseline"
   
   sprint_4:
     phase: 8
