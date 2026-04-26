@@ -152,7 +152,7 @@ def _load_siam(ckpt_path: Path, device: str):
         projection_output_dim=PROJ_OUT_DIM,
     )
     backbone.requires_grad_(False)
-    warm_up_model(backbone, None)
+    warm_up_model(backbone, tokenizer)
 
     cut = CUT_LAYER
 
@@ -214,8 +214,10 @@ def _run_eval(siam, val_csv: Path, base_image_dir: str, device: str,
 
     def _collate(batch):
         imgs_a, imgs_b, labels, cls_a, cls_b = zip(*batch)
-        return list(imgs_a), list(imgs_b), torch.tensor(labels), \
-               torch.tensor(cls_a), torch.tensor(cls_b)
+        return list(imgs_a), list(imgs_b), \
+               torch.tensor([int(l) for l in labels], dtype=torch.long), \
+               torch.tensor([int(c) for c in cls_a], dtype=torch.long), \
+               torch.tensor([int(c) for c in cls_b], dtype=torch.long)
 
     loader = DataLoader(dataset, batch_size=12, shuffle=False,
                         num_workers=0, collate_fn=_collate)
