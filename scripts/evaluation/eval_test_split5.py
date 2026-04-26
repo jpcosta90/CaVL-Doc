@@ -233,7 +233,7 @@ def _load_weights(siam, ckpt_path: Path, device: str) -> None:
 # Evaluation
 # ---------------------------------------------------------------------------
 
-def _make_loader(val_csv: Path, base_image_dir: str):
+def _make_loader(val_csv: Path, base_image_dir: str, batch_size: int = 6):
     from torch.utils.data import DataLoader
     from cavl_doc.data.dataset import DocumentPairDataset
 
@@ -253,17 +253,17 @@ def _make_loader(val_csv: Path, base_image_dir: str):
         cls_b   = torch.tensor([int(s["class_b"]) for s in batch], dtype=torch.long)
         return imgs_a, imgs_b, labels, cls_a, cls_b
 
-    loader = DataLoader(dataset, batch_size=12, shuffle=False,
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False,
                         num_workers=0, collate_fn=_collate)
     return dataset, loader
 
 
 def _run_eval(siam, val_csv: Path, base_image_dir: str, device: str,
-              loss_type: str) -> dict:
+              loss_type: str, batch_size: int = 6) -> dict:
     from cavl_doc.modules.losses import build_loss
     from cavl_doc.trainers.rl_trainer import validate_siam_on_loader
 
-    dataset, loader = _make_loader(val_csv, base_image_dir)
+    dataset, loader = _make_loader(val_csv, base_image_dir, batch_size=batch_size)
     num_classes = getattr(dataset, "num_classes", max(100, len(dataset) // 10))
 
     criterion = build_loss(
@@ -525,6 +525,8 @@ def main() -> None:
                    help="Projeto W&B do treino Sprint3 (para buscar EERs de treino)")
     p.add_argument("--no-wandb",        action="store_true")
     p.add_argument("--gpu-id",          type=int, default=None)
+    p.add_argument("--batch-size",      type=int, default=6,
+                   help="Batch size para inferência (default: 6)")
     p.add_argument("--dry-run",         action="store_true")
     args = p.parse_args()
 
@@ -681,7 +683,8 @@ def main() -> None:
         try:
             t0 = time.time()
             _load_weights(siam, ckpt_path, device)
-            metrics = _run_eval(siam, val_csv, args.base_image_dir, device, loss_type)
+            metrics = _run_eval(siam, val_csv, args.base_image_dir, device, loss_type,
+                                batch_size=args.batch_size)
             elapsed = time.time() - t0
 
             print(f"  EER={metrics['eer']*100:.2f}%  "
