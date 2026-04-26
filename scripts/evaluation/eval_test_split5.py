@@ -138,13 +138,9 @@ def _prepare_test_split(data_root: str, output_base: Path) -> Path:
 # Model loading
 # ---------------------------------------------------------------------------
 
-def _load_siam(ckpt_path: Path, device: str):
-    """Load Siamese model from best_siam.pt checkpoint."""
+def _build_backbone(device: str):
+    """Load backbone once; reused across all checkpoints."""
     from cavl_doc.models.backbone_loader import load_model, warm_up_model
-    from cavl_doc.models.modeling_cavl import build_cavl_model
-
-    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-
     backbone, _, tokenizer, _, _ = load_model(
         model_name=MODEL_NAME,
         adapter_path=None,
@@ -153,7 +149,12 @@ def _load_siam(ckpt_path: Path, device: str):
     )
     backbone.requires_grad_(False)
     warm_up_model(backbone, tokenizer)
+    return backbone, tokenizer
 
+
+def _build_siam(backbone, tokenizer, device: str):
+    """Build the Siamese model shell (no weights loaded)."""
+    from cavl_doc.models.modeling_cavl import build_cavl_model
     cut = CUT_LAYER
 
     def _encode_fn(backbone, pixel_values, input_ids, attention_mask):
@@ -167,7 +168,7 @@ def _load_siam(ckpt_path: Path, device: str):
         idx = cut + 1 if len(hidden_states) == (len(lm.layers) + 1) else cut
         return hidden_states[idx], None
 
-    siam = build_cavl_model(
+    return build_cavl_model(
         backbone=backbone,
         cut_layer=cut,
         encode_fn=_encode_fn,
@@ -181,27 +182,26 @@ def _load_siam(ckpt_path: Path, device: str):
         num_queries=NUM_QUERIES,
     ).to(device)
 
+
+def _load_weights(siam, ckpt_path: Path, device: str) -> None:
+    """Load pool/head/backbone weights into an existing siam model."""
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     if "siam_pool" in ckpt:
         siam.pool.load_state_dict(ckpt["siam_pool"])
     if "siam_head" in ckpt:
         siam.head.load_state_dict(ckpt["siam_head"])
     if "backbone_trainable" in ckpt and ckpt["backbone_trainable"]:
         siam.backbone.load_state_dict(ckpt["backbone_trainable"], strict=False)
-
     siam.eval()
-    return siam
 
 
 # ---------------------------------------------------------------------------
 # Evaluation
 # ---------------------------------------------------------------------------
 
-def _run_eval(siam, val_csv: Path, base_image_dir: str, device: str,
-              loss_type: str) -> dict:
+def _make_loader(val_csv: Path, base_image_dir: str):
     from torch.utils.data import DataLoader
     from cavl_doc.data.dataset import DocumentPairDataset
-    from cavl_doc.modules.losses import build_loss
-    from cavl_doc.trainers.rl_trainer import validate_siam_on_loader
 
     dataset = DocumentPairDataset(
         csv_path=str(val_csv),
@@ -210,17 +210,27 @@ def _run_eval(siam, val_csv: Path, base_image_dir: str, device: str,
         max_num=12,
         device="cpu",
     )
-    num_classes = getattr(dataset, "num_classes", max(100, len(dataset) // 10))
 
     def _collate(batch):
-        imgs_a, imgs_b, labels, cls_a, cls_b = zip(*batch)
-        return list(imgs_a), list(imgs_b), \
-               torch.tensor([int(l) for l in labels], dtype=torch.long), \
-               torch.tensor([int(c) for c in cls_a], dtype=torch.long), \
-               torch.tensor([int(c) for c in cls_b], dtype=torch.long)
+        imgs_a  = [s["image_a"]  for s in batch]
+        imgs_b  = [s["image_b"]  for s in batch]
+        labels  = torch.tensor([int(s["label"])   for s in batch], dtype=torch.long)
+        cls_a   = torch.tensor([int(s["class_a"]) for s in batch], dtype=torch.long)
+        cls_b   = torch.tensor([int(s["class_b"]) for s in batch], dtype=torch.long)
+        return imgs_a, imgs_b, labels, cls_a, cls_b
 
     loader = DataLoader(dataset, batch_size=12, shuffle=False,
                         num_workers=0, collate_fn=_collate)
+    return dataset, loader
+
+
+def _run_eval(siam, val_csv: Path, base_image_dir: str, device: str,
+              loss_type: str) -> dict:
+    from cavl_doc.modules.losses import build_loss
+    from cavl_doc.trainers.rl_trainer import validate_siam_on_loader
+
+    dataset, loader = _make_loader(val_csv, base_image_dir)
+    num_classes = getattr(dataset, "num_classes", max(100, len(dataset) // 10))
 
     criterion = build_loss(
         loss_type,
@@ -468,6 +478,11 @@ def main() -> None:
         print("\n[DRY-RUN] Encerrando sem rodar inferência.")
         return
 
+    # Load backbone once — reused for every checkpoint
+    print("\nCarregando backbone (uma vez)...")
+    backbone, tokenizer = _build_backbone(device)
+    siam = _build_siam(backbone, tokenizer, device)
+
     # Evaluate each checkpoint
     all_results = []
     for ckpt_path in checkpoints:
@@ -486,7 +501,7 @@ def main() -> None:
 
         try:
             t0 = time.time()
-            siam = _load_siam(ckpt_path, device)
+            _load_weights(siam, ckpt_path, device)
             metrics = _run_eval(siam, val_csv, args.base_image_dir, device, loss_type)
             elapsed = time.time() - t0
 
@@ -499,10 +514,6 @@ def main() -> None:
 
             if not args.no_wandb:
                 _log_wandb(info, metrics, args.wandb_entity, args.wandb_project)
-
-            # Free GPU memory before next model
-            del siam
-            torch.cuda.empty_cache()
 
         except Exception as e:
             print(f"  ❌ Erro: {e}")
