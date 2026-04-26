@@ -37,9 +37,10 @@ import torch
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 PREP_SCRIPT = WORKSPACE_ROOT / "scripts" / "utils" / "prepare_protocol_split.py"
 
-WANDB_ENTITY  = "jpcosta1990-university-of-brasilia"
-WANDB_PROJECT = "CaVL-Doc_LA-CDIP_Sprint3_TestSplit5"
-TEST_SPLIT    = 5
+WANDB_ENTITY        = "jpcosta1990-university-of-brasilia"
+WANDB_PROJECT       = "CaVL-Doc_LA-CDIP_Sprint3_TestSplit5"
+WANDB_TRAIN_PROJECT = "CaVL-Doc_LA-CDIP_Sprint3_Staged5x5"
+TEST_SPLIT          = 5
 
 # Fixed model architecture (same across all Sprint3/4 runs)
 MODEL_NAME         = "InternVL3-2B"
@@ -449,6 +450,59 @@ def _print_stats(results: List[dict], wandb_entity: str, wandb_project: str,
         print(f"⚠️  W&B aggregate log falhou: {e}")
 
 
+def _print_stats_accum(results: List[dict], wandb_entity: str, wandb_project: str,
+                       log_wandb: bool = True) -> None:
+    """Print and optionally log aggregated accumulated-best EER stats."""
+    if not results:
+        print("Nenhum resultado para agregar.")
+        return
+
+    import pandas as pd
+    df = pd.DataFrame(results)
+
+    print("\n" + "=" * 80)
+    print("ACUMULADO MELHOR — Split 5 (Teste)")
+    print("=" * 80)
+
+    for (exp, loss, mode), grp in df.groupby(["experiment", "loss", "accum_mode"]):
+        eers = grp["eer"].values * 100
+        print(f"\n  [{exp}] loss={loss} {mode}  (n={len(eers)} splits)")
+        print(f"    Média:   {eers.mean():.2f}%")
+        print(f"    Std:     {eers.std():.2f} pp")
+        print(f"    Mediana: {np.median(eers):.2f}%")
+        print(f"    Mín:     {eers.min():.2f}%")
+        print(f"    Máx:     {eers.max():.2f}%")
+
+    print("\n" + "=" * 80)
+
+    if not log_wandb:
+        return
+
+    try:
+        import wandb
+        for (exp, loss, mode), grp in df.groupby(["experiment", "loss", "accum_mode"]):
+            eers = grp["eer"].values
+            agg_run = wandb.init(
+                entity=wandb_entity,
+                project=wandb_project,
+                name=f"Agg_{exp}_{loss}_{mode}",
+                config={"type": "accumulated_aggregate", "experiment": exp,
+                        "loss": loss, "accum_mode": mode, "n_splits": len(eers)},
+                reinit=True,
+            )
+            wandb.log({
+                "accum/eer_mean":   float(eers.mean()),
+                "accum/eer_std":    float(eers.std()) if len(eers) > 1 else 0.0,
+                "accum/eer_median": float(np.median(eers)),
+                "accum/eer_min":    float(eers.min()),
+                "accum/eer_max":    float(eers.max()),
+                "accum/n_splits":   len(eers),
+            })
+            agg_run.finish()
+    except Exception as e:
+        print(f"⚠️  W&B aggregate log falhou: {e}")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -465,8 +519,10 @@ def main() -> None:
                    help="Raiz dos checkpoints (default: /mnt/large/checkpoints ou ./checkpoints)")
     p.add_argument("--filter",          default="Sprint3",
                    help="Filtro de nome para os checkpoints (default: Sprint3)")
-    p.add_argument("--wandb-entity",    default=WANDB_ENTITY)
-    p.add_argument("--wandb-project",   default=WANDB_PROJECT)
+    p.add_argument("--wandb-entity",         default=WANDB_ENTITY)
+    p.add_argument("--wandb-project",        default=WANDB_PROJECT)
+    p.add_argument("--train-wandb-project",  default=WANDB_TRAIN_PROJECT,
+                   help="Projeto W&B do treino Sprint3 (para buscar EERs de treino)")
     p.add_argument("--no-wandb",        action="store_true")
     p.add_argument("--gpu-id",          type=int, default=None)
     p.add_argument("--dry-run",         action="store_true")
@@ -511,26 +567,116 @@ def main() -> None:
         print("\n[DRY-RUN] Encerrando sem rodar inferência.")
         return
 
+    # ------------------------------------------------------------------
+    # Fetch training val/best_eer from W&B to select accumulated best
+    # ------------------------------------------------------------------
+    print(f"\nBuscando EERs de treino no W&B ({args.train_wandb_project})...")
+    train_eers: Dict[str, float] = {}
+    try:
+        import wandb
+        api = wandb.Api()
+        runs = api.runs(f"{args.wandb_entity}/{args.train_wandb_project}")
+        for r in runs:
+            eer = None
+            for key in ("val/best_eer", "val/eer"):
+                v = r.summary.get(key)
+                if v is not None:
+                    try:
+                        eer = float(v)
+                        break
+                    except (TypeError, ValueError):
+                        if hasattr(v, "get"):
+                            for sub in ("min", "last"):
+                                c = v.get(sub)
+                                if c is not None:
+                                    try:
+                                        eer = float(c)
+                                        break
+                                    except (TypeError, ValueError):
+                                        pass
+                        if eer is not None:
+                            break
+            if eer is not None:
+                train_eers[r.name] = eer
+        print(f"  {len(train_eers)} runs com EER de treino encontradas.")
+    except Exception as e:
+        print(f"  ⚠️  Não foi possível buscar EERs de treino: {e}")
+        print("  Fallback: usando fase2 como acumulado (sem comparar com fase1).")
+
+    # ------------------------------------------------------------------
+    # Group checkpoints by (loss, split) and select accumulated best
+    # ------------------------------------------------------------------
+    # Index: (loss, split) -> {phase -> ckpt_path}
+    groups: Dict[tuple, dict] = {}
+    for ckpt_path in checkpoints:
+        info = _parse_run_name(ckpt_path.parent.name)
+        if None in (info["experiment"], info["loss"], info["split"], info["phase"]):
+            continue
+        key = (info["loss"], info["split"])
+        groups.setdefault(key, {})[info["phase"]] = ckpt_path
+
+    # For each (loss, split): pick best accumulated checkpoint for profOFF and profON
+    to_eval: List[dict] = []  # {ckpt_path, loss, split, accum_mode}
+    for (loss, split), phases in sorted(groups.items()):
+        for accum_mode, p2_phase in [("accum_profOFF", "fase2_profOFF"),
+                                      ("accum_profON",  "fase2_profON")]:
+            p1_path = phases.get("fase1")
+            p2_path = phases.get(p2_phase)
+
+            if p2_path is None:
+                if p1_path is not None:
+                    chosen, chosen_phase = p1_path, "fase1"
+                else:
+                    continue
+            elif p1_path is None:
+                chosen, chosen_phase = p2_path, p2_phase
+            else:
+                p1_name = p1_path.parent.name
+                p2_name = p2_path.parent.name
+                p1_eer  = train_eers.get(p1_name)
+                p2_eer  = train_eers.get(p2_name)
+
+                if p1_eer is None and p2_eer is None:
+                    chosen, chosen_phase = p2_path, p2_phase
+                elif p1_eer is None:
+                    chosen, chosen_phase = p2_path, p2_phase
+                elif p2_eer is None:
+                    chosen, chosen_phase = p1_path, "fase1"
+                else:
+                    if p1_eer <= p2_eer:
+                        chosen, chosen_phase = p1_path, "fase1"
+                    else:
+                        chosen, chosen_phase = p2_path, p2_phase
+
+            to_eval.append({
+                "ckpt_path":    chosen,
+                "loss":         loss,
+                "split":        split,
+                "accum_mode":   accum_mode,
+                "chosen_phase": chosen_phase,
+                "experiment":   "Sprint3",
+            })
+
+    print(f"\nCheckpoints selecionados para inferência: {len(to_eval)}")
+    for e in to_eval:
+        print(f"  [{e['accum_mode']}] loss={e['loss']} split={e['split']} "
+              f"→ {e['chosen_phase']}  ({e['ckpt_path'].parent.name})")
+
     # Load backbone once — reused for every checkpoint
     print("\nCarregando backbone (uma vez)...")
     backbone, tokenizer = _build_backbone(device)
     siam = _build_siam(backbone, tokenizer, device)
 
-    # Evaluate each checkpoint
     all_results = []
-    for ckpt_path in checkpoints:
-        run_name = ckpt_path.parent.name
-        info = _parse_run_name(run_name)
+    for entry in to_eval:
+        ckpt_path   = entry["ckpt_path"]
+        loss_type   = entry["loss"]
+        accum_mode  = entry["accum_mode"]
+
         print(f"\n{'─'*70}")
-        print(f"[EVAL] {run_name}")
-        print(f"       exp={info['experiment']} loss={info['loss']} "
-              f"split={info['split']} phase={info['phase']}")
-
-        if None in (info["experiment"], info["loss"], info["split"], info["phase"]):
-            print("  ⚠️  Nome não reconhecido, pulando.")
-            continue
-
-        loss_type = info["loss"]
+        print(f"[EVAL] {ckpt_path.parent.name}")
+        print(f"       loss={loss_type} split={entry['split']} "
+              f"mode={accum_mode} (from {entry['chosen_phase']})")
 
         try:
             t0 = time.time()
@@ -542,18 +688,47 @@ def main() -> None:
                   f"R@1={metrics['recall_at_1']*100:.2f}%  "
                   f"({elapsed:.0f}s)")
 
-            result = {**info, **metrics}
+            result = {
+                "experiment":   entry["experiment"],
+                "loss":         loss_type,
+                "split":        entry["split"],
+                "accum_mode":   accum_mode,
+                "chosen_phase": entry["chosen_phase"],
+                **metrics,
+            }
             all_results.append(result)
 
             if not args.no_wandb:
-                _log_wandb(info, metrics, args.wandb_entity, args.wandb_project)
+                try:
+                    import wandb
+                    run_name = (f"Test5_{entry['experiment']}_S{entry['split']}"
+                                f"_{loss_type}_{accum_mode}")
+                    run = wandb.init(
+                        entity=args.wandb_entity,
+                        project=args.wandb_project,
+                        name=run_name,
+                        config={**entry, "test_split": TEST_SPLIT,
+                                "ckpt": ckpt_path.parent.name},
+                        reinit=True,
+                    )
+                    wandb.log({
+                        "test/eer":          metrics["eer"],
+                        "test/loss":         metrics["loss"],
+                        "test/recall_at_1":  metrics["recall_at_1"],
+                        "test/threshold":    metrics["threshold"],
+                        "test/batch_recall": metrics["batch_recall"],
+                    })
+                    run.finish()
+                    print(f"  W&B logged: {run_name}")
+                except Exception as e:
+                    print(f"  ⚠️  W&B log falhou: {e}")
 
         except Exception as e:
             print(f"  ❌ Erro: {e}")
             import traceback; traceback.print_exc()
 
-    _print_stats(all_results, args.wandb_entity, args.wandb_project,
-                 log_wandb=not args.no_wandb)
+    _print_stats_accum(all_results, args.wandb_entity, args.wandb_project,
+                       log_wandb=not args.no_wandb)
 
 
 if __name__ == "__main__":
