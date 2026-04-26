@@ -39,6 +39,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -378,39 +379,64 @@ def _load_image(path: str, base_dir: str) -> Image.Image:
     return Image.open(full).convert("RGB")
 
 
+def _prepare_split(data_root: str, split_idx: int) -> Path:
+    """Prepare validation CSV for a given split index via prepare_protocol_split.py."""
+    split_dir = WORKSPACE_ROOT / "data" / "generated_splits" / f"eval_split{split_idx}"
+    val_csv   = split_dir / "validation_pairs.csv"
+    if val_csv.exists():
+        return val_csv
+    prep = WORKSPACE_ROOT / "scripts" / "utils" / "prepare_protocol_split.py"
+    cmd = [
+        sys.executable, str(prep),
+        "--data-root",     data_root,
+        "--output-dir",    str(split_dir),
+        "--val-split-idx", str(split_idx),
+        "--protocol",      "zsl",
+    ]
+    print(f"[PREP] split {split_idx}: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+    return val_csv
+
+
 def _run_baseline(adapter, val_csv: Path, base_image_dir: str,
-                  max_parse_errors: int = 20) -> Tuple[np.ndarray, np.ndarray]:
-    """Run inference on all pairs. Returns (scores, labels)."""
+                  limit: Optional[int] = None,
+                  max_parse_errors: int = 20):
+    """Run inference on all pairs. Returns a DataFrame with scores and labels."""
     import pandas as pd
     df = pd.read_csv(val_csv)
-    scores, labels = [], []
-    parse_errors = 0
+    if limit:
+        df = df.head(limit)
 
+    rows, parse_errors = [], 0
     for i, row in df.iterrows():
         try:
-            img_a = _load_image(row["file_a_path"], base_image_dir)
-            img_b = _load_image(row["file_b_path"], base_image_dir)
+            img_a    = _load_image(row["file_a_path"], base_image_dir)
+            img_b    = _load_image(row["file_b_path"], base_image_dir)
             response = adapter.infer(img_a, img_b)
             score    = _parse_score(response)
 
             if score is None:
                 parse_errors += 1
-                print(f"  [WARN] Par {i}: não foi possível parsear score. Resposta: {response[:120]}")
+                print(f"  [WARN] Par {i}: score não parseado. Resposta: {response[:120]}")
                 if parse_errors >= max_parse_errors:
-                    print("  Muitos erros de parse. Encerrando.")
+                    print("  Muitos erros de parse. Encerrando split.")
                     break
                 continue
 
-            scores.append(score)
-            labels.append(int(row["is_equal"]))
+            rows.append({
+                "file_a_path":       row["file_a_path"],
+                "file_b_path":       row["file_b_path"],
+                "is_equal":          int(row["is_equal"]),
+                "similarity_score":  score,
+            })
 
-            if i % 50 == 0:
-                print(f"  [{i}/{len(df)}] score={score:.1f} label={int(row['is_equal'])}")
+            if len(rows) % 50 == 0:
+                print(f"  [{len(rows)}/{len(df)}] score={score:.1f} label={int(row['is_equal'])}")
 
         except Exception as e:
             print(f"  [ERR] Par {i}: {e}")
 
-    return np.array(scores, dtype=float), np.array(labels, dtype=int)
+    return pd.DataFrame(rows)
 
 
 def _compute_eer(scores: np.ndarray, labels: np.ndarray) -> Tuple[float, float]:
@@ -426,21 +452,23 @@ def _compute_eer(scores: np.ndarray, labels: np.ndarray) -> Tuple[float, float]:
 # W&B logging
 # ---------------------------------------------------------------------------
 
-def _log_wandb(model_key: str, model_id: str, eer: float, threshold: float,
-               n_pairs: int, wandb_entity: str, wandb_project: str) -> None:
+def _log_wandb(model_key: str, model_id: str, split_idx: int,
+               eer: float, threshold: float, n_pairs: int,
+               wandb_entity: str, wandb_project: str) -> None:
     try:
         import wandb
+        run_name = f"VLM_{model_key}_split{split_idx}"
         run = wandb.init(
             entity=wandb_entity,
             project=wandb_project,
-            name=f"VLM_{model_key}_split5",
+            name=run_name,
             config={"model_key": model_key, "model_id": model_id,
-                    "test_split": 5, "n_pairs": n_pairs},
+                    "split": split_idx, "n_pairs": n_pairs},
             reinit=True,
         )
         wandb.log({"test/eer": eer, "test/threshold": threshold, "test/n_pairs": n_pairs})
         run.finish()
-        print(f"  W&B logged: VLM_{model_key}_split5")
+        print(f"  W&B logged: {run_name}")
     except Exception as e:
         print(f"  ⚠️  W&B log falhou: {e}")
 
@@ -449,22 +477,32 @@ def _log_wandb(model_key: str, model_id: str, eer: float, threshold: float,
 # Main
 # ---------------------------------------------------------------------------
 
+def _parse_splits(splits_arg: str) -> List[int]:
+    if splits_arg.lower() == "all":
+        return [0, 1, 2, 3, 4, 5]
+    return [int(s.strip()) for s in splits_arg.split(",") if s.strip()]
+
+
 def main() -> None:
-    p = argparse.ArgumentParser(description="Baseline VLM via prompt para split 5.")
+    p = argparse.ArgumentParser(description="Baseline VLM via prompt — múltiplos splits.")
     p.add_argument("--model",          required=True, choices=list(MODEL_REGISTRY),
                    help=f"Modelo a avaliar: {list(MODEL_REGISTRY)}")
-    p.add_argument("--val-csv",        default=None,
-                   help="CSV de pares de validação (default: split 5 gerado)")
+    p.add_argument("--data-root",      default=None,
+                   help="Raiz do dataset LA-CDIP (necessário para preparar splits)")
     p.add_argument("--base-image-dir", required=True,
                    help="Diretório base das imagens LA-CDIP")
+    p.add_argument("--splits",         default="5",
+                   help="Splits a avaliar: '5', '0,1,2,3,4,5' ou 'all' (default: 5)")
+    p.add_argument("--output-dir",     default=None,
+                   help="Diretório para salvar CSVs de resultados (default: results/vlm_baseline/<model>)")
     p.add_argument("--gpu-id",         type=int, default=None)
     p.add_argument("--wandb-entity",   default=WANDB_ENTITY)
     p.add_argument("--wandb-project",  default=WANDB_PROJECT)
     p.add_argument("--no-wandb",       action="store_true")
     p.add_argument("--load-in-4bit",   action="store_true",
-                   help="Carregar modelo em 4-bit (NF4) para reduzir uso de VRAM/RAM")
+                   help="Carregar modelo em 4-bit (NF4) para reduzir VRAM/RAM")
     p.add_argument("--limit",          type=int, default=None,
-                   help="Limitar a N pares (para teste rápido)")
+                   help="Limitar a N pares por split (para teste rápido)")
     args = p.parse_args()
 
     if args.gpu_id is not None:
@@ -472,52 +510,110 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
-    # Val CSV
-    if args.val_csv:
-        val_csv = Path(args.val_csv)
-    else:
-        val_csv = WORKSPACE_ROOT / "data" / "generated_splits" / "eval_test_split5" / "validation_pairs.csv"
-    if not val_csv.exists():
-        print(f"CSV não encontrado: {val_csv}")
-        sys.exit(1)
+    splits = _parse_splits(args.splits)
+    print(f"Splits a avaliar: {splits}")
 
-    import pandas as pd
-    df = pd.read_csv(val_csv)
-    if args.limit:
-        df = df.head(args.limit)
-        tmp = val_csv.parent / "_tmp_limited.csv"
-        df.to_csv(tmp, index=False)
-        val_csv = tmp
+    # Output dir
+    out_dir = Path(args.output_dir) if args.output_dir else \
+              WORKSPACE_ROOT / "results" / "vlm_baseline" / args.model
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Val CSV: {val_csv}  ({len(df)} pares)")
-
-    # Load model
+    # Load model once
     adapter, model_id = _build_adapter(args.model, device, load_in_4bit=args.load_in_4bit)
 
-    # Run
-    print(f"\nRodando inferência com {args.model}...")
-    t0 = time.time()
-    scores, labels = _run_baseline(adapter, val_csv, args.base_image_dir)
-    elapsed = time.time() - t0
+    import pandas as pd
+    summary_rows = []
 
-    if len(scores) < 10:
-        print("Pares insuficientes para calcular EER.")
-        sys.exit(1)
+    for split_idx in splits:
+        print(f"\n{'='*60}")
+        print(f"SPLIT {split_idx}")
+        print(f"{'='*60}")
 
-    eer, thr = _compute_eer(scores, labels)
-    print(f"\n{'='*60}")
-    print(f"Modelo:    {args.model} ({model_id})")
-    print(f"Pares:     {len(scores)}")
-    print(f"EER:       {eer*100:.2f}%")
-    print(f"Threshold: {thr:.1f}")
-    print(f"Tempo:     {elapsed/60:.1f} min")
-    print(f"{'='*60}")
+        # Prepare CSV
+        if split_idx == 5:
+            val_csv = WORKSPACE_ROOT / "data" / "generated_splits" / "eval_test_split5" / "validation_pairs.csv"
+            if not val_csv.exists():
+                if not args.data_root:
+                    print(f"  ⚠️  Split 5 CSV não encontrado e --data-root não fornecido. Pulando.")
+                    continue
+                val_csv = _prepare_split(args.data_root, split_idx)
+        else:
+            if not args.data_root:
+                print(f"  ⚠️  --data-root necessário para preparar split {split_idx}. Pulando.")
+                continue
+            val_csv = _prepare_split(args.data_root, split_idx)
 
-    if not args.no_wandb:
-        _log_wandb(args.model, model_id, eer, thr, len(scores),
-                   args.wandb_entity, args.wandb_project)
+        print(f"  CSV: {val_csv}")
 
-    # Free GPU and delete HF cache to recover disk space
+        t0 = time.time()
+        df_results = _run_baseline(adapter, val_csv, args.base_image_dir, limit=args.limit)
+        elapsed = time.time() - t0
+
+        if len(df_results) < 10:
+            print(f"  ⚠️  Pares insuficientes ({len(df_results)}). Pulando EER.")
+            continue
+
+        scores = df_results["similarity_score"].values
+        labels = df_results["is_equal"].values
+        eer, thr = _compute_eer(scores, labels)
+
+        df_results["split"] = split_idx
+        pairs_csv = out_dir / f"split{split_idx}_pairs.csv"
+        df_results.to_csv(pairs_csv, index=False)
+
+        summary_rows.append({
+            "split":     split_idx,
+            "n_pairs":   len(df_results),
+            "eer":       eer,
+            "eer_pct":   round(eer * 100, 2),
+            "threshold": thr,
+            "elapsed_min": round(elapsed / 60, 1),
+        })
+
+        print(f"  EER={eer*100:.2f}%  threshold={thr:.1f}  ({elapsed/60:.1f} min)")
+        print(f"  Resultados salvos: {pairs_csv}")
+
+        if not args.no_wandb:
+            _log_wandb(args.model, model_id, split_idx, eer, thr,
+                       len(df_results), args.wandb_entity, args.wandb_project)
+
+    # Summary
+    if summary_rows:
+        df_summary = pd.DataFrame(summary_rows)
+        summary_csv = out_dir / "summary.csv"
+        df_summary.to_csv(summary_csv, index=False)
+
+        print(f"\n{'='*60}")
+        print(f"RESUMO — {args.model}")
+        print(f"{'='*60}")
+        print(df_summary[["split", "n_pairs", "eer_pct", "threshold"]].to_string(index=False))
+        eers = df_summary["eer"].values
+        print(f"\n  Média EER:   {eers.mean()*100:.2f}%")
+        print(f"  Std EER:     {eers.std()*100:.2f} pp")
+        print(f"  Mediana EER: {np.median(eers)*100:.2f}%")
+        print(f"\n  Sumário salvo: {summary_csv}")
+
+        if not args.no_wandb:
+            try:
+                import wandb
+                agg = wandb.init(
+                    entity=args.wandb_entity, project=args.wandb_project,
+                    name=f"VLM_{args.model}_agg",
+                    config={"model_key": args.model, "model_id": model_id,
+                            "splits": splits, "type": "aggregate"},
+                    reinit=True,
+                )
+                wandb.log({
+                    "agg/eer_mean":   float(eers.mean()),
+                    "agg/eer_std":    float(eers.std()),
+                    "agg/eer_median": float(np.median(eers)),
+                    "agg/n_splits":   len(eers),
+                })
+                agg.finish()
+            except Exception as e:
+                print(f"  ⚠️  W&B agg log falhou: {e}")
+
+    # Cleanup
     del adapter
     torch.cuda.empty_cache()
     _delete_model_cache(model_id)
