@@ -1,0 +1,434 @@
+#!/usr/bin/env python3
+"""
+Avalia os modelos treinados (best_siam.pt) no split de teste 5 (never-seen).
+
+Para cada checkpoint encontrado no checkpoint_root que corresponda ao padrão
+Sprint3/Sprint4, carrega o modelo, roda inferência no split 5 e loga os
+resultados no W&B. Ao final, imprime estatísticas agregadas (média, std,
+mediana, mín, máx) por loss/fase/experimento.
+
+Uso:
+  # Local
+  python scripts/evaluation/eval_test_split5.py \
+      --data-root /mnt/data/la-cdip \
+      --base-image-dir /mnt/data/la-cdip/data
+
+  # UNB
+  TMPDIR=/tmp python scripts/evaluation/eval_test_split5.py \
+      --data-root /mnt/nas/joaopaulo/LA-CDIP \
+      --base-image-dir /mnt/nas/joaopaulo/LA-CDIP/data \
+      --checkpoint-root /mnt/nas/joaopaulo/checkpoints
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import torch
+
+WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
+PREP_SCRIPT = WORKSPACE_ROOT / "scripts" / "utils" / "prepare_protocol_split.py"
+
+WANDB_ENTITY  = "jpcosta1990-university-of-brasilia"
+WANDB_PROJECT = "CaVL-Doc_LA-CDIP_Sprint3_TestSplit5"
+TEST_SPLIT    = 5
+
+# Fixed model architecture (same across all Sprint3/4 runs)
+MODEL_NAME         = "InternVL3-2B"
+PROJ_OUT_DIM       = 1536
+CUT_LAYER          = 27
+POOLER_TYPE        = "attention"
+HEAD_TYPE          = "mlp"
+NUM_QUERIES        = 1
+
+KNOWN_LOSSES = [
+    "subcenter_cosface", "subcenter_arcface",
+    "contrastive", "cosface", "arcface", "triplet", "circle",
+]
+
+
+# ---------------------------------------------------------------------------
+# Checkpoint discovery
+# ---------------------------------------------------------------------------
+
+def _find_checkpoints(checkpoint_root: Path, name_filter: str) -> List[Path]:
+    """Return all best_siam.pt files whose parent dir matches name_filter."""
+    found = []
+    pattern = name_filter.lower()
+    for ckpt in checkpoint_root.rglob("best_siam.pt"):
+        if pattern in ckpt.parent.name.lower():
+            found.append(ckpt)
+    return sorted(found, key=lambda p: p.parent.name)
+
+
+def _parse_run_name(name: str) -> dict:
+    """Extract experiment, loss, split, phase from a checkpoint directory name."""
+    info: dict = {"name": name, "experiment": None, "loss": None,
+                  "split": None, "phase": None}
+
+    # Experiment
+    if name.startswith("Sprint3_"):
+        info["experiment"] = "Sprint3"
+    elif name.startswith("Sprint4_"):
+        info["experiment"] = "Sprint4"
+    else:
+        return info
+
+    # Split
+    m = re.search(r"_S(\d+)_", name)
+    if m:
+        info["split"] = int(m.group(1))
+
+    # Loss
+    name_l = name.lower()
+    for loss in sorted(KNOWN_LOSSES, key=len, reverse=True):
+        if loss in name_l:
+            info["loss"] = loss
+            break
+
+    # Phase / mode
+    if "fase1" in name_l or ("prof_off" in name_l and "_e10" in name_l):
+        info["phase"] = "fase1"
+    elif "fase2_profon" in name_l or "prof_on" in name_l:
+        info["phase"] = "fase2_profON"
+    elif "fase2_profoff" in name_l:
+        info["phase"] = "fase2_profOFF"
+    elif "transfer" in name_l:
+        info["phase"] = "transfer"
+    elif "direct" in name_l:
+        info["phase"] = "direct"
+
+    return info
+
+
+# ---------------------------------------------------------------------------
+# Split 5 validation data
+# ---------------------------------------------------------------------------
+
+def _prepare_test_split(data_root: str, output_base: Path) -> Path:
+    """Prepare split-5 validation pairs CSV (all other splits used as train)."""
+    split_dir = output_base / f"eval_test_split{TEST_SPLIT}"
+    val_csv   = split_dir / "validation_pairs.csv"
+    if val_csv.exists():
+        return split_dir
+
+    cmd = [
+        sys.executable, str(PREP_SCRIPT),
+        "--data-root",     data_root,
+        "--output-dir",    str(split_dir),
+        "--val-split-idx", str(TEST_SPLIT),
+        "--protocol",      "zsl",
+    ]
+    print(f"[PREP] Preparando split {TEST_SPLIT}: {' '.join(cmd)}")
+    subprocess.run(cmd, check=True)
+    if not val_csv.exists():
+        raise FileNotFoundError(f"validation_pairs.csv não criado em {split_dir}")
+    return split_dir
+
+
+# ---------------------------------------------------------------------------
+# Model loading
+# ---------------------------------------------------------------------------
+
+def _load_siam(ckpt_path: Path, device: str):
+    """Load Siamese model from best_siam.pt checkpoint."""
+    from cavl_doc.models.backbone_loader import load_model, warm_up_model
+    from cavl_doc.models.modeling_cavl import build_cavl_model
+
+    ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+
+    backbone, _, tokenizer, _, _ = load_model(
+        model_name=MODEL_NAME,
+        adapter_path=None,
+        load_in_4bit=False,
+        projection_output_dim=PROJ_OUT_DIM,
+    )
+    backbone.requires_grad_(False)
+    warm_up_model(backbone, None)
+
+    cut = CUT_LAYER
+
+    def _encode_fn(backbone, pixel_values, input_ids, attention_mask):
+        hidden_states = backbone(
+            pixel_values=pixel_values,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            output_hidden_states=True,
+        ).hidden_states
+        lm = backbone.language_model.model
+        idx = cut + 1 if len(hidden_states) == (len(lm.layers) + 1) else cut
+        return hidden_states[idx], None
+
+    siam = build_cavl_model(
+        backbone=backbone,
+        cut_layer=cut,
+        encode_fn=_encode_fn,
+        pool_dim=PROJ_OUT_DIM,
+        proj_hidden=4096,
+        proj_out=PROJ_OUT_DIM,
+        set_trainable=False,
+        tokenizer=tokenizer,
+        pooler_type=POOLER_TYPE,
+        head_type=HEAD_TYPE,
+        num_queries=NUM_QUERIES,
+    ).to(device)
+
+    if "siam_pool" in ckpt:
+        siam.pool.load_state_dict(ckpt["siam_pool"])
+    if "siam_head" in ckpt:
+        siam.head.load_state_dict(ckpt["siam_head"])
+    if "backbone_trainable" in ckpt and ckpt["backbone_trainable"]:
+        siam.backbone.load_state_dict(ckpt["backbone_trainable"], strict=False)
+
+    siam.eval()
+    return siam
+
+
+# ---------------------------------------------------------------------------
+# Evaluation
+# ---------------------------------------------------------------------------
+
+def _run_eval(siam, val_csv: Path, base_image_dir: str, device: str,
+              loss_type: str) -> dict:
+    from torch.utils.data import DataLoader
+    from cavl_doc.data.dataset import DocumentPairDataset
+    from cavl_doc.modules.losses import build_loss
+    from cavl_doc.trainers.rl_trainer import validate_siam_on_loader
+
+    dataset = DocumentPairDataset(
+        csv_path=str(val_csv),
+        base_dir=base_image_dir,
+        input_size=448,
+        max_num=12,
+        device="cpu",
+    )
+    num_classes = getattr(dataset, "num_classes", max(100, len(dataset) // 10))
+
+    def _collate(batch):
+        imgs_a, imgs_b, labels, cls_a, cls_b = zip(*batch)
+        return list(imgs_a), list(imgs_b), torch.tensor(labels), \
+               torch.tensor(cls_a), torch.tensor(cls_b)
+
+    loader = DataLoader(dataset, batch_size=12, shuffle=False,
+                        num_workers=0, collate_fn=_collate)
+
+    criterion = build_loss(
+        loss_type,
+        margin=0.35, scale=24.0, num_sub_centers=2,
+        num_classes=num_classes, embedding_dim=PROJ_OUT_DIM,
+        std=0.05,
+    ).to(device)
+    criterion.eval()
+
+    vloss, veer, vthr, vr1, v_batch_recall = validate_siam_on_loader(
+        siam, loader, device, criterion,
+    )
+    return {
+        "eer":          float(veer),
+        "loss":         float(vloss),
+        "recall_at_1":  float(vr1),
+        "threshold":    float(vthr),
+        "batch_recall": float(v_batch_recall),
+    }
+
+
+# ---------------------------------------------------------------------------
+# W&B logging
+# ---------------------------------------------------------------------------
+
+def _log_wandb(run_info: dict, metrics: dict, wandb_entity: str,
+               wandb_project: str) -> None:
+    try:
+        import wandb
+        run_name = (
+            f"Test5_{run_info['experiment']}_S{run_info['split']}"
+            f"_{run_info['loss']}_{run_info['phase']}"
+        )
+        run = wandb.init(
+            entity=wandb_entity,
+            project=wandb_project,
+            name=run_name,
+            config={**run_info, "test_split": TEST_SPLIT},
+            reinit=True,
+        )
+        wandb.log({
+            "test/eer":          metrics["eer"],
+            "test/loss":         metrics["loss"],
+            "test/recall_at_1":  metrics["recall_at_1"],
+            "test/threshold":    metrics["threshold"],
+            "test/batch_recall": metrics["batch_recall"],
+        })
+        run.finish()
+        print(f"  ✅ W&B logged: {run_name}")
+    except Exception as e:
+        print(f"  ⚠️  W&B log falhou: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Aggregate statistics
+# ---------------------------------------------------------------------------
+
+def _print_stats(results: List[dict]) -> None:
+    if not results:
+        print("Nenhum resultado para agregar.")
+        return
+
+    import pandas as pd
+    df = pd.DataFrame(results)
+
+    print("\n" + "=" * 80)
+    print("RESULTADOS AGREGADOS — Split 5 (Teste)")
+    print("=" * 80)
+
+    for (exp, loss, phase), grp in df.groupby(["experiment", "loss", "phase"]):
+        eers = grp["eer"].values * 100
+        print(f"\n  [{exp}] loss={loss} phase={phase}  (n={len(eers)} splits)")
+        print(f"    Média:   {eers.mean():.2f}%")
+        print(f"    Std:     {eers.std():.2f} pp")
+        print(f"    Mediana: {np.median(eers):.2f}%")
+        print(f"    Mín:     {eers.min():.2f}%")
+        print(f"    Máx:     {eers.max():.2f}%")
+
+    print("\n" + "=" * 80)
+
+    # Log aggregated stats to W&B
+    try:
+        import wandb
+        for (exp, loss, phase), grp in df.groupby(["experiment", "loss", "phase"]):
+            eers = grp["eer"].values
+            agg_run = wandb.init(
+                entity=WANDB_ENTITY,
+                project=WANDB_PROJECT,
+                name=f"Agg_{exp}_{loss}_{phase}",
+                config={"type": "aggregate", "experiment": exp,
+                        "loss": loss, "phase": phase, "n_splits": len(eers)},
+                reinit=True,
+            )
+            wandb.log({
+                "agg/eer_mean":   float(eers.mean()),
+                "agg/eer_std":    float(eers.std()) if len(eers) > 1 else 0.0,
+                "agg/eer_median": float(np.median(eers)),
+                "agg/eer_min":    float(eers.min()),
+                "agg/eer_max":    float(eers.max()),
+                "agg/n_splits":   len(eers),
+            })
+            agg_run.finish()
+    except Exception as e:
+        print(f"⚠️  W&B aggregate log falhou: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    p = argparse.ArgumentParser(
+        description="Avalia modelos treinados no split de teste 5."
+    )
+    p.add_argument("--data-root",       required=True,
+                   help="Raiz do dataset LA-CDIP (contém protocol/)")
+    p.add_argument("--base-image-dir",  required=True,
+                   help="Diretório base das imagens LA-CDIP")
+    p.add_argument("--checkpoint-root", default=None,
+                   help="Raiz dos checkpoints (default: /mnt/large/checkpoints ou ./checkpoints)")
+    p.add_argument("--filter",          default="Sprint3",
+                   help="Filtro de nome para os checkpoints (default: Sprint3)")
+    p.add_argument("--wandb-entity",    default=WANDB_ENTITY)
+    p.add_argument("--wandb-project",   default=WANDB_PROJECT)
+    p.add_argument("--no-wandb",        action="store_true")
+    p.add_argument("--gpu-id",          type=int, default=None)
+    p.add_argument("--dry-run",         action="store_true")
+    args = p.parse_args()
+
+    # GPU
+    if args.gpu_id is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_id)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Device: {device}")
+
+    # Checkpoint root
+    if args.checkpoint_root:
+        ckpt_root = Path(args.checkpoint_root)
+    elif Path("/mnt/large/checkpoints").exists():
+        ckpt_root = Path("/mnt/large/checkpoints")
+    elif Path("/mnt/nas/joaopaulo/checkpoints").exists():
+        ckpt_root = Path("/mnt/nas/joaopaulo/checkpoints")
+    else:
+        ckpt_root = WORKSPACE_ROOT / "checkpoints"
+    print(f"Checkpoint root: {ckpt_root}")
+
+    # Prepare split 5 data
+    split_dir = _prepare_test_split(
+        args.data_root,
+        WORKSPACE_ROOT / "data" / "generated_splits",
+    )
+    val_csv = split_dir / "validation_pairs.csv"
+    print(f"Split 5 val CSV: {val_csv}  ({sum(1 for _ in open(val_csv))-1} pares)")
+
+    # Find checkpoints
+    checkpoints = _find_checkpoints(ckpt_root, args.filter)
+    print(f"\nCheckpoints encontrados: {len(checkpoints)}")
+    for c in checkpoints:
+        print(f"  {c.parent.name}")
+
+    if not checkpoints:
+        print("Nenhum checkpoint encontrado. Verifique --checkpoint-root e --filter.")
+        sys.exit(1)
+
+    if args.dry_run:
+        print("\n[DRY-RUN] Encerrando sem rodar inferência.")
+        return
+
+    # Evaluate each checkpoint
+    all_results = []
+    for ckpt_path in checkpoints:
+        run_name = ckpt_path.parent.name
+        info = _parse_run_name(run_name)
+        print(f"\n{'─'*70}")
+        print(f"[EVAL] {run_name}")
+        print(f"       exp={info['experiment']} loss={info['loss']} "
+              f"split={info['split']} phase={info['phase']}")
+
+        if None in (info["experiment"], info["loss"], info["split"], info["phase"]):
+            print("  ⚠️  Nome não reconhecido, pulando.")
+            continue
+
+        loss_type = info["loss"]
+
+        try:
+            t0 = time.time()
+            siam = _load_siam(ckpt_path, device)
+            metrics = _run_eval(siam, val_csv, args.base_image_dir, device, loss_type)
+            elapsed = time.time() - t0
+
+            print(f"  EER={metrics['eer']*100:.2f}%  "
+                  f"R@1={metrics['recall_at_1']*100:.2f}%  "
+                  f"({elapsed:.0f}s)")
+
+            result = {**info, **metrics}
+            all_results.append(result)
+
+            if not args.no_wandb:
+                _log_wandb(info, metrics, args.wandb_entity, args.wandb_project)
+
+            # Free GPU memory before next model
+            del siam
+            torch.cuda.empty_cache()
+
+        except Exception as e:
+            print(f"  ❌ Erro: {e}")
+            import traceback; traceback.print_exc()
+
+    _print_stats(all_results)
+
+
+if __name__ == "__main__":
+    main()
