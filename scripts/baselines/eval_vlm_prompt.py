@@ -6,13 +6,24 @@ Envia dois documentos + prompt de comparação para um VLM open-source e usa
 o similarity_score (0-100) retornado como métrica para calcular EER no split 5.
 
 Modelos suportados (--model):
-  internvl3-2b    OpenGVLab/InternVL3-2B
-  internvl3-8b    OpenGVLab/InternVL3-8B
-  qwen25vl-3b     Qwen/Qwen2.5-VL-3B-Instruct
-  qwen25vl-7b     Qwen/Qwen2.5-VL-7B-Instruct
-  qwen3vl-7b      Qwen/Qwen3-VL-7B-Instruct
-  minicpm-v26     openbmb/MiniCPM-V-2_6
-  pixtral-12b     mistralai/Pixtral-12B-2409
+  ~2B (comparação direta com CaVL-Doc):
+    internvl3-2b   OpenGVLab/InternVL3-2B
+    qwen3vl-2b     Qwen/Qwen3-VL-2B-Instruct
+    gemma4-e2b     google/gemma-4-E2B-it
+
+  Até 16 GB VRAM sem quantização:
+    qwen3vl-4b     Qwen/Qwen3-VL-4B-Instruct
+    gemma4-e4b     google/gemma-4-E4B-it
+    ministral-3b   mistralai/Ministral-3-3B-Instruct-2512
+    ministral-8b   mistralai/Ministral-3-8B-Instruct-2512
+    qwen3vl-8b     Qwen/Qwen3-VL-8B-Instruct
+    minicpm-v26    openbmb/MiniCPM-V-2_6
+    minicpm-v45    openbmb/MiniCPM-V-4_5
+
+  Requer --load-in-4bit (16 GB VRAM):
+    internvl3-14b  OpenGVLab/InternVL3-14B
+    ministral-14b  mistralai/Ministral-3-14B-Instruct-2512
+    pixtral-12b    mistralai/Pixtral-12B-2409  (a testar)
 
 Uso:
   python scripts/evaluation/eval_vlm_baseline.py \\
@@ -73,20 +84,28 @@ Respond **only** with a JSON object structured as follows:
 ```"""
 
 MODEL_REGISTRY = {
-    # InternVL3 — 2B e 14B confirmados funcionando; 9B não funciona
-    "internvl3-2b":   "OpenGVLab/InternVL3-2B",
-    "internvl3-14b":  "OpenGVLab/InternVL3-14B",
-    # Qwen-VL
-    "qwen25vl-3b":    "Qwen/Qwen2.5-VL-3B-Instruct",
-    "qwen25vl-7b":    "Qwen/Qwen2.5-VL-7B-Instruct",
-    "qwen3vl-7b":     "Qwen/Qwen3-VL-7B-Instruct",
-    # MiniCPM
-    "minicpm-v26":    "openbmb/MiniCPM-V-2_6",
-    # Mistral — pixtral a testar; ministral-3b confirmado multimodal
-    "pixtral-12b":    "mistralai/Pixtral-12B-2409",
-    "ministral-3b":   "mistralai/Ministral-3-3B-Instruct-2512",
-    # Gemma 4 — E4B (~4B params eficientes, cabe em 16GB); 31B não cabe
-    "gemma4-e4b":     "google/gemma-4-E4B-it",
+    # ── InternVL3 ── 2B e 14B confirmados; 9B não funciona
+    "internvl3-2b":    "OpenGVLab/InternVL3-2B",          # ~6 GB BF16
+    "internvl3-14b":   "OpenGVLab/InternVL3-14B",         # ~7 GB 4-bit
+
+    # ── Qwen3-VL (família mais recente) ──
+    "qwen3vl-2b":      "Qwen/Qwen3-VL-2B-Instruct",       # ~5 GB BF16  ← ~2B
+    "qwen3vl-4b":      "Qwen/Qwen3-VL-4B-Instruct",       # ~9 GB BF16
+    "qwen3vl-8b":      "Qwen/Qwen3-VL-8B-Instruct",       # ~16 GB BF16 / ~8 GB 4-bit
+
+    # ── Gemma 4 ──
+    "gemma4-e2b":      "google/gemma-4-E2B-it",           # ~5 GB BF16  ← ~2B
+    "gemma4-e4b":      "google/gemma-4-E4B-it",           # ~9 GB BF16
+
+    # ── Mistral ── 3B e 8B sem quantização; 14B com 4-bit
+    "ministral-3b":    "mistralai/Ministral-3-3B-Instruct-2512",   # ~7 GB BF16  ← ~3B
+    "ministral-8b":    "mistralai/Ministral-3-8B-Instruct-2512",   # ~16 GB BF16 / ~8 GB 4-bit
+    "ministral-14b":   "mistralai/Ministral-3-14B-Instruct-2512",  # ~7 GB 4-bit
+    "pixtral-12b":     "mistralai/Pixtral-12B-2409",               # ~6 GB 4-bit (a testar)
+
+    # ── MiniCPM-V ──
+    "minicpm-v26":     "openbmb/MiniCPM-V-2_6",           # 8B
+    "minicpm-v45":     "openbmb/MiniCPM-V-4_5",           # versão mais recente
 }
 
 
