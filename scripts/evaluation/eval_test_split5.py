@@ -276,7 +276,43 @@ def _log_wandb(run_info: dict, metrics: dict, wandb_entity: str,
 # Aggregate statistics
 # ---------------------------------------------------------------------------
 
-def _print_stats(results: List[dict]) -> None:
+def _compute_accumulated(df) -> "pd.DataFrame":
+    """
+    For each (experiment, loss, split), compute accumulated best EER:
+      accumulated_profOFF = min(fase1_eer, fase2_profOFF_eer)
+      accumulated_profON  = min(fase1_eer, fase2_profON_eer)
+
+    Returns a DataFrame with columns:
+      experiment, loss, split, accum_mode, eer
+    where accum_mode is 'accum_profOFF' or 'accum_profON'.
+    """
+    import pandas as pd
+
+    fase1   = df[df["phase"] == "fase1"].set_index(["experiment", "loss", "split"])["eer"]
+    p2off   = df[df["phase"] == "fase2_profOFF"].set_index(["experiment", "loss", "split"])["eer"]
+    p2on    = df[df["phase"] == "fase2_profON"].set_index(["experiment", "loss", "split"])["eer"]
+
+    rows = []
+    all_keys = set(fase1.index) | set(p2off.index) | set(p2on.index)
+    for key in sorted(all_keys):
+        exp, loss, split = key
+        f1 = fase1.get(key)
+
+        for mode, p2 in [("accum_profOFF", p2off), ("accum_profON", p2on)]:
+            p2v = p2.get(key)
+            candidates = [v for v in (f1, p2v) if v is not None]
+            if not candidates:
+                continue
+            rows.append({
+                "experiment": exp, "loss": loss, "split": split,
+                "accum_mode": mode, "eer": min(candidates),
+            })
+
+    return pd.DataFrame(rows)
+
+
+def _print_stats(results: List[dict], wandb_entity: str, wandb_project: str,
+                 log_wandb: bool = True) -> None:
     if not results:
         print("Nenhum resultado para agregar.")
         return
@@ -285,7 +321,7 @@ def _print_stats(results: List[dict]) -> None:
     df = pd.DataFrame(results)
 
     print("\n" + "=" * 80)
-    print("RESULTADOS AGREGADOS — Split 5 (Teste)")
+    print("RESULTADOS POR FASE — Split 5 (Teste)")
     print("=" * 80)
 
     for (exp, loss, phase), grp in df.groupby(["experiment", "loss", "phase"]):
@@ -297,16 +333,37 @@ def _print_stats(results: List[dict]) -> None:
         print(f"    Mín:     {eers.min():.2f}%")
         print(f"    Máx:     {eers.max():.2f}%")
 
+    # Accumulated best (same logic as HTML report)
+    df_accum = _compute_accumulated(df)
+
+    if not df_accum.empty:
+        print("\n" + "=" * 80)
+        print("ACUMULADO MELHOR (min fase1, fase2) — Split 5 (Teste)")
+        print("=" * 80)
+
+        for (exp, loss, mode), grp in df_accum.groupby(["experiment", "loss", "accum_mode"]):
+            eers = grp["eer"].values * 100
+            print(f"\n  [{exp}] loss={loss} {mode}  (n={len(eers)} splits)")
+            print(f"    Média:   {eers.mean():.2f}%")
+            print(f"    Std:     {eers.std():.2f} pp")
+            print(f"    Mediana: {np.median(eers):.2f}%")
+            print(f"    Mín:     {eers.min():.2f}%")
+            print(f"    Máx:     {eers.max():.2f}%")
+
     print("\n" + "=" * 80)
 
-    # Log aggregated stats to W&B
+    if not log_wandb:
+        return
+
     try:
         import wandb
+
+        # Per-phase aggregates
         for (exp, loss, phase), grp in df.groupby(["experiment", "loss", "phase"]):
             eers = grp["eer"].values
             agg_run = wandb.init(
-                entity=WANDB_ENTITY,
-                project=WANDB_PROJECT,
+                entity=wandb_entity,
+                project=wandb_project,
                 name=f"Agg_{exp}_{loss}_{phase}",
                 config={"type": "aggregate", "experiment": exp,
                         "loss": loss, "phase": phase, "n_splits": len(eers)},
@@ -321,6 +378,28 @@ def _print_stats(results: List[dict]) -> None:
                 "agg/n_splits":   len(eers),
             })
             agg_run.finish()
+
+        # Accumulated best aggregates
+        for (exp, loss, mode), grp in df_accum.groupby(["experiment", "loss", "accum_mode"]):
+            eers = grp["eer"].values
+            agg_run = wandb.init(
+                entity=wandb_entity,
+                project=wandb_project,
+                name=f"Accum_{exp}_{loss}_{mode}",
+                config={"type": "accumulated", "experiment": exp,
+                        "loss": loss, "accum_mode": mode, "n_splits": len(eers)},
+                reinit=True,
+            )
+            wandb.log({
+                "accum/eer_mean":   float(eers.mean()),
+                "accum/eer_std":    float(eers.std()) if len(eers) > 1 else 0.0,
+                "accum/eer_median": float(np.median(eers)),
+                "accum/eer_min":    float(eers.min()),
+                "accum/eer_max":    float(eers.max()),
+                "accum/n_splits":   len(eers),
+            })
+            agg_run.finish()
+
     except Exception as e:
         print(f"⚠️  W&B aggregate log falhou: {e}")
 
@@ -427,7 +506,8 @@ def main() -> None:
             print(f"  ❌ Erro: {e}")
             import traceback; traceback.print_exc()
 
-    _print_stats(all_results)
+    _print_stats(all_results, args.wandb_entity, args.wandb_project,
+                 log_wandb=not args.no_wandb)
 
 
 if __name__ == "__main__":
