@@ -664,71 +664,127 @@ def main() -> None:
         print(f"  [{e['accum_mode']}] loss={e['loss']} split={e['split']} "
               f"→ {e['chosen_phase']}  ({e['ckpt_path'].parent.name})")
 
-    # Load backbone once — reused for every checkpoint
-    print("\nCarregando backbone (uma vez)...")
-    backbone, tokenizer = _build_backbone(device)
-    siam = _build_siam(backbone, tokenizer, device)
+    # ------------------------------------------------------------------
+    # Resume cache — persiste métricas já calculadas entre execuções
+    # ------------------------------------------------------------------
+    import json as _json
+    cache_path = WORKSPACE_ROOT / "results" / "eval_test_split5_cache.json"
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    done_cache: Dict[str, dict] = {}
+    if cache_path.exists():
+        try:
+            done_cache = _json.loads(cache_path.read_text())
+            print(f"\nCache carregado: {len(done_cache)} entradas já avaliadas.")
+        except Exception:
+            done_cache = {}
 
+    def _run_name(entry: dict) -> str:
+        return (f"Test5_{entry['experiment']}_S{entry['split']}"
+                f"_{entry['loss']}_{entry['accum_mode']}")
+
+    def _save_cache() -> None:
+        cache_path.write_text(_json.dumps(done_cache, indent=2))
+
+    def _wandb_log(entry: dict, metrics: dict, ckpt_path: Path) -> None:
+        if args.no_wandb:
+            return
+        try:
+            import wandb
+            rn = _run_name(entry)
+            run = wandb.init(
+                entity=args.wandb_entity,
+                project=args.wandb_project,
+                name=rn,
+                config={**{k: v for k, v in entry.items() if k != "ckpt_path"},
+                        "test_split": TEST_SPLIT,
+                        "ckpt": ckpt_path.parent.name},
+                reinit=True,
+            )
+            wandb.log({
+                "test/eer":          metrics["eer"],
+                "test/loss":         metrics["loss"],
+                "test/recall_at_1":  metrics["recall_at_1"],
+                "test/threshold":    metrics["threshold"],
+                "test/batch_recall": metrics["batch_recall"],
+            })
+            run.finish()
+            print(f"  W&B logged: {rn}")
+        except Exception as e:
+            print(f"  ⚠️  W&B log falhou: {e}")
+
+    # ------------------------------------------------------------------
+    # Deduplication — se profOFF e profON apontam para o mesmo checkpoint
+    # (fase1 ganhou nos dois), roda inferência uma vez e replica.
+    # Agrupa por ckpt_path; entradas com o mesmo path partilham métricas.
+    # ------------------------------------------------------------------
+    from collections import defaultdict
+    ckpt_groups: Dict[Path, List[dict]] = defaultdict(list)
+    for e in to_eval:
+        ckpt_groups[e["ckpt_path"]].append(e)
+
+    need_inference = []   # (ckpt_path, loss, [entries])
+    for ckpt_path, entries in ckpt_groups.items():
+        # Check if ALL entries for this checkpoint are already cached
+        all_cached = all(_run_name(e) in done_cache for e in entries)
+        if all_cached:
+            continue
+        need_inference.append((ckpt_path, entries[0]["loss"], entries))
+
+    skipped = len(to_eval) - sum(len(e) for _, _, e in need_inference)
+    print(f"\n  Já avaliados (cache): {skipped}  |  A rodar: "
+          f"{sum(len(e) for _,_,e in need_inference)} entradas "
+          f"({len(need_inference)} inferências únicas)")
+
+    if not need_inference:
+        print("Todos os checkpoints já avaliados. Reconstruindo resultados do cache.")
+    else:
+        # Load backbone once
+        print("\nCarregando backbone (uma vez)...")
+        backbone, tokenizer = _build_backbone(device)
+        siam = _build_siam(backbone, tokenizer, device)
+
+        for ckpt_path, loss_type, entries in need_inference:
+            print(f"\n{'─'*70}")
+            dup_tag = f" [×{len(entries)} modos]" if len(entries) > 1 else ""
+            print(f"[EVAL]{dup_tag} {ckpt_path.parent.name}")
+            modes = ", ".join(e["accum_mode"] for e in entries)
+            print(f"       loss={loss_type}  modos={modes}")
+
+            try:
+                t0 = time.time()
+                _load_weights(siam, ckpt_path, device)
+                metrics = _run_eval(siam, val_csv, args.base_image_dir, device,
+                                    loss_type, batch_size=args.batch_size)
+                elapsed = time.time() - t0
+                print(f"  EER={metrics['eer']*100:.2f}%  "
+                      f"R@1={metrics['recall_at_1']*100:.2f}%  ({elapsed:.0f}s)")
+
+                for entry in entries:
+                    rn = _run_name(entry)
+                    done_cache[rn] = metrics
+                    if len(entries) > 1 and entry is not entries[0]:
+                        print(f"  [REPLICADO] → {rn}")
+                    _wandb_log(entry, metrics, ckpt_path)
+
+                _save_cache()
+
+            except Exception as e:
+                print(f"  ❌ Erro: {e}")
+                import traceback; traceback.print_exc()
+
+    # Reconstruct all_results from cache
     all_results = []
     for entry in to_eval:
-        ckpt_path   = entry["ckpt_path"]
-        loss_type   = entry["loss"]
-        accum_mode  = entry["accum_mode"]
-
-        print(f"\n{'─'*70}")
-        print(f"[EVAL] {ckpt_path.parent.name}")
-        print(f"       loss={loss_type} split={entry['split']} "
-              f"mode={accum_mode} (from {entry['chosen_phase']})")
-
-        try:
-            t0 = time.time()
-            _load_weights(siam, ckpt_path, device)
-            metrics = _run_eval(siam, val_csv, args.base_image_dir, device, loss_type,
-                                batch_size=args.batch_size)
-            elapsed = time.time() - t0
-
-            print(f"  EER={metrics['eer']*100:.2f}%  "
-                  f"R@1={metrics['recall_at_1']*100:.2f}%  "
-                  f"({elapsed:.0f}s)")
-
-            result = {
+        rn = _run_name(entry)
+        if rn in done_cache:
+            all_results.append({
                 "experiment":   entry["experiment"],
-                "loss":         loss_type,
+                "loss":         entry["loss"],
                 "split":        entry["split"],
-                "accum_mode":   accum_mode,
+                "accum_mode":   entry["accum_mode"],
                 "chosen_phase": entry["chosen_phase"],
-                **metrics,
-            }
-            all_results.append(result)
-
-            if not args.no_wandb:
-                try:
-                    import wandb
-                    run_name = (f"Test5_{entry['experiment']}_S{entry['split']}"
-                                f"_{loss_type}_{accum_mode}")
-                    run = wandb.init(
-                        entity=args.wandb_entity,
-                        project=args.wandb_project,
-                        name=run_name,
-                        config={**entry, "test_split": TEST_SPLIT,
-                                "ckpt": ckpt_path.parent.name},
-                        reinit=True,
-                    )
-                    wandb.log({
-                        "test/eer":          metrics["eer"],
-                        "test/loss":         metrics["loss"],
-                        "test/recall_at_1":  metrics["recall_at_1"],
-                        "test/threshold":    metrics["threshold"],
-                        "test/batch_recall": metrics["batch_recall"],
-                    })
-                    run.finish()
-                    print(f"  W&B logged: {run_name}")
-                except Exception as e:
-                    print(f"  ⚠️  W&B log falhou: {e}")
-
-        except Exception as e:
-            print(f"  ❌ Erro: {e}")
-            import traceback; traceback.print_exc()
+                **done_cache[rn],
+            })
 
     _print_stats_accum(all_results, args.wandb_entity, args.wandb_project,
                        log_wandb=not args.no_wandb)
