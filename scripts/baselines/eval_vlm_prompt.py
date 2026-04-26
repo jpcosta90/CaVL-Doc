@@ -111,13 +111,53 @@ def _parse_score(text: str) -> Optional[float]:
 
 
 # ---------------------------------------------------------------------------
+# Cache cleanup
+# ---------------------------------------------------------------------------
+
+def _delete_model_cache(model_id: str) -> None:
+    """Delete the HuggingFace cached files for model_id to free disk space."""
+    import shutil
+    try:
+        from huggingface_hub import scan_cache_dir
+        cache_info = scan_cache_dir()
+        deleted_mb = 0.0
+        for repo in cache_info.repos:
+            if repo.repo_id == model_id:
+                for revision in repo.revisions:
+                    for f in revision.files:
+                        p = Path(f.file_path)
+                        if p.exists():
+                            size_mb = p.stat().st_size / 1024 / 1024
+                            p.unlink()
+                            deleted_mb += size_mb
+                # Remove empty snapshot dirs
+                snapshot_dir = Path(repo.repo_path)
+                if snapshot_dir.exists():
+                    shutil.rmtree(snapshot_dir, ignore_errors=True)
+                    deleted_mb += 0  # dirs already counted via files
+        print(f"  Cache removido: {model_id} (~{deleted_mb:.0f} MB liberados)")
+    except Exception as e:
+        print(f"  ⚠️  Falha ao remover cache de {model_id}: {e}")
+
+
+def _get_bnb_config():
+    from transformers import BitsAndBytesConfig
+    return BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Model adapters
 # ---------------------------------------------------------------------------
 
 class _InternVLAdapter:
     """Adapter for InternVL3 family."""
 
-    def __init__(self, model_id: str, device: str):
+    def __init__(self, model_id: str, device: str, load_in_4bit: bool = False):
         from transformers import AutoModel, AutoTokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True, use_fast=False)
         self.model = AutoModel.from_pretrained(
@@ -125,6 +165,7 @@ class _InternVLAdapter:
             torch_dtype=torch.bfloat16,
             trust_remote_code=True,
             device_map=device,
+            quantization_config=_get_bnb_config() if load_in_4bit else None,
         ).eval()
 
     def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
@@ -159,14 +200,14 @@ class _InternVLAdapter:
 class _QwenVLAdapter:
     """Adapter for Qwen2.5-VL and Qwen3-VL families."""
 
-    def __init__(self, model_id: str, device: str):
-        from transformers import AutoProcessor
-        from transformers import Qwen2_5_VLForConditionalGeneration
+    def __init__(self, model_id: str, device: str, load_in_4bit: bool = False):
+        from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
         self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
             device_map=device,
+            quantization_config=_get_bnb_config() if load_in_4bit else None,
         ).eval()
 
     def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
@@ -198,7 +239,7 @@ class _QwenVLAdapter:
 class _MiniCPMAdapter:
     """Adapter for MiniCPM-V 2.6."""
 
-    def __init__(self, model_id: str, device: str):
+    def __init__(self, model_id: str, device: str, load_in_4bit: bool = False):
         from transformers import AutoModel, AutoTokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
         self.model = AutoModel.from_pretrained(
@@ -206,6 +247,7 @@ class _MiniCPMAdapter:
             torch_dtype=torch.bfloat16,
             trust_remote_code=True,
             device_map=device,
+            quantization_config=_get_bnb_config() if load_in_4bit else None,
         ).eval()
 
     def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
@@ -224,13 +266,14 @@ class _MiniCPMAdapter:
 class _MistralVLAdapter:
     """Adapter for Mistral vision models (Ministral-3, Pixtral) via transformers."""
 
-    def __init__(self, model_id: str, device: str):
+    def __init__(self, model_id: str, device: str, load_in_4bit: bool = False):
         from transformers import AutoProcessor, LlavaForConditionalGeneration
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
         self.model = LlavaForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
             device_map=device,
+            quantization_config=_get_bnb_config() if load_in_4bit else None,
         ).eval()
 
     def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
@@ -256,13 +299,14 @@ class _MistralVLAdapter:
 class _Gemma4Adapter:
     """Adapter for Gemma 4 vision models."""
 
-    def __init__(self, model_id: str, device: str):
+    def __init__(self, model_id: str, device: str, load_in_4bit: bool = False):
         from transformers import AutoProcessor, Gemma4ForConditionalGeneration
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
         self.model = Gemma4ForConditionalGeneration.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
             device_map=device,
+            quantization_config=_get_bnb_config() if load_in_4bit else None,
         ).eval()
 
     def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
@@ -287,19 +331,20 @@ class _Gemma4Adapter:
         return self.processor.decode(trimmed, skip_special_tokens=True)
 
 
-def _build_adapter(model_key: str, device: str):
+def _build_adapter(model_key: str, device: str, load_in_4bit: bool = False):
     model_id = MODEL_REGISTRY[model_key]
-    print(f"Carregando {model_id} ...")
+    print(f"Carregando {model_id} {'(4-bit)' if load_in_4bit else '(bfloat16)'}...")
+    kw = {"load_in_4bit": load_in_4bit}
     if model_key.startswith("internvl"):
-        return _InternVLAdapter(model_id, device), model_id
+        return _InternVLAdapter(model_id, device, **kw), model_id
     elif model_key.startswith("qwen"):
-        return _QwenVLAdapter(model_id, device), model_id
+        return _QwenVLAdapter(model_id, device, **kw), model_id
     elif model_key.startswith("minicpm"):
-        return _MiniCPMAdapter(model_id, device), model_id
+        return _MiniCPMAdapter(model_id, device, **kw), model_id
     elif model_key.startswith("ministral") or model_key.startswith("pixtral"):
-        return _MistralVLAdapter(model_id, device), model_id
+        return _MistralVLAdapter(model_id, device, **kw), model_id
     elif model_key.startswith("gemma4"):
-        return _Gemma4Adapter(model_id, device), model_id
+        return _Gemma4Adapter(model_id, device, **kw), model_id
     else:
         raise ValueError(f"Adapter não implementado para {model_key}. "
                          f"Opções: {list(MODEL_REGISTRY)}")
@@ -397,6 +442,8 @@ def main() -> None:
     p.add_argument("--wandb-entity",   default=WANDB_ENTITY)
     p.add_argument("--wandb-project",  default=WANDB_PROJECT)
     p.add_argument("--no-wandb",       action="store_true")
+    p.add_argument("--load-in-4bit",   action="store_true",
+                   help="Carregar modelo em 4-bit (NF4) para reduzir uso de VRAM/RAM")
     p.add_argument("--limit",          type=int, default=None,
                    help="Limitar a N pares (para teste rápido)")
     args = p.parse_args()
@@ -426,7 +473,7 @@ def main() -> None:
     print(f"Val CSV: {val_csv}  ({len(df)} pares)")
 
     # Load model
-    adapter, model_id = _build_adapter(args.model, device)
+    adapter, model_id = _build_adapter(args.model, device, load_in_4bit=args.load_in_4bit)
 
     # Run
     print(f"\nRodando inferência com {args.model}...")
@@ -450,6 +497,11 @@ def main() -> None:
     if not args.no_wandb:
         _log_wandb(args.model, model_id, eer, thr, len(scores),
                    args.wandb_entity, args.wandb_project)
+
+    # Free GPU and delete HF cache to recover disk space
+    del adapter
+    torch.cuda.empty_cache()
+    _delete_model_cache(model_id)
 
 
 if __name__ == "__main__":
