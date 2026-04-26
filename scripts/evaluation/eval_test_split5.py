@@ -49,6 +49,8 @@ POOLER_TYPE        = "attention"
 HEAD_TYPE          = "mlp"
 NUM_QUERIES        = 1
 
+EMBEDDING_PROMPT = "<image> Analyze this document"
+
 KNOWN_LOSSES = [
     "subcenter_cosface", "subcenter_arcface",
     "contrastive", "cosface", "arcface", "triplet", "circle",
@@ -155,17 +157,47 @@ def _build_backbone(device: str):
 def _build_siam(backbone, tokenizer, device: str):
     """Build the Siamese model shell (no weights loaded)."""
     from cavl_doc.models.modeling_cavl import build_cavl_model
-    cut = CUT_LAYER
+    from cavl_doc.utils.embedding_utils import prepare_inputs_for_multimodal_embedding
 
-    def _encode_fn(backbone, pixel_values, input_ids, attention_mask):
-        hidden_states = backbone(
-            pixel_values=pixel_values,
-            input_ids=input_ids,
-            attention_mask=attention_mask,
+    def _encode_fn(backbone, images, cut_layer=CUT_LAYER, **kwargs):
+        if isinstance(images, torch.Tensor) and images.dim() == 5:
+            images_list = [images[i] for i in range(images.shape[0])]
+        elif isinstance(images, torch.Tensor):
+            images_list = [images]
+        else:
+            images_list = images
+
+        input_ids_list, pixel_values_list, image_flags_list = [], [], []
+        for img in images_list:
+            out = prepare_inputs_for_multimodal_embedding(backbone, tokenizer, img, EMBEDDING_PROMPT)
+            input_ids_list.append(out["input_ids"][0])
+            pixel_values_list.append(out["pixel_values"])
+            image_flags_list.append(out["image_flags"])
+
+        max_len = max(len(ids) for ids in input_ids_list)
+        pad_id  = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+        padded_ids, padded_mask = [], []
+        for ids in input_ids_list:
+            pad_len = max_len - len(ids)
+            padded_ids.append(torch.cat([ids, torch.full((pad_len,), pad_id, device=ids.device, dtype=ids.dtype)]))
+            padded_mask.append(torch.cat([torch.ones_like(ids), torch.zeros(pad_len, device=ids.device, dtype=ids.dtype)]))
+
+        batch_input_ids    = torch.stack(padded_ids).to(device)
+        batch_attn_mask    = torch.stack(padded_mask).to(device)
+        batch_pixel_values = torch.cat(pixel_values_list, dim=0).to(device, dtype=torch.bfloat16)
+        batch_image_flags  = torch.cat(image_flags_list,  dim=0).to(device)
+
+        out = backbone(
+            input_ids=batch_input_ids,
+            attention_mask=batch_attn_mask,
+            pixel_values=batch_pixel_values,
+            image_flags=batch_image_flags,
             output_hidden_states=True,
-        ).hidden_states
-        lm = backbone.language_model.model
-        idx = cut + 1 if len(hidden_states) == (len(lm.layers) + 1) else cut
+            return_dict=True,
+        )
+        hidden_states = out.hidden_states
+        lm  = backbone.language_model.model
+        idx = cut_layer + 1 if len(hidden_states) == (len(lm.layers) + 1) else cut_layer
         return hidden_states[idx], None
 
     return build_cavl_model(
