@@ -62,11 +62,12 @@ KNOWN_LOSSES = [
 # ---------------------------------------------------------------------------
 
 def _find_checkpoints(checkpoint_root: Path, name_filter: str) -> List[Path]:
-    """Return all best_siam.pt files whose parent dir matches name_filter."""
+    """Return best_siam.pt files matching name_filter AND containing 'fase' in the name."""
     found = []
     pattern = name_filter.lower()
     for ckpt in checkpoint_root.rglob("best_siam.pt"):
-        if pattern in ckpt.parent.name.lower():
+        name = ckpt.parent.name.lower()
+        if pattern in name and "fase" in name:
             found.append(ckpt)
     return sorted(found, key=lambda p: p.parent.name)
 
@@ -202,7 +203,7 @@ def _build_siam(backbone, tokenizer, device: str):
 
     return build_cavl_model(
         backbone=backbone,
-        cut_layer=cut,
+        cut_layer=CUT_LAYER,
         encode_fn=_encode_fn,
         pool_dim=PROJ_OUT_DIM,
         proj_hidden=4096,
