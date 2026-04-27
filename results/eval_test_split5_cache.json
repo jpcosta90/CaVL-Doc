@@ -131,5 +131,26 @@
     "recall_at_1": 1.0,
     "threshold": 0.30184227228164673,
     "batch_recall": 0.8058642043007744
+  },
+  "Test5_Sprint3_S2_subcenter_cosface_accum_profON": {
+    "eer": 0.004944375772558699,
+    "loss": 0.09777575093838904,
+    "recall_at_1": 1.0,
+    "threshold": 0.34025317430496216,
+    "batch_recall": 0.8058642043007744
+  },
+  "Test5_Sprint3_S3_subcenter_cosface_accum_profOFF": {
+    "eer": 0.0061804697156984025,
+    "loss": 0.12308386676703338,
+    "recall_at_1": 1.0,
+    "threshold": 0.41474974155426025,
+    "batch_recall": 0.8058642043007744
+  },
+  "Test5_Sprint3_S3_subcenter_cosface_accum_profON": {
+    "eer": 0.0061804697156984025,
+    "loss": 0.12308386676703338,
+    "recall_at_1": 1.0,
+    "threshold": 0.41474974155426025,
+    "batch_recall": 0.8058642043007744
   }
 }

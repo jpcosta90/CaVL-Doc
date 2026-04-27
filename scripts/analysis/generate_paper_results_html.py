@@ -42,6 +42,7 @@ PROJECTS = {
     "exp0_fine_la":   "CaVL-Doc_LA-CDIP_FineSearch",
     "exp1":           "CaVL-Doc_LA-CDIP_Sprint1_Top5Validation",
     "exp3":           "CaVL-Doc_LA-CDIP_Sprint3_Staged5x5",
+    "exp_test":       "CaVL-Doc_LA-CDIP_Sprint3_TestSplit5",
     "exp4":           "CaVL-Doc_RVL_Sprint4_Transfer",
 }
 
@@ -586,6 +587,104 @@ def _build_exp3(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, str, str, bool,
 
 
 # ---------------------------------------------------------------------------
+# Experiment TEST — Split 5 (Zero-Shot Test)
+# ---------------------------------------------------------------------------
+
+def _build_exp_test(runs: List) -> Tuple[pd.DataFrame, str, bool, List[int]]:
+    """
+    Resultados do split de teste 5 (nunca visto no treino).
+    Cada run Test5_* já representa o melhor checkpoint acumulado
+    (min EER entre fase1 e fase2) para aquele (loss, split, accum_mode).
+    """
+    records = []
+    for r in runs:
+        name = r.name or ""
+        if not name.startswith("Test5_"):
+            continue
+        s   = _summary(r)
+        eer = _scalar(s.get("test/eer"))
+        if eer is None:
+            continue
+
+        m_split = re.search(r"_S(\d+)_", name)
+        split   = int(m_split.group(1)) if m_split else None
+        loss    = _loss_from_name(name)
+
+        name_l = name.lower()
+        if "accum_profon" in name_l:
+            mode = "accum_profON"
+        elif "accum_profoff" in name_l:
+            mode = "accum_profOFF"
+        else:
+            mode = "unknown"
+
+        records.append({
+            "loss":    loss,
+            "split":   split,
+            "mode":    mode,
+            "eer":     eer,
+            "recall":  _scalar(s.get("test/recall_at_1")),
+        })
+
+    if not records:
+        return pd.DataFrame(), "", False, list(ALL_SPLITS)
+
+    df        = pd.DataFrame(records)
+    completed = sorted(df["split"].dropna().unique().astype(int).tolist())
+    missing   = sorted(set(ALL_SPLITS) - set(completed))
+    is_partial = bool(missing)
+
+    # --- Tabela: por loss × modo, estatísticas entre splits ---
+    rows = []
+    for loss in sorted(df["loss"].unique()):
+        label = LOSS_LABELS.get(loss, loss)
+        on_s  = df[(df["loss"] == loss) & (df["mode"] == "accum_profON")]["eer"]
+        off_s = df[(df["loss"] == loss) & (df["mode"] == "accum_profOFF")]["eer"]
+        on_m  = on_s.mean()  if not on_s.empty  else None
+        off_m = off_s.mean() if not off_s.empty else None
+        rows.append({
+            "Loss Function":   label,
+            "Com Min. Média":  _fmt_eer(on_m),
+            "Com Min. Std":    f'{on_s.std()*100:.2f} pp'  if len(on_s) > 1  else "—",
+            "Com Min. Mín":    _fmt_eer(on_s.min()  if not on_s.empty  else None),
+            "Com Min. Máx":    _fmt_eer(on_s.max()  if not on_s.empty  else None),
+            "Sem Min. Média":  _fmt_eer(off_m),
+            "Sem Min. Std":    f'{off_s.std()*100:.2f} pp' if len(off_s) > 1 else "—",
+            "Sem Min. Mín":    _fmt_eer(off_s.min() if not off_s.empty else None),
+            "Sem Min. Máx":    _fmt_eer(off_s.max() if not off_s.empty else None),
+            "Δ (pp)":          _fmt_delta(on_m, off_m) if on_m and off_m else "—",
+            "n":               len(on_s) or len(off_s),
+        })
+    # Ordena pelo melhor (menor) EER médio entre os dois modos
+    def _best_mean(row_dict):
+        vals = [v for k, v in row_dict.items()
+                if "Média" in k and row_dict[k] != "—"]
+        try:
+            return min(float(v.replace("%", "")) for v in vals)
+        except Exception:
+            return 100.0
+
+    rows.sort(key=_best_mean)
+    table_df = pd.DataFrame(rows)
+
+    # --- Gráfico: barras agrupadas por loss, duas séries (profON / profOFF) ---
+    on_mean  = df[df["mode"] == "accum_profON"].groupby("loss")["eer"].mean()
+    off_mean = df[df["mode"] == "accum_profOFF"].groupby("loss")["eer"].mean()
+    all_l    = sorted(set(list(on_mean.index) + list(off_mean.index)),
+                      key=lambda l: min(on_mean.get(l, 1.0), off_mean.get(l, 1.0)))
+
+    chart = _grouped_bar_chart(
+        [LOSS_LABELS.get(l, l) for l in all_l],
+        {
+            "Com Mineração": [on_mean.get(l) for l in all_l],
+            "Sem Mineração": [off_mean.get(l) for l in all_l],
+        },
+        "Split 5 (Teste Zero-Shot): EER por função de perda — melhor acumulado",
+    )
+    return table_df, chart, is_partial, missing
+
+
+# ---------------------------------------------------------------------------
 # Experiment 4 — Cross-Domain Transfer (RVL-CDIP)
 # ---------------------------------------------------------------------------
 
@@ -701,6 +800,7 @@ def build_html(
     exp1_table: pd.DataFrame, exp1_chart: str,
     exp3_t1: pd.DataFrame, exp3_t2: pd.DataFrame, exp3_t3: pd.DataFrame,
     exp3_c1: str, exp3_c2: str, exp3_c3: str, exp3_partial: bool, exp3_missing: List[int],
+    exp_test_table: pd.DataFrame, exp_test_chart: str, exp_test_partial: bool, exp_test_missing: List[int],
     exp4_table: pd.DataFrame, exp4_chart: str, exp4_partial: bool, exp4_missing: List[int],
 ) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -786,10 +886,27 @@ def build_html(
   {_table_html(exp3_t3)}
 </div>""")
 
-    # --- Exp 4 ---
+    # --- Exp TEST ---
     sections.append(f"""
 <div class="section">
-  <h2>4. Transferência entre Domínios: LA-CDIP → RVL-CDIP {partial_badge(exp4_partial)}</h2>
+  <h2>4. Avaliação no Split de Teste 5 (Zero-Shot) {partial_badge(exp_test_partial)}</h2>
+  <p class="desc">
+    Resultado no split 5, reservado exclusivamente para avaliação final e nunca visto durante o treino.
+    Para cada (loss, split), seleciona-se automaticamente o melhor checkpoint acumulado:
+    <code>min(EER_fase1, EER_fase2)</code>. As colunas <em>Com Mineração</em> e <em>Sem Mineração</em>
+    correspondem aos ramos <strong>profON</strong> e <strong>profOFF</strong> do estágio 2.
+    O delta Δ indica a diferença em pontos percentuais entre os dois ramos
+    (negativo = mineração melhora o resultado).
+  </p>
+  {missing_note(exp_test_missing)}
+  {_chart_html(exp_test_chart)}
+  {_table_html(exp_test_table)}
+</div>""")
+
+    # --- Exp 5 (Transfer) ---
+    sections.append(f"""
+<div class="section">
+  <h2>5. Transferência entre Domínios: LA-CDIP → RVL-CDIP {partial_badge(exp4_partial)}</h2>
   <p class="desc">
     Comparação entre inicialização com pesos pré-treinados no LA-CDIP (Transfer Learning) e
     treinamento do zero no RVL-CDIP (Treinamento Direto).
@@ -834,16 +951,20 @@ def main() -> None:
     runs0_fla = _fetch_runs(PROJECTS["exp0_fine_la"])
     runs1     = _fetch_runs(PROJECTS["exp1"])
     runs3     = _fetch_runs(PROJECTS["exp3"])
+    runs_test = _fetch_runs(PROJECTS["exp_test"])
     runs4     = _fetch_runs(PROJECTS["exp4"])
 
     print("Construindo seções...")
     exp0_prog, exp0_table              = _build_exp0(runs0_cla, runs0_fla)
     exp1_table, exp1_chart             = _build_exp1(runs1)
     exp3_t1, exp3_t2, exp3_t3, exp3_c1, exp3_c2, exp3_c3, exp3_partial, exp3_missing = _build_exp3(runs3)
+    exp_test_table, exp_test_chart, exp_test_partial, exp_test_missing = _build_exp_test(runs_test)
     exp4_table, exp4_chart, exp4_partial, exp4_missing = _build_exp4(runs4)
 
     if exp3_partial:
         print(f"  Exp. 3 PARCIAL — splits pendentes: {exp3_missing}")
+    if exp_test_partial:
+        print(f"  Exp. Test PARCIAL — splits pendentes: {exp_test_missing}")
     if exp4_partial:
         print(f"  Exp. 4 PARCIAL — splits pendentes: {exp4_missing}")
 
@@ -851,6 +972,7 @@ def main() -> None:
         exp0_prog, exp0_table,
         exp1_table, exp1_chart,
         exp3_t1, exp3_t2, exp3_t3, exp3_c1, exp3_c2, exp3_c3, exp3_partial, exp3_missing,
+        exp_test_table, exp_test_chart, exp_test_partial, exp_test_missing,
         exp4_table, exp4_chart, exp4_partial, exp4_missing,
     )
 

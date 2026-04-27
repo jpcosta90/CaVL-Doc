@@ -44,10 +44,13 @@ import sys
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
+import transformers
+transformers.logging.set_verbosity_error()
 
 import numpy as np
 import torch
 from PIL import Image
+from tqdm import tqdm
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 
@@ -87,6 +90,7 @@ Respond **only** with a JSON object structured as follows:
 MODEL_REGISTRY = {
     # ── InternVL3 ── 2B e 14B confirmados; 9B não funciona
     "internvl3-2b":    "OpenGVLab/InternVL3-2B",          # ~6 GB BF16
+    "internvl3-8b":    "OpenGVLab/InternVL3-8B",          # ~16 GB BF16 / ~8 GB 4-bit
     "internvl3-14b":   "OpenGVLab/InternVL3-14B",         # ~7 GB 4-bit
 
     # ── Qwen3-VL (família mais recente) ──
@@ -408,7 +412,9 @@ def _run_baseline(adapter, val_csv: Path, base_image_dir: str,
         df = df.head(limit)
 
     rows, parse_errors = [], 0
-    for i, row in df.iterrows():
+    pbar = tqdm(df.iterrows(), total=len(df), desc="  Pares", unit="par",
+                dynamic_ncols=True, leave=True)
+    for i, row in pbar:
         try:
             img_a    = _load_image(row["file_a_path"], base_image_dir)
             img_b    = _load_image(row["file_b_path"], base_image_dir)
@@ -417,9 +423,9 @@ def _run_baseline(adapter, val_csv: Path, base_image_dir: str,
 
             if score is None:
                 parse_errors += 1
-                print(f"  [WARN] Par {i}: score não parseado. Resposta: {response[:120]}")
+                pbar.write(f"  [WARN] Par {i}: score não parseado. Resposta: {response[:120]}")
                 if parse_errors >= max_parse_errors:
-                    print("  Muitos erros de parse. Encerrando split.")
+                    pbar.write("  Muitos erros de parse. Encerrando split.")
                     break
                 continue
 
@@ -430,11 +436,11 @@ def _run_baseline(adapter, val_csv: Path, base_image_dir: str,
                 "similarity_score":  score,
             })
 
-            if len(rows) % 50 == 0:
-                print(f"  [{len(rows)}/{len(df)}] score={score:.1f} label={int(row['is_equal'])}")
+            pbar.set_postfix(score=f"{score:.0f}", label=int(row["is_equal"]),
+                             erros=parse_errors, refresh=False)
 
         except Exception as e:
-            print(f"  [ERR] Par {i}: {e}")
+            pbar.write(f"  [ERR] Par {i}: {e}")
 
     return pd.DataFrame(rows)
 
