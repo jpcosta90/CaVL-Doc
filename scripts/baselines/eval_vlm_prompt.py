@@ -7,28 +7,27 @@ o similarity_score (0-100) retornado como métrica para calcular EER no split 5.
 
 Modelos suportados (--model):
   ~2B (comparação direta com CaVL-Doc):
-    internvl3-2b   OpenGVLab/InternVL3-2B
-    qwen3vl-2b     Qwen/Qwen3-VL-2B-Instruct
-    gemma4-e2b     google/gemma-4-E2B-it
+    internvl3-2b   OpenGVLab/InternVL3-2B        ~6 GB BF16
+    internvl3-8b   OpenGVLab/InternVL3-8B        ~16 GB BF16 / ~8 GB 4-bit
+    qwen3vl-2b     Qwen/Qwen3-VL-2B-Instruct     ~5 GB BF16
 
   Até 16 GB VRAM sem quantização:
-    qwen3vl-4b     Qwen/Qwen3-VL-4B-Instruct
-    gemma4-e4b     google/gemma-4-E4B-it
-    ministral-3b   mistralai/Ministral-3-3B-Instruct-2512
-    ministral-8b   mistralai/Ministral-3-8B-Instruct-2512
-    qwen3vl-8b     Qwen/Qwen3-VL-8B-Instruct
-    minicpm-v26    openbmb/MiniCPM-V-2_6
+    qwen3vl-4b     Qwen/Qwen3-VL-4B-Instruct     ~9 GB BF16
+    qwen3vl-8b     Qwen/Qwen3-VL-8B-Instruct     ~16 GB BF16
     minicpm-v45    openbmb/MiniCPM-V-4_5
 
-  Requer --load-in-4bit (16 GB VRAM):
-    internvl3-14b  OpenGVLab/InternVL3-14B
-    ministral-14b  mistralai/Ministral-3-14B-Instruct-2512
-    pixtral-12b    mistralai/Pixtral-12B-2409  (a testar)
+  Requer --load-in-4bit (~8 GB VRAM):
+    internvl3-14b  OpenGVLab/InternVL3-14B       ~7 GB 4-bit
+    pixtral-12b    mistralai/Pixtral-12B-2409    ~6 GB 4-bit
+
+  Removidos (incompatíveis com este ambiente):
+    gemma4-*       requer transformers >= 5.x (model_type: gemma4)
+    ministral-*    modelos de texto puro (não VLMs)
+    minicpm-v26    repositório gated sem acesso
 
 Uso:
-  python scripts/evaluation/eval_vlm_baseline.py \\
+  python scripts/baselines/eval_vlm_prompt.py \\
       --model internvl3-2b \\
-      --val-csv data/generated_splits/eval_test_split5/validation_pairs.csv \\
       --base-image-dir /mnt/data/la-cdip/data \\
       --gpu-id 0
 """
@@ -41,9 +40,17 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
+
+# Garante que downloads HF (XetHub) usem /tmp e não TMPDIR customizado cheio
+if Path(tempfile.gettempdir()).stat().st_dev != Path("/tmp").stat().st_dev or \
+        tempfile.gettempdir() != "/tmp":
+    os.environ["TMPDIR"] = "/tmp"
+    tempfile.tempdir = "/tmp"
+
 import transformers
 transformers.logging.set_verbosity_error()
 
@@ -88,30 +95,33 @@ Respond **only** with a JSON object structured as follows:
 ```"""
 
 MODEL_REGISTRY = {
-    # ── InternVL3 ── 2B e 14B confirmados; 9B não funciona
+    # ── InternVL3 ──
     "internvl3-2b":    "OpenGVLab/InternVL3-2B",          # ~6 GB BF16
     "internvl3-8b":    "OpenGVLab/InternVL3-8B",          # ~16 GB BF16 / ~8 GB 4-bit
     "internvl3-14b":   "OpenGVLab/InternVL3-14B",         # ~7 GB 4-bit
 
-    # ── Qwen3-VL (família mais recente) ──
-    "qwen3vl-2b":      "Qwen/Qwen3-VL-2B-Instruct",       # ~5 GB BF16  ← ~2B
+    # ── Qwen3-VL ──
+    "qwen3vl-2b":      "Qwen/Qwen3-VL-2B-Instruct",       # ~5 GB BF16
     "qwen3vl-4b":      "Qwen/Qwen3-VL-4B-Instruct",       # ~9 GB BF16
     "qwen3vl-8b":      "Qwen/Qwen3-VL-8B-Instruct",       # ~16 GB BF16 / ~8 GB 4-bit
 
-    # ── Gemma 4 ──
-    "gemma4-e2b":      "google/gemma-4-E2B-it",           # ~5 GB BF16  ← ~2B
+    # ── Requer transformers >= 5.5 (.venv_vlm5) ──
+    "gemma4-e2b":      "google/gemma-4-E2B-it",           # ~5 GB BF16
     "gemma4-e4b":      "google/gemma-4-E4B-it",           # ~9 GB BF16
 
-    # ── Mistral ── 3B e 8B sem quantização; 14B com 4-bit
-    "ministral-3b":    "mistralai/Ministral-3-3B-Instruct-2512",   # ~7 GB BF16  ← ~3B
-    "ministral-8b":    "mistralai/Ministral-3-8B-Instruct-2512",   # ~16 GB BF16 / ~8 GB 4-bit
-    "ministral-14b":   "mistralai/Ministral-3-14B-Instruct-2512",  # ~7 GB 4-bit
-    "pixtral-12b":     "mistralai/Pixtral-12B-2409",               # ~6 GB 4-bit (a testar)
-
-    # ── MiniCPM-V ──
-    "minicpm-v26":     "openbmb/MiniCPM-V-2_6",           # 8B
-    "minicpm-v45":     "openbmb/MiniCPM-V-4_5",           # versão mais recente
+    # Modelos removidos (incompatíveis com RTX 4060 Ti / ambiente atual):
+    # "minicpm-v45": openbmb/MiniCPM-V-4_5 — código trust_remote_code incompatível com BnB
+    #   int4/int8; em BF16 puro (~16 GB) excede a VRAM (16 GB) sem margem para ativações.
+    # "ministral-3b/8b": mistralai/Ministral-3-*B-Instruct-2512 — FP8 static com
+    #   dequantize=False; exige kernels Hopper (sm_90+/H100). RTX 4060 Ti (sm_89) carrega
+    #   os pesos mas ignora os scale factors de ativação → saída incoerente.
+    # "pixtral-12b": mistralai/Pixtral-12B-2409 — sem AutoProcessor HF; requer
+    #   mistral_common/vllm nativos.
 }
+
+# Modelos que requerem transformers >= 5.5 — usam .venv_vlm5 automaticamente
+MODELS_VLM5 = {"gemma4-e2b", "gemma4-e4b"}
+VENV_VLM5 = Path(__file__).resolve().parents[2] / ".venv_vlm5" / "bin" / "python"
 
 
 # ---------------------------------------------------------------------------
@@ -222,12 +232,12 @@ class _InternVLAdapter:
 
 
 class _QwenVLAdapter:
-    """Adapter for Qwen2.5-VL and Qwen3-VL families."""
+    """Adapter for Qwen3-VL family (uses AutoModelForImageTextToText for forward compat)."""
 
     def __init__(self, model_id: str, device: str, load_in_4bit: bool = False):
-        from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+        from transformers import AutoProcessor, AutoModelForImageTextToText
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
-        self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+        self.model = AutoModelForImageTextToText.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
             device_map=device,
@@ -261,17 +271,18 @@ class _QwenVLAdapter:
 
 
 class _MiniCPMAdapter:
-    """Adapter for MiniCPM-V 2.6."""
+    """Adapter for MiniCPM-V-4_5."""
 
     def __init__(self, model_id: str, device: str, load_in_4bit: bool = False):
         from transformers import AutoModel, AutoTokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+        # MiniCPM custom ops são incompatíveis com BnB int4/int8; usa device_map="auto"
+        # para CPU offload quando não cabe em VRAM (~16 GB BF16).
         self.model = AutoModel.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
             trust_remote_code=True,
-            device_map=device,
-            quantization_config=_get_bnb_config() if load_in_4bit else None,
+            device_map="auto",
         ).eval()
 
     def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
@@ -287,13 +298,13 @@ class _MiniCPMAdapter:
         return response
 
 
-class _MistralVLAdapter:
-    """Adapter for Mistral vision models (Ministral-3, Pixtral) via transformers."""
+class _PixtralAdapter:
+    """Adapter for Pixtral-12B (Mistral VLM) via transformers."""
 
     def __init__(self, model_id: str, device: str, load_in_4bit: bool = False):
-        from transformers import AutoProcessor, LlavaForConditionalGeneration
+        from transformers import AutoProcessor, AutoModelForImageTextToText
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
-        self.model = LlavaForConditionalGeneration.from_pretrained(
+        self.model = AutoModelForImageTextToText.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
             device_map=device,
@@ -301,13 +312,13 @@ class _MistralVLAdapter:
         ).eval()
 
     def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
-        prompt_text = SIMILARITY_PROMPT.replace("<image>", "[IMG]")
+        prompt_text = SIMILARITY_PROMPT.replace("Image-1: <image>\nImage-2: <image>\n\n", "")
         messages = [{
             "role": "user",
             "content": [
                 {"type": "image"},
                 {"type": "image"},
-                {"type": "text", "text": prompt_text.replace("[IMG]", "").strip()},
+                {"type": "text", "text": prompt_text},
             ],
         }]
         text = self.processor.apply_chat_template(messages, add_generation_prompt=True)
@@ -321,12 +332,12 @@ class _MistralVLAdapter:
 
 
 class _Gemma4Adapter:
-    """Adapter for Gemma 4 vision models."""
+    """Adapter for Gemma 4 vision models (requer transformers >= 5.5)."""
 
     def __init__(self, model_id: str, device: str, load_in_4bit: bool = False):
-        from transformers import AutoProcessor, Gemma4ForConditionalGeneration
+        from transformers import AutoProcessor, AutoModelForImageTextToText
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
-        self.model = Gemma4ForConditionalGeneration.from_pretrained(
+        self.model = AutoModelForImageTextToText.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
             device_map=device,
@@ -355,6 +366,48 @@ class _Gemma4Adapter:
         return self.processor.decode(trimmed, skip_special_tokens=True)
 
 
+class _MistralVLAdapter:
+    """Adapter for Ministral-3 multimodal (requer transformers >= 5.5)."""
+
+    def __init__(self, model_id: str, device: str, load_in_4bit: bool = False):
+        from transformers import AutoProcessor, Mistral3ForConditionalGeneration, AutoConfig
+
+        config = AutoConfig.from_pretrained(model_id, trust_remote_code=True)
+        # Remove FP8 quantization tag from config so transformers doesn't treat this as a
+        # pre-quantized checkpoint (transformers 5.x bug: hasattr returns True even when None).
+        config.__dict__.pop("quantization_config", None)
+
+        self.processor = AutoProcessor.from_pretrained(
+            model_id, trust_remote_code=True, fix_mistral_regex=True
+        )
+        self.model = Mistral3ForConditionalGeneration.from_pretrained(
+            model_id,
+            config=config,
+            torch_dtype=torch.bfloat16,
+            device_map=device,
+            quantization_config=_get_bnb_config() if load_in_4bit else None,
+        ).eval()
+
+    def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
+        prompt_text = SIMILARITY_PROMPT.replace("Image-1: <image>\nImage-2: <image>\n\n", "")
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image"},
+                {"type": "image"},
+                {"type": "text", "text": prompt_text},
+            ],
+        }]
+        text = self.processor.apply_chat_template(messages, add_generation_prompt=True)
+        inputs = self.processor(
+            text=text, images=[img_a, img_b],
+            return_tensors="pt",
+        ).to(next(self.model.parameters()).device)
+        out_ids = self.model.generate(**inputs, max_new_tokens=256, do_sample=False)
+        trimmed = out_ids[0][inputs.input_ids.shape[-1]:]
+        return self.processor.decode(trimmed, skip_special_tokens=True)
+
+
 def _build_adapter(model_key: str, device: str, load_in_4bit: bool = False):
     model_id = MODEL_REGISTRY[model_key]
     print(f"Carregando {model_id} {'(4-bit)' if load_in_4bit else '(bfloat16)'}...")
@@ -365,10 +418,12 @@ def _build_adapter(model_key: str, device: str, load_in_4bit: bool = False):
         return _QwenVLAdapter(model_id, device, **kw), model_id
     elif model_key.startswith("minicpm"):
         return _MiniCPMAdapter(model_id, device, **kw), model_id
-    elif model_key.startswith("ministral") or model_key.startswith("pixtral"):
-        return _MistralVLAdapter(model_id, device, **kw), model_id
+    elif model_key.startswith("pixtral"):
+        return _PixtralAdapter(model_id, device, **kw), model_id
     elif model_key.startswith("gemma4"):
         return _Gemma4Adapter(model_id, device, **kw), model_id
+    elif model_key.startswith("ministral"):
+        return _MistralVLAdapter(model_id, device, **kw), model_id
     else:
         raise ValueError(f"Adapter não implementado para {model_key}. "
                          f"Opções: {list(MODEL_REGISTRY)}")
@@ -510,6 +565,15 @@ def main() -> None:
     p.add_argument("--limit",          type=int, default=None,
                    help="Limitar a N pares por split (para teste rápido)")
     args = p.parse_args()
+
+    # Relança automaticamente no .venv_vlm5 se o modelo precisar de transformers >= 5.5
+    if args.model in MODELS_VLM5 and sys.executable != str(VENV_VLM5):
+        if not VENV_VLM5.exists():
+            print(f"[ERRO] {args.model} requer .venv_vlm5 (transformers >= 5.5).")
+            print(f"       Crie com: python3 -m venv .venv_vlm5 && .venv_vlm5/bin/pip install 'transformers>=5.5' ...")
+            sys.exit(1)
+        print(f"[INFO] {args.model} requer transformers >= 5.5 → relançando em .venv_vlm5")
+        os.execv(str(VENV_VLM5), [str(VENV_VLM5)] + sys.argv)
 
     if args.gpu_id is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_id)
