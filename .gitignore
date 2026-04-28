@@ -216,11 +216,15 @@ cython_debug/
 # Pair mismatch visual reports (generated artifacts)
 analysis/pair_mismatch_report/
 
+# Generated results (CSVs, HTMLs, plots, caches)
+results/
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
 __marimo__/
 .venv/
+.venv_vlm5
 
 # Cronograma (artefatos de apresentação)
 docs/cronograma_orientador.tex

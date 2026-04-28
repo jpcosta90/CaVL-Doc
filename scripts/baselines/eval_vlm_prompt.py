@@ -98,7 +98,7 @@ MODEL_REGISTRY = {
     # ── InternVL3 ──
     "internvl3-2b":    "OpenGVLab/InternVL3-2B",          # ~6 GB BF16
     "internvl3-8b":    "OpenGVLab/InternVL3-8B",          # ~16 GB BF16 / ~8 GB 4-bit
-    "internvl3-14b":   "OpenGVLab/InternVL3-14B",         # ~7 GB 4-bit
+    "internvl3-14b":   "OpenGVLab/InternVL3-14B",         # ~28 GB BF16 download / ~7 GB 4-bit (requer >28 GB livre em disco)
 
     # ── Qwen3-VL ──
     "qwen3vl-2b":      "Qwen/Qwen3-VL-2B-Instruct",       # ~5 GB BF16
@@ -206,7 +206,8 @@ class _InternVLAdapter:
         from cavl_doc.data.transforms import dynamic_preprocess
 
         def _process(img: Image.Image) -> torch.Tensor:
-            tiles = dynamic_preprocess(img, image_size=448, use_thumbnail=True, max_num=6)
+            # max_num=4 (vs 6) to fit 14B 4-bit within 16 GB VRAM during inference
+            tiles = dynamic_preprocess(img, image_size=448, use_thumbnail=True, max_num=4)
             from torchvision import transforms
             tfm = transforms.Compose([
                 transforms.ToTensor(),
@@ -337,11 +338,21 @@ class _Gemma4Adapter:
     def __init__(self, model_id: str, device: str, load_in_4bit: bool = False):
         from transformers import AutoProcessor, AutoModelForImageTextToText
         self.processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
+        from transformers import BitsAndBytesConfig
+        # Vision tower deve ficar em BF16; NF4 no encoder silencia o processamento de imagens.
+        quant_cfg = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_quant_type="nf4",
+            llm_int8_skip_modules=["vision_tower", "multi_modal_projector",
+                                   "language_model.embed_tokens", "lm_head"],
+        ) if load_in_4bit else None
         self.model = AutoModelForImageTextToText.from_pretrained(
             model_id,
             torch_dtype=torch.bfloat16,
             device_map=device,
-            quantization_config=_get_bnb_config() if load_in_4bit else None,
+            quantization_config=quant_cfg,
         ).eval()
 
     def infer(self, img_a: Image.Image, img_b: Image.Image) -> str:
@@ -349,16 +360,15 @@ class _Gemma4Adapter:
         messages = [{
             "role": "user",
             "content": [
-                {"type": "image", "image": img_a},
-                {"type": "image", "image": img_b},
-                {"type": "text",  "text": prompt_text},
+                {"type": "image"},
+                {"type": "image"},
+                {"type": "text", "text": prompt_text},
             ],
         }]
-        inputs = self.processor.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
+        # Gemma4 processor expects PIL images passed separately (not embedded in content dict)
+        text = self.processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+        inputs = self.processor(
+            text=text, images=[img_a, img_b],
             return_tensors="pt",
         ).to(next(self.model.parameters()).device)
         out_ids = self.model.generate(**inputs, max_new_tokens=256, do_sample=False)
