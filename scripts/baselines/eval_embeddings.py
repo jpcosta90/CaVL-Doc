@@ -174,10 +174,12 @@ class _JinaV4Embedder:
         self.device = device
 
     def embed(self, img: Image.Image) -> np.ndarray:
-        vec = self.model.encode_image(
-            [img],
-            task="retrieval",
-        )
+        # API mudou entre versões: nova usa encode_image(task="retrieval"),
+        # antiga usa encode(task="retrieval.passage")
+        if hasattr(self.model, "encode_image"):
+            vec = self.model.encode_image([img], task="retrieval")
+        else:
+            vec = self.model.encode([img], task="retrieval.passage", truncate_dim=None)
         return vec[0].cpu().float().numpy()
 
     def scores(self, val_csv: Path, base_image_dir: str,
