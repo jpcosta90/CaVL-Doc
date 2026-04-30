@@ -639,9 +639,9 @@ def main() -> None:
             print(f"  EER={eer*100:.2f}%  threshold={thr:.1f}  ({elapsed/60:.1f} min)")
             print(f"  Resultados salvos: {pairs_csv}")
 
-        if not args.no_wandb:
-            _log_wandb(model_key, model_id, split_idx, eer, thr,
-                       len(df_results), args.wandb_entity, args.wandb_project)
+            if not args.no_wandb:
+                _log_wandb(model_key, model_id, split_idx, eer, thr,
+                           len(df_results), args.wandb_entity, args.wandb_project)
 
         # Summary por modelo
         if summary_rows:

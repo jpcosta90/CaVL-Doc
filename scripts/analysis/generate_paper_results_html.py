@@ -44,6 +44,8 @@ PROJECTS = {
     "exp3":           "CaVL-Doc_LA-CDIP_Sprint3_Staged5x5",
     "exp_test":       "CaVL-Doc_LA-CDIP_Sprint3_TestSplit5",
     "exp4":           "CaVL-Doc_RVL_Sprint4_Transfer",
+    "emb_baseline":   "CaVL-Doc_LA-CDIP_Embedding_Baseline",
+    "vlm_metric":     "CaVL-Doc_LA-CDIP_VLM_Metric",
 }
 
 KNOWN_LOSSES = [
@@ -736,6 +738,185 @@ def _build_exp4(runs: List) -> Tuple[pd.DataFrame, str, bool, List[int]]:
 
 
 # ---------------------------------------------------------------------------
+# Baselines — Embedding
+# ---------------------------------------------------------------------------
+
+def _build_baselines_embedding(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, str, str]:
+    """
+    Returns: table_cv (splits 0-4), table_test (split 5), chart_cv, chart_test.
+    Run name format: Emb_{method}_split{N}
+    """
+    records = []
+    for r in runs:
+        name = r.name or ""
+        m = re.match(r"Emb_(.+)_split(\d+)$", name)
+        if not m:
+            continue
+        method    = m.group(1)
+        split_idx = int(m.group(2))
+        s   = _summary(r)
+        eer = _scalar(s.get("test/eer"))
+        if eer is None:
+            continue
+        records.append({"method": method, "split": split_idx, "eer": eer})
+
+    if not records:
+        return pd.DataFrame(), pd.DataFrame(), "", ""
+
+    df = pd.DataFrame(records)
+
+    # ----- Cross-validation table (splits 0–4) -----
+    df_cv = df[df["split"].isin(range(5))].copy()
+    rows_cv = []
+    methods_cv = sorted(df_cv["method"].unique())
+    for method in methods_cv:
+        sub  = df_cv[df_cv["method"] == method].set_index("split")["eer"]
+        row  = {"Método": method}
+        vals = []
+        for s in range(5):
+            v = sub.get(s)
+            row[f"Split {s}"] = _fmt_eer(v)
+            if v is not None:
+                vals.append(v)
+        row["Média"]   = _fmt_eer(np.mean(vals) if vals else None)
+        row["Std"]     = f"{np.std(vals)*100:.2f} pp" if len(vals) > 1 else "—"
+        rows_cv.append(row)
+    table_cv = pd.DataFrame(rows_cv)
+
+    # chart CV — mean EER per method, sorted ascending
+    cv_means = []
+    for method in methods_cv:
+        sub  = df_cv[df_cv["method"] == method]["eer"]
+        cv_means.append((method, sub.mean() if not sub.empty else None))
+    cv_means.sort(key=lambda x: x[1] if x[1] is not None else 1.0)
+    chart_cv = _grouped_bar_chart(
+        [m for m, _ in cv_means],
+        {"EER médio": [v for _, v in cv_means]},
+        "Baselines Embedding — EER médio (splits 0–4)",
+    )
+
+    # ----- Test table (split 5) -----
+    df_test = df[df["split"] == 5].copy()
+    rows_test = []
+    for method in sorted(df_test["method"].unique()):
+        sub = df_test[df_test["method"] == method]["eer"]
+        rows_test.append({"Método": method, "EER (Split 5)": _fmt_eer(sub.iloc[0] if not sub.empty else None)})
+    rows_test.sort(key=lambda r: float(r["EER (Split 5)"].replace("%", "")) if "%" in r["EER (Split 5)"] else 100.0)
+    table_test = pd.DataFrame(rows_test)
+
+    # chart test
+    test_vals = [(r["Método"], df_test[df_test["method"] == r["Método"]]["eer"].iloc[0]
+                  if not df_test[df_test["method"] == r["Método"]].empty else None)
+                 for r in rows_test]
+    chart_test = _grouped_bar_chart(
+        [m for m, _ in test_vals],
+        {"EER": [v for _, v in test_vals]},
+        "Baselines Embedding — EER Split 5 (Teste)",
+    )
+
+    return table_cv, table_test, chart_cv, chart_test
+
+
+# ---------------------------------------------------------------------------
+# Baselines — VLM
+# ---------------------------------------------------------------------------
+
+def _build_baselines_vlm(runs: List, title_prefix: str) -> Tuple[pd.DataFrame, pd.DataFrame, str, str]:
+    """
+    Returns: table_cv (splits 0-4), table_test (split 5), chart_cv, chart_test.
+    Run name format: VLM_{model_key}_split{N}  (per-split)
+                     VLM_{model_key}_agg        (aggregate fallback — only mean/std available)
+    """
+    per_split: List[dict] = []
+    agg_data:  Dict[str, dict] = {}  # model_key → {mean, std}
+
+    for r in runs:
+        name = r.name or ""
+        m_split = re.match(r"VLM_(.+)_split(\d+)$", name)
+        m_agg   = re.match(r"VLM_(.+)_agg$", name)
+        s = _summary(r)
+        if m_split:
+            eer = _scalar(s.get("test/eer"))
+            if eer is not None:
+                per_split.append({"model": m_split.group(1),
+                                   "split": int(m_split.group(2)),
+                                   "eer":   eer})
+        elif m_agg:
+            mean = _scalar(s.get("agg/eer_mean"))
+            std  = _scalar(s.get("agg/eer_std"))
+            if mean is not None:
+                agg_data[m_agg.group(1)] = {"mean": mean, "std": std}
+
+    df = pd.DataFrame(per_split) if per_split else pd.DataFrame(columns=["model", "split", "eer"])
+
+    # ----- Cross-validation table (splits 0–4) -----
+    df_cv = df[df["split"].isin(range(5))].copy()
+    all_models_cv = sorted(set(df_cv["model"].unique()) | set(agg_data.keys()))
+
+    rows_cv = []
+    for model in all_models_cv:
+        sub  = df_cv[df_cv["model"] == model].set_index("split")["eer"] if not df_cv.empty else pd.Series(dtype=float)
+        has_per_split = not sub.empty
+        row  = {"Modelo": model}
+        vals = []
+        for s in range(5):
+            v = sub.get(s) if has_per_split else None
+            row[f"Split {s}"] = _fmt_eer(v)
+            if v is not None:
+                vals.append(v)
+        if vals:
+            row["Média"] = _fmt_eer(np.mean(vals))
+            row["Std"]   = f"{np.std(vals)*100:.2f} pp" if len(vals) > 1 else "—"
+        elif model in agg_data:
+            row["Média"] = _fmt_eer(agg_data[model]["mean"])
+            std_v = agg_data[model].get("std")
+            row["Std"] = f"{std_v*100:.2f} pp" if std_v is not None else "—"
+        else:
+            row["Média"] = "—"
+            row["Std"]   = "—"
+        rows_cv.append(row)
+    table_cv = pd.DataFrame(rows_cv) if rows_cv else pd.DataFrame()
+
+    # chart CV — use computed mean or agg fallback
+    cv_means = []
+    for model in all_models_cv:
+        sub = df_cv[df_cv["model"] == model]["eer"] if not df_cv.empty else pd.Series(dtype=float)
+        if not sub.empty:
+            cv_means.append((model, sub.mean()))
+        elif model in agg_data:
+            cv_means.append((model, agg_data[model]["mean"]))
+        else:
+            cv_means.append((model, None))
+    cv_means.sort(key=lambda x: x[1] if x[1] is not None else 1.0)
+    chart_cv = _grouped_bar_chart(
+        [m for m, _ in cv_means],
+        {"EER médio": [v for _, v in cv_means]},
+        f"{title_prefix} — EER médio (splits 0–4)",
+    ) if cv_means else ""
+
+    # ----- Test table (split 5) -----
+    df_test = df[df["split"] == 5].copy()
+    rows_test = []
+    for model in sorted(df_test["model"].unique()) if not df_test.empty else []:
+        sub = df_test[df_test["model"] == model]["eer"]
+        rows_test.append({"Modelo": model, "EER (Split 5)": _fmt_eer(sub.iloc[0] if not sub.empty else None)})
+    rows_test.sort(key=lambda r: float(r["EER (Split 5)"].replace("%", "")) if "%" in r["EER (Split 5)"] else 100.0)
+    table_test = pd.DataFrame(rows_test) if rows_test else pd.DataFrame()
+
+    # chart test
+    test_vals = [(r["Modelo"], df_test[df_test["model"] == r["Modelo"]]["eer"].iloc[0]
+                  if not df_test[df_test["model"] == r["Modelo"]].empty else None)
+                 for r in rows_test]
+    chart_test = _grouped_bar_chart(
+        [m for m, _ in test_vals],
+        {"EER": [v for _, v in test_vals]},
+        f"{title_prefix} — EER Split 5 (Teste)",
+    ) if test_vals else ""
+
+    return table_cv, table_test, chart_cv, chart_test
+
+
+# ---------------------------------------------------------------------------
 # Formatting helpers
 # ---------------------------------------------------------------------------
 
@@ -802,6 +983,9 @@ def build_html(
     exp3_c1: str, exp3_c2: str, exp3_c3: str, exp3_partial: bool, exp3_missing: List[int],
     exp_test_table: pd.DataFrame, exp_test_chart: str, exp_test_partial: bool, exp_test_missing: List[int],
     exp4_table: pd.DataFrame, exp4_chart: str, exp4_partial: bool, exp4_missing: List[int],
+    emb_cv: pd.DataFrame, emb_test: pd.DataFrame, emb_chart_cv: str, emb_chart_test: str,
+    vlm_metric_cv: pd.DataFrame, vlm_metric_test: pd.DataFrame,
+    vlm_metric_chart_cv: str, vlm_metric_chart_test: str,
 ) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -918,6 +1102,40 @@ def build_html(
   {_table_html(exp4_table)}
 </div>""")
 
+    # --- Baselines: Embeddings ---
+    sections.append(f"""
+<div class="section">
+  <h2>6. Baselines — Similaridade por Embedding</h2>
+  <p class="desc">
+    Comparação de métodos de embedding sem treinamento supervisionado: pixel bruto (cosseno e L2),
+    Jina-v4 (modelo multimodal de recuperação) e InternVL3-2B (tokens de entrada e saída da camada 27).
+    Os resultados são apresentados separadamente para a validação cruzada (splits 0–4) e o split de teste (split 5).
+  </p>
+  <h3>Splits 0–4 (Validação Cruzada)</h3>
+  {_chart_html(emb_chart_cv)}
+  {_table_html(emb_cv)}
+  <h3>Split 5 (Teste Reservado)</h3>
+  {_chart_html(emb_chart_test)}
+  {_table_html(emb_test)}
+</div>""")
+
+    # --- Baselines: VLM (Métrica Numérica) ---
+    sections.append(f"""
+<div class="section">
+  <h2>7. Baselines — VLM com Métrica Numérica</h2>
+  <p class="desc">
+    Variante simplificada da avaliação VLM: o modelo é solicitado a retornar apenas um inteiro 0–100,
+    sem JSON e sem justificativa, reduzindo latência e erros de parse.
+    Projeto W&amp;B separado para comparação isolada.
+  </p>
+  <h3>Splits 0–4 (Validação Cruzada)</h3>
+  {_chart_html(vlm_metric_chart_cv)}
+  {_table_html(vlm_metric_cv)}
+  <h3>Split 5 (Teste Reservado)</h3>
+  {_chart_html(vlm_metric_chart_test)}
+  {_table_html(vlm_metric_test)}
+</div>""")
+
     return f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -947,12 +1165,14 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     print("Buscando runs no W&B...")
-    runs0_cla = _fetch_runs(PROJECTS["exp0_coarse_la"])
-    runs0_fla = _fetch_runs(PROJECTS["exp0_fine_la"])
-    runs1     = _fetch_runs(PROJECTS["exp1"])
-    runs3     = _fetch_runs(PROJECTS["exp3"])
-    runs_test = _fetch_runs(PROJECTS["exp_test"])
-    runs4     = _fetch_runs(PROJECTS["exp4"])
+    runs0_cla    = _fetch_runs(PROJECTS["exp0_coarse_la"])
+    runs0_fla    = _fetch_runs(PROJECTS["exp0_fine_la"])
+    runs1        = _fetch_runs(PROJECTS["exp1"])
+    runs3        = _fetch_runs(PROJECTS["exp3"])
+    runs_test    = _fetch_runs(PROJECTS["exp_test"])
+    runs4        = _fetch_runs(PROJECTS["exp4"])
+    runs_emb     = _fetch_runs(PROJECTS["emb_baseline"])
+    runs_vlm_met = _fetch_runs(PROJECTS["vlm_metric"])
 
     print("Construindo seções...")
     exp0_prog, exp0_table              = _build_exp0(runs0_cla, runs0_fla)
@@ -960,6 +1180,9 @@ def main() -> None:
     exp3_t1, exp3_t2, exp3_t3, exp3_c1, exp3_c2, exp3_c3, exp3_partial, exp3_missing = _build_exp3(runs3)
     exp_test_table, exp_test_chart, exp_test_partial, exp_test_missing = _build_exp_test(runs_test)
     exp4_table, exp4_chart, exp4_partial, exp4_missing = _build_exp4(runs4)
+    emb_cv, emb_test, emb_chart_cv, emb_chart_test                    = _build_baselines_embedding(runs_emb)
+    vlm_metric_cv, vlm_metric_test, vlm_metric_chart_cv, vlm_metric_chart_test = _build_baselines_vlm(
+        runs_vlm_met, "Baselines VLM (Métrica)")
 
     if exp3_partial:
         print(f"  Exp. 3 PARCIAL — splits pendentes: {exp3_missing}")
@@ -974,6 +1197,8 @@ def main() -> None:
         exp3_t1, exp3_t2, exp3_t3, exp3_c1, exp3_c2, exp3_c3, exp3_partial, exp3_missing,
         exp_test_table, exp_test_chart, exp_test_partial, exp_test_missing,
         exp4_table, exp4_chart, exp4_partial, exp4_missing,
+        emb_cv, emb_test, emb_chart_cv, emb_chart_test,
+        vlm_metric_cv, vlm_metric_test, vlm_metric_chart_cv, vlm_metric_chart_test,
     )
 
     output.write_text(html, encoding="utf-8")
