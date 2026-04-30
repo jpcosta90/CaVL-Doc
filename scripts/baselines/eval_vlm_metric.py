@@ -1,41 +1,27 @@
 #!/usr/bin/env python3
 """
-Baseline de similaridade de documentos via prompt para LLMs multimodais.
+Baseline de similaridade via métrica numérica direta (sem justificativa textual).
 
-Envia dois documentos + prompt de comparação para um VLM open-source e usa
-o similarity_score (0-100) retornado como métrica para calcular EER no split 5.
+Variante de eval_vlm_prompt.py onde o VLM responde apenas com um número inteiro
+(0-100), sem JSON nem justificativa. Mais rápido e sem erros de parse.
 
-Modelos suportados (--model):
-  ~2B (comparação direta com CaVL-Doc):
-    internvl3-2b   OpenGVLab/InternVL3-2B        ~6 GB BF16
-    internvl3-8b   OpenGVLab/InternVL3-8B        ~16 GB BF16 / ~8 GB 4-bit
-    qwen3vl-2b     Qwen/Qwen3-VL-2B-Instruct     ~5 GB BF16
-
-  Até 16 GB VRAM sem quantização:
-    qwen3vl-4b     Qwen/Qwen3-VL-4B-Instruct     ~9 GB BF16
-    qwen3vl-8b     Qwen/Qwen3-VL-8B-Instruct     ~16 GB BF16
-    minicpm-v45    openbmb/MiniCPM-V-4_5
-
-  Requer --load-in-4bit (~8 GB VRAM):
-    internvl3-14b  OpenGVLab/InternVL3-14B       ~7 GB 4-bit
-    pixtral-12b    mistralai/Pixtral-12B-2409    ~6 GB 4-bit
-
-  Removidos (incompatíveis com este ambiente):
-    gemma4-*       requer transformers >= 5.x (model_type: gemma4)
-    ministral-*    modelos de texto puro (não VLMs)
-    minicpm-v26    repositório gated sem acesso
+Diferenças em relação a eval_vlm_prompt.py:
+  - Prompt pede apenas o número, sem JSON/justificativa
+  - --models aceita lista de modelos (ex: internvl3-2b,qwen3vl-2b)
+  - W&B project separado: CaVL-Doc_LA-CDIP_VLM_Metric
+  - Por padrão roda todos os splits (all)
 
 Uso:
-  python scripts/baselines/eval_vlm_prompt.py \\
-      --model internvl3-2b \\
+  python scripts/baselines/eval_vlm_metric.py \\
+      --models internvl3-2b,qwen3vl-2b \\
       --base-image-dir /mnt/data/la-cdip/data \\
+      --splits all \\
       --gpu-id 0
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import subprocess
@@ -62,7 +48,7 @@ from tqdm import tqdm
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 
 WANDB_ENTITY  = "jpcosta1990-university-of-brasilia"
-WANDB_PROJECT = "CaVL-Doc_LA-CDIP_VLM_Baseline"
+WANDB_PROJECT = "CaVL-Doc_LA-CDIP_VLM_Metric"
 
 SIMILARITY_PROMPT = """\
 Image-1: <image>
@@ -85,14 +71,7 @@ Assign a **similarity score** between **0 and 100**, where:
 - **0-29** → **Completely different**: The documents do not share a recognizable visual structure.
 
 **Output Format:**
-Respond **only** with a JSON object structured as follows:
-```json
-{
-    "similarity_score": <value between 0 and 100>,
-    "category": "<one of: Nearly Identical, Highly Similar, Moderately Similar, Weak Similarity, Completely Different>",
-    "justification": "Briefly explain the key visual similarities or differences detected."
-}
-```"""
+Respond with **only** a single integer between 0 and 100. No text, no explanation, no JSON — just the number."""
 
 MODEL_REGISTRY = {
     # ── InternVL3 ──
@@ -129,16 +108,12 @@ VENV_VLM5 = Path(__file__).resolve().parents[2] / ".venv_vlm5" / "bin" / "python
 # ---------------------------------------------------------------------------
 
 def _parse_score(text: str) -> Optional[float]:
-    """Extract similarity_score from model JSON response."""
-    try:
-        clean = re.sub(r"```[a-z]*", "", text).strip().strip("`")
-        data = json.loads(clean)
-        return float(data["similarity_score"])
-    except Exception:
-        pass
-    m = re.search(r'"similarity_score"\s*:\s*(\d+(?:\.\d+)?)', text)
+    """Extract a single numeric score (0-100) from the model response."""
+    m = re.search(r'\b(\d{1,3}(?:\.\d+)?)\b', text.strip())
     if m:
-        return float(m.group(1))
+        val = float(m.group(1))
+        if 0.0 <= val <= 100.0:
+            return val
     return None
 
 
@@ -552,18 +527,22 @@ def _parse_splits(splits_arg: str) -> List[int]:
     return [int(s.strip()) for s in splits_arg.split(",") if s.strip()]
 
 
+DEFAULT_MODELS_2B = ["internvl3-2b", "qwen3vl-2b"]
+
+
 def main() -> None:
-    p = argparse.ArgumentParser(description="Baseline VLM via prompt — múltiplos splits.")
-    p.add_argument("--model",          required=True, choices=list(MODEL_REGISTRY),
-                   help=f"Modelo a avaliar: {list(MODEL_REGISTRY)}")
+    p = argparse.ArgumentParser(description="Baseline VLM via métrica numérica — múltiplos modelos e splits.")
+    p.add_argument("--models",         default=",".join(DEFAULT_MODELS_2B),
+                   help=f"Modelos a avaliar, separados por vírgula (default: {','.join(DEFAULT_MODELS_2B)}). "
+                        f"Disponíveis: {list(MODEL_REGISTRY)}")
     p.add_argument("--data-root",      default=None,
-                   help="Raiz do dataset LA-CDIP (necessário para preparar splits)")
+                   help="Raiz do dataset LA-CDIP (necessário para preparar splits 0-4)")
     p.add_argument("--base-image-dir", required=True,
                    help="Diretório base das imagens LA-CDIP")
-    p.add_argument("--splits",         default="5",
-                   help="Splits a avaliar: '5', '0,1,2,3,4,5' ou 'all' (default: 5)")
+    p.add_argument("--splits",         default="all",
+                   help="Splits a avaliar: '5', '0,1,2,3,4,5' ou 'all' (default: all)")
     p.add_argument("--output-dir",     default=None,
-                   help="Diretório para salvar CSVs de resultados (default: results/vlm_baseline/<model>)")
+                   help="Diretório para salvar CSVs de resultados (default: results/vlm_metric)")
     p.add_argument("--gpu-id",         type=int, default=None)
     p.add_argument("--wandb-entity",   default=WANDB_ENTITY)
     p.add_argument("--wandb-project",  default=WANDB_PROJECT)
@@ -574,14 +553,10 @@ def main() -> None:
                    help="Limitar a N pares por split (para teste rápido)")
     args = p.parse_args()
 
-    # Relança automaticamente no .venv_vlm5 se o modelo precisar de transformers >= 5.5
-    if args.model in MODELS_VLM5 and sys.executable != str(VENV_VLM5):
-        if not VENV_VLM5.exists():
-            print(f"[ERRO] {args.model} requer .venv_vlm5 (transformers >= 5.5).")
-            print(f"       Crie com: python3 -m venv .venv_vlm5 && .venv_vlm5/bin/pip install 'transformers>=5.5' ...")
-            sys.exit(1)
-        print(f"[INFO] {args.model} requer transformers >= 5.5 → relançando em .venv_vlm5")
-        os.execv(str(VENV_VLM5), [str(VENV_VLM5)] + sys.argv)
+    model_keys = [m.strip() for m in args.models.split(",") if m.strip()]
+    for mk in model_keys:
+        if mk not in MODEL_REGISTRY:
+            p.error(f"Modelo desconhecido: '{mk}'. Disponíveis: {list(MODEL_REGISTRY)}")
 
     if args.gpu_id is not None:
         os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_id)
@@ -590,111 +565,132 @@ def main() -> None:
 
     splits = _parse_splits(args.splits)
     print(f"Splits a avaliar: {splits}")
-
-    # Output dir
-    out_dir = Path(args.output_dir) if args.output_dir else \
-              WORKSPACE_ROOT / "results" / "vlm_baseline" / args.model
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # Load model once
-    adapter, model_id = _build_adapter(args.model, device, load_in_4bit=args.load_in_4bit)
+    print(f"Modelos: {model_keys}")
 
     import pandas as pd
-    summary_rows = []
+    all_summary = []
 
-    for split_idx in splits:
+    for model_key in model_keys:
         print(f"\n{'='*60}")
-        print(f"SPLIT {split_idx}")
+        print(f"MODELO: {model_key}")
         print(f"{'='*60}")
 
-        # Prepare CSV
-        if split_idx == 5:
-            val_csv = WORKSPACE_ROOT / "data" / "generated_splits" / "eval_test_split5" / "validation_pairs.csv"
-            if not val_csv.exists():
+        # Relança no .venv_vlm5 se necessário
+        if model_key in MODELS_VLM5 and sys.executable != str(VENV_VLM5):
+            if not VENV_VLM5.exists():
+                print(f"[ERRO] {model_key} requer .venv_vlm5. Pulando.")
+                continue
+            print(f"[INFO] {model_key} requer transformers >= 5.5 → relançando em .venv_vlm5")
+            os.execv(str(VENV_VLM5), [str(VENV_VLM5)] + sys.argv)
+
+        out_dir = Path(args.output_dir) if args.output_dir else \
+                  WORKSPACE_ROOT / "results" / "vlm_metric" / model_key
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        adapter, model_id = _build_adapter(model_key, device, load_in_4bit=args.load_in_4bit)
+        summary_rows = []
+
+        for split_idx in splits:
+            print(f"\n{'='*60}")
+            print(f"SPLIT {split_idx}")
+            print(f"{'='*60}")
+
+            # Prepare CSV
+            if split_idx == 5:
+                val_csv = WORKSPACE_ROOT / "data" / "generated_splits" / "eval_test_split5" / "validation_pairs.csv"
+                if not val_csv.exists():
+                    if not args.data_root:
+                        print(f"  ⚠️  Split 5 CSV não encontrado e --data-root não fornecido. Pulando.")
+                        continue
+                    val_csv = _prepare_split(args.data_root, split_idx)
+            else:
                 if not args.data_root:
-                    print(f"  ⚠️  Split 5 CSV não encontrado e --data-root não fornecido. Pulando.")
+                    print(f"  ⚠️  --data-root necessário para preparar split {split_idx}. Pulando.")
                     continue
                 val_csv = _prepare_split(args.data_root, split_idx)
-        else:
-            if not args.data_root:
-                print(f"  ⚠️  --data-root necessário para preparar split {split_idx}. Pulando.")
+
+            print(f"  CSV: {val_csv}")
+
+            t0 = time.time()
+            df_results = _run_baseline(adapter, val_csv, args.base_image_dir, limit=args.limit)
+            elapsed = time.time() - t0
+
+            if len(df_results) < 10:
+                print(f"  ⚠️  Pares insuficientes ({len(df_results)}). Pulando EER.")
                 continue
-            val_csv = _prepare_split(args.data_root, split_idx)
 
-        print(f"  CSV: {val_csv}")
+            scores = df_results["similarity_score"].values
+            labels = df_results["is_equal"].values
+            eer, thr = _compute_eer(scores, labels)
 
-        t0 = time.time()
-        df_results = _run_baseline(adapter, val_csv, args.base_image_dir, limit=args.limit)
-        elapsed = time.time() - t0
+            df_results["split"] = split_idx
+            pairs_csv = out_dir / f"split{split_idx}_pairs.csv"
+            df_results.to_csv(pairs_csv, index=False)
 
-        if len(df_results) < 10:
-            print(f"  ⚠️  Pares insuficientes ({len(df_results)}). Pulando EER.")
-            continue
+            summary_rows.append({
+                "split":     split_idx,
+                "n_pairs":   len(df_results),
+                "eer":       eer,
+                "eer_pct":   round(eer * 100, 2),
+                "threshold": thr,
+                "elapsed_min": round(elapsed / 60, 1),
+            })
 
-        scores = df_results["similarity_score"].values
-        labels = df_results["is_equal"].values
-        eer, thr = _compute_eer(scores, labels)
-
-        df_results["split"] = split_idx
-        pairs_csv = out_dir / f"split{split_idx}_pairs.csv"
-        df_results.to_csv(pairs_csv, index=False)
-
-        summary_rows.append({
-            "split":     split_idx,
-            "n_pairs":   len(df_results),
-            "eer":       eer,
-            "eer_pct":   round(eer * 100, 2),
-            "threshold": thr,
-            "elapsed_min": round(elapsed / 60, 1),
-        })
-
-        print(f"  EER={eer*100:.2f}%  threshold={thr:.1f}  ({elapsed/60:.1f} min)")
-        print(f"  Resultados salvos: {pairs_csv}")
+            print(f"  EER={eer*100:.2f}%  threshold={thr:.1f}  ({elapsed/60:.1f} min)")
+            print(f"  Resultados salvos: {pairs_csv}")
 
         if not args.no_wandb:
-            _log_wandb(args.model, model_id, split_idx, eer, thr,
+            _log_wandb(model_key, model_id, split_idx, eer, thr,
                        len(df_results), args.wandb_entity, args.wandb_project)
 
-    # Summary
-    if summary_rows:
-        df_summary = pd.DataFrame(summary_rows)
-        summary_csv = out_dir / "summary.csv"
-        df_summary.to_csv(summary_csv, index=False)
+        # Summary por modelo
+        if summary_rows:
+            df_summary = pd.DataFrame(summary_rows)
+            summary_csv = out_dir / "summary.csv"
+            df_summary.to_csv(summary_csv, index=False)
 
+            print(f"\n{'='*60}")
+            print(f"RESUMO — {model_key}")
+            print(f"{'='*60}")
+            print(df_summary[["split", "n_pairs", "eer_pct", "threshold"]].to_string(index=False))
+            eers = df_summary["eer"].values
+            print(f"\n  Média EER:   {eers.mean()*100:.2f}%")
+            print(f"  Std EER:     {eers.std()*100:.2f} pp")
+            print(f"  Mediana EER: {np.median(eers)*100:.2f}%")
+            print(f"\n  Sumário salvo: {summary_csv}")
+
+            if not args.no_wandb:
+                try:
+                    import wandb
+                    agg = wandb.init(
+                        entity=args.wandb_entity, project=args.wandb_project,
+                        name=f"VLM_{model_key}_agg",
+                        config={"model_key": model_key, "model_id": model_id,
+                                "splits": splits, "type": "aggregate"},
+                        reinit=True,
+                    )
+                    wandb.log({
+                        "agg/eer_mean":   float(eers.mean()),
+                        "agg/eer_std":    float(eers.std()),
+                        "agg/eer_median": float(np.median(eers)),
+                        "agg/n_splits":   len(eers),
+                    })
+                    agg.finish()
+                except Exception as e:
+                    print(f"  ⚠️  W&B agg log falhou: {e}")
+
+            all_summary.append({"model": model_key, **{k: v for k, v in df_summary[["eer_pct"]].mean().items()}})
+
+        # Cleanup do modelo antes de carregar o próximo
+        del adapter
+        torch.cuda.empty_cache()
+        _delete_model_cache(model_id)
+
+    if len(model_keys) > 1 and all_summary:
         print(f"\n{'='*60}")
-        print(f"RESUMO — {args.model}")
+        print("RESUMO GERAL")
         print(f"{'='*60}")
-        print(df_summary[["split", "n_pairs", "eer_pct", "threshold"]].to_string(index=False))
-        eers = df_summary["eer"].values
-        print(f"\n  Média EER:   {eers.mean()*100:.2f}%")
-        print(f"  Std EER:     {eers.std()*100:.2f} pp")
-        print(f"  Mediana EER: {np.median(eers)*100:.2f}%")
-        print(f"\n  Sumário salvo: {summary_csv}")
-
-        if not args.no_wandb:
-            try:
-                import wandb
-                agg = wandb.init(
-                    entity=args.wandb_entity, project=args.wandb_project,
-                    name=f"VLM_{args.model}_agg",
-                    config={"model_key": args.model, "model_id": model_id,
-                            "splits": splits, "type": "aggregate"},
-                    reinit=True,
-                )
-                wandb.log({
-                    "agg/eer_mean":   float(eers.mean()),
-                    "agg/eer_std":    float(eers.std()),
-                    "agg/eer_median": float(np.median(eers)),
-                    "agg/n_splits":   len(eers),
-                })
-                agg.finish()
-            except Exception as e:
-                print(f"  ⚠️  W&B agg log falhou: {e}")
-
-    # Cleanup
-    del adapter
-    torch.cuda.empty_cache()
-    _delete_model_cache(model_id)
+        print(pd.DataFrame(all_summary).to_string(index=False))
 
 
 if __name__ == "__main__":

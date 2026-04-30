@@ -169,17 +169,16 @@ class _JinaV4Embedder:
         self.model = AutoModel.from_pretrained(
             self.MODEL_ID,
             trust_remote_code=True,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
         ).to(device).eval()
         self.device = device
 
     def embed(self, img: Image.Image) -> np.ndarray:
-        vec = self.model.encode(
+        vec = self.model.encode_image(
             [img],
-            task="retrieval.passage",
-            truncate_dim=None,
+            task="retrieval",
         )
-        return np.array(vec[0], dtype=np.float32)
+        return vec[0].cpu().float().numpy()
 
     def scores(self, val_csv: Path, base_image_dir: str,
                limit: Optional[int]) -> "pd.DataFrame":
@@ -237,9 +236,18 @@ class _InternVL3Embedder:
     @torch.no_grad()
     def embed(self, img: Image.Image) -> np.ndarray:
         from cavl_doc.utils.embedding_utils import prepare_inputs_for_multimodal_embedding
+        from cavl_doc.data.transforms import dynamic_preprocess
+        from torchvision import transforms
+
+        tfm = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+        tiles = dynamic_preprocess(img, image_size=448, use_thumbnail=True, max_num=6)
+        pixel_values = torch.stack([tfm(t) for t in tiles]).to(torch.bfloat16)
 
         out = prepare_inputs_for_multimodal_embedding(
-            self.backbone, self.tokenizer, img, EMBEDDING_PROMPT
+            self.backbone, self.tokenizer, pixel_values, EMBEDDING_PROMPT
         )
         input_ids    = out["input_ids"].to(self.device)
         pixel_values = out["pixel_values"].to(self.device, dtype=torch.bfloat16)
