@@ -93,15 +93,34 @@ def _select_gpu(gpu_id: Optional[int], min_free_mib: int, wait_seconds: float) -
         time.sleep(30)
 
 
-def _prepare_split(data_root: str, split_idx: int, exclude: List[int], force: bool) -> Path:
+def _prepare_split(
+    data_root: str,
+    metadata_root: str,
+    split_idx: int,
+    exclude: List[int],
+    force: bool,
+    prebuilt_base: Optional[str],
+) -> Path:
     excl_tag = "none" if not exclude else "-".join(str(s) for s in sorted(exclude))
+
+    # 1. Tenta diretório pré-construído (Sprint 3 ou outro passado pelo usuário)
+    if prebuilt_base:
+        candidates = [
+            Path(prebuilt_base) / f"sprint3_zsl_val_{split_idx}_train_excl_{excl_tag}",
+            Path(prebuilt_base) / f"final_val_{split_idx}_excl_{excl_tag}",
+        ]
+        for candidate in candidates:
+            if (candidate / "train_pairs.csv").exists():
+                print(f"  [SPLIT] Reutilizando {candidate.name}")
+                return candidate
+
     split_dir = WORKSPACE_ROOT / "data" / "generated_splits" / f"final_val_{split_idx}_excl_{excl_tag}"
     if not force and (split_dir / "train_pairs.csv").exists() and (split_dir / "validation_pairs.csv").exists():
         print(f"  [SPLIT] {split_dir.name} já existe, pulando geração.")
         return split_dir
     cmd = [
         sys.executable, str(PREP_SCRIPT),
-        "--data-root", data_root,
+        "--data-root", metadata_root,
         "--output-dir", str(split_dir),
         "--val-split-idx", str(split_idx),
         "--exclude-train-splits", ",".join(str(s) for s in exclude),
@@ -192,8 +211,14 @@ def main() -> None:
     p.add_argument("--loss-type",         default="arcface",
                    help="Função de perda (default: arcface)")
     p.add_argument("--splits",            default="0,1,2,3,4")
-    p.add_argument("--lacdip-data-root",  required=True)
+    p.add_argument("--lacdip-data-root",  required=True,
+                   help="Raiz do dataset LA-CDIP (onde ficam splits.csv e protocol.csv)")
+    p.add_argument("--metadata-root",     default=None,
+                   help="Diretório com splits.csv e protocol.csv, se diferente de --lacdip-data-root")
     p.add_argument("--base-image-dir",    required=True)
+    p.add_argument("--prebuilt-splits-base", default=None,
+                   help="Base dos splits já gerados (ex: data/generated_splits). "
+                        "Procura sprint3_zsl_val_{N}_train_excl_5 e final_val_{N}_excl_5 antes de gerar novos.")
     p.add_argument("--exclude-train-splits", default="5",
                    help="Splits excluídos do treino (default: 5 para manter holdout final)")
     p.add_argument("--rebuild-splits",    action="store_true",
@@ -285,9 +310,11 @@ def main() -> None:
         # Prepara CSV de treino/validação
         split_dir = _prepare_split(
             data_root=args.lacdip_data_root,
+            metadata_root=args.metadata_root or args.lacdip_data_root,
             split_idx=split_idx,
             exclude=exclude_splits,
             force=args.rebuild_splits,
+            prebuilt_base=args.prebuilt_splits_base,
         )
         pairs_csv = split_dir / "train_pairs.csv"
 
