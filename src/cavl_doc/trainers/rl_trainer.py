@@ -220,7 +220,7 @@ def run_rl_siamese_loop(
     device, output_dir, candidate_pool_size, student_batch_size, max_num_image_tokens,
     val_csv_path=None, base_image_dir=None,
     cut_layer=27, projection_output_dim=512, val_fraction=0.05, val_min_size=200,
-    patience=3, lr_reduce_factor=0.5, baseline_alpha=0.01, entropy_coeff=0.01, seed=42,
+    patience=3, lr_patience=3, lr_reduce_factor=0.5, baseline_alpha=0.01, entropy_coeff=0.01, seed=42,
     use_wandb=False,
     loss_type="contrastive", pooler_type="attention", head_type="mlp", num_classes=None, num_queries=1,
     val_samples_per_class=20, # Novo argumento com default
@@ -426,7 +426,7 @@ def run_rl_siamese_loop(
              # T_max usually epochs
              student_scheduler = optim.lr_scheduler.CosineAnnealingLR(student_optimizer, T_max=epochs)
         elif scheduler_type.lower() == "plateau":
-               student_scheduler = optim.lr_scheduler.ReduceLROnPlateau(student_optimizer, mode='min', factor=lr_reduce_factor, patience=3)
+               student_scheduler = optim.lr_scheduler.ReduceLROnPlateau(student_optimizer, mode='min', factor=lr_reduce_factor, patience=lr_patience)
 
 
     # Debug Resume Path

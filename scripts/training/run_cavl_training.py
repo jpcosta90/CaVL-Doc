@@ -393,6 +393,7 @@ def main(args):
             val_fraction=args.val_fraction,
             val_min_size=args.val_min_size,
             patience=args.patience,
+            lr_patience=args.lr_patience,
             lr_reduce_factor=args.lr_reduce_factor,
             baseline_alpha=args.baseline_alpha,
             entropy_coeff=args.entropy_coeff,
@@ -491,7 +492,10 @@ def parse_args():
     p.add_argument("--val-min-size", type=int, default=200)
     p.add_argument("--val-samples-per-class", type=int, default=20, help="Number of samples per class for balanced validation subset")
     p.add_argument("--val-subset-size", type=int, default=None, help="Target total size for validation subset (overrides val-samples-per-class)")
-    p.add_argument("--patience", type=int, default=3)
+    p.add_argument("--patience", type=int, default=3,
+                   help="Early-stopping: épocas sem melhora para parar o treino")
+    p.add_argument("--lr-patience", type=int, default=3,
+                   help="ReduceLROnPlateau: épocas sem melhora para reduzir a LR")
     
     p.add_argument("--baseline-alpha", type=float, default=0.01)
     p.add_argument("--entropy-coeff", type=float, default=0.01)

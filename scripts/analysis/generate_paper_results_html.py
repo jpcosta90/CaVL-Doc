@@ -764,6 +764,8 @@ def _build_baselines_embedding(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, 
         return pd.DataFrame(), pd.DataFrame(), "", ""
 
     df = pd.DataFrame(records)
+    # Keep only best EER per method+split in case of re-runs
+    df = df.groupby(["method", "split"], as_index=False)["eer"].min()
 
     # ----- Cross-validation table (splits 0–4) -----
     df_cv = df[df["split"].isin(range(5))].copy()
@@ -774,7 +776,7 @@ def _build_baselines_embedding(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, 
         row  = {"Método": method}
         vals = []
         for s in range(5):
-            v = sub.get(s)
+            v = _scalar(sub.get(s))
             row[f"Split {s}"] = _fmt_eer(v)
             if v is not None:
                 vals.append(v)
@@ -848,6 +850,9 @@ def _build_baselines_vlm(runs: List, title_prefix: str) -> Tuple[pd.DataFrame, p
                 agg_data[m_agg.group(1)] = {"mean": mean, "std": std}
 
     df = pd.DataFrame(per_split) if per_split else pd.DataFrame(columns=["model", "split", "eer"])
+    # Keep only the best (lowest) EER per model+split in case of re-runs
+    if not df.empty:
+        df = df.groupby(["model", "split"], as_index=False)["eer"].min()
 
     # ----- Cross-validation table (splits 0–4) -----
     df_cv = df[df["split"].isin(range(5))].copy()
@@ -860,7 +865,7 @@ def _build_baselines_vlm(runs: List, title_prefix: str) -> Tuple[pd.DataFrame, p
         row  = {"Modelo": model}
         vals = []
         for s in range(5):
-            v = sub.get(s) if has_per_split else None
+            v = _scalar(sub.get(s)) if has_per_split else None
             row[f"Split {s}"] = _fmt_eer(v)
             if v is not None:
                 vals.append(v)
