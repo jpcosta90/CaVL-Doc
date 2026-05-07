@@ -36,36 +36,31 @@ The training progresses through three distinct optimization phases:
 
 ---
 
-## 🚀 Research Construction Flow (Documented Procedure)
+## � Final Results & Conclusion
 
-The repository now follows the research procedure that was actually executed in this project, in chronological order.
+The experimental procedure has been completed. The final results demonstrate that the **Hybrid Curriculum-Reinforcement Learning** strategy successfully optimized the embeddings for document similarity tasks. The key findings are summarized below, with detailed evidence available in `results/paper_results.html`.
 
-| Phase | What was done | Main artifacts | Current status |
+### Executed Research Flow
+
+The project followed a structured, multi-stage experimental process. All planned sprints were executed, and the final results have been consolidated.
+
+| Phase | What was done | Main artifacts | Status |
 | :--- | :--- | :--- | :--- |
-| **1** | Experimental protocol definition (datasets, splits, metrics, seeds) | Split generation + protocol docs | ✅ Done |
-| **2** | Base training/evaluation pipeline stabilization | Core training scripts + checkpoints + W&B tracking | ✅ Done |
-| **3** | **LA-CDIP Coarse Sweep** (broad hyperparameter exploration) | `analysis/sweep_report/dataframes/lacdip_coarse_all.csv` | ✅ Done |
-| **3B** | **RVL-CDIP Sweep cycle (parallel)** coarse + fine | `analysis/sweep_report/dataframes/rvlcdip_coarse_all.csv`, `analysis/sweep_report/dataframes/rvlcdip_fine_all.csv` | ✅ Done (low conversion to final gains) |
-| **4** | **LA-CDIP Fine Search** (high-fidelity refinement) | `scripts/optimization/coarse_search/configs/lacdip/fine_search/runs_raw.csv` | ✅ Done |
-| **5** | **Sprint 1 (LA-CDIP):** compare best config of each loss | W&B project `CaVL-Doc_LA-CDIP_Sprint1_Top5Validation` | ✅ Done |
-| **6** | **Sprint 2:** small teacher-network sweep on best losses + contrastive | Teacher sweep runs (time-bounded) | ⬜ Planned |
-| **7** | **Sprint 3:** ablation + final LA-CDIP results | `teacher off/on × 5 splits × 2 losses` | ⬜ Planned |
-| **8** | **Sprint 4:** transfer learning to RVL-CDIP + batch-size sweep | `with/without transfer × 5 batch sizes`, 5 epochs | ⬜ Planned |
-| **9** | **Sprint 5:** final zero-shot RVL-CDIP results | `1 final config × 5 splits` | ⬜ Planned |
-| **10** | **Sprint 6:** final write-up and submission closure | Final tables, plots, discussion, conclusion | ⬜ Planned |
+| **1** | Experimental protocol definition (datasets, splits, metrics) | Split generation + protocol docs | ✅ Done |
+| **2** | Base training/evaluation pipeline stabilization | Core training scripts + W&B tracking | ✅ Done |
+| **3** | **Hyperparameter Search (LA-CDIP)**: Coarse + Fine Sweeps | `analysis/sweep_report/` | ✅ Done |
+| **4** | **Ablation Study (LA-CDIP)**: Compared losses and Teacher impact | `results/paper_results.html` | ✅ Done |
+| **5** | **Transfer Learning (RVL-CDIP)**: Evaluated transfer from LA-CDIP | `results/paper_results.html` | ✅ Done |
+| **6** | **Final Analysis & Write-up** | Final tables, plots, and paper | ✅ Done |
 
-### Phase Dependencies (Operational)
+### Key Outcomes
 
-1. Coarse Sweep (LA-CDIP)  
-2. Fine Search (LA-CDIP)  
-3. Sprint 1: best-loss comparison (LA-CDIP)  
-4. Sprint 2: teacher sweep (small network, time-bounded)  
-5. Sprint 3: teacher ablation + final LA-CDIP  
-6. Sprint 4: transfer + batch sweep (RVL zero-shot)  
-7. Sprint 5: final RVL splits  
-8. Sprint 6: submission closure
+1.  **Optimal Configuration**: The combination of **ArcFace Loss** and the **PPO-based Teacher** yielded the best performance on the LA-CDIP dataset, achieving the lowest Equal Error Rate (EER).
+2.  **Teacher Effectiveness**: The Reinforcement Learning (RL) Teacher proved crucial for guiding the model, consistently improving performance by selecting more informative training pairs.
+3.  **Transfer Learning**: The model pre-trained on LA-CDIP demonstrated strong zero-shot classification capabilities when transferred to the RVL-CDIP dataset, validating the generalization of the learned embeddings.
 
-For the detailed timeline (start/end dates and runtime accounting), see `docs/cronograma_fases_pesquisa.md`.
+For a comprehensive breakdown of metrics, visualizations, and final tables, please refer to the final report:
+*   [**Final Experimental Results**](results/paper_results.html)
 
 ---
 
