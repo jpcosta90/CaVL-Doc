@@ -55,9 +55,9 @@ The project followed a structured, multi-stage experimental process. All planned
 
 ### Key Outcomes
 
-1.  **Optimal Configuration**: The combination of **ArcFace Loss** and the **PPO-based Teacher** yielded the best performance on the LA-CDIP dataset, achieving the lowest Equal Error Rate (EER).
-2.  **Teacher Effectiveness**: The Reinforcement Learning (RL) Teacher proved crucial for guiding the model, consistently improving performance by selecting more informative training pairs.
-3.  **Transfer Learning**: The model pre-trained on LA-CDIP demonstrated strong zero-shot classification capabilities when transferred to the RVL-CDIP dataset, validating the generalization of the learned embeddings.
+1.  **Best Performing Loss**: The **ArcFace Loss** consistently achieved the best performance on the LA-CDIP dataset when used without the RL Teacher, establishing the strongest baseline.
+2.  **Teacher Effectiveness (Mixed Results)**: The Reinforcement Learning (RL) Teacher successfully improved performance for **Triplet** and **Contrastive** losses. However, this gain did not extend to the ArcFace loss, where it failed to provide a benefit.
+3.  **Transfer Learning (Unsuccessful)**: The attempt to transfer the model pre-trained on LA-CDIP to the RVL-CDIP dataset did not yield the expected zero-shot classification improvements, indicating that the learned representations did not generalize well to the target domain under the tested conditions.
 
 For a comprehensive breakdown of metrics, visualizations, and final tables, please refer to the final report:
 *   [**Final Experimental Results**](results/paper_results.html)
