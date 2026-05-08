@@ -51,17 +51,16 @@ def _checkpoint_epoch(ckpt_path: Path) -> int:
         return -1
 
 
-def _checkpoint_done(ckpt_path: Path, max_epochs: int) -> bool:
-    """True se o checkpoint atingiu max_epochs OU parou por early stopping."""
+def _checkpoint_done(ckpt_path: Path, max_epochs: int, patience: int) -> bool:
+    """True se o checkpoint atingiu max_epochs OU o early stopping disparou."""
     if not ckpt_path.exists():
         return False
     try:
         import torch
         ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        epoch     = int(ckpt.get("epoch", -1))
+        epoch      = int(ckpt.get("epoch", -1))
         no_improve = int(ckpt.get("no_improve", 0))
-        # Completo: atingiu max_epochs ou early-stopping disparou na época salva
-        return epoch >= max_epochs - 1 or no_improve > 0
+        return epoch >= max_epochs - 1 or no_improve >= patience
     except Exception:
         return False
 
@@ -341,7 +340,7 @@ def main() -> None:
         if not args.dry_run:
             print(" ".join(cmd_p1))
 
-        if _checkpoint_done(ckpt_p1, args.phase1_epochs):
+        if _checkpoint_done(ckpt_p1, args.phase1_epochs, args.patience):
             epoch_done = _checkpoint_epoch(ckpt_p1)
             print(f"  → Fase 1 completa (época {epoch_done + 1}). Pulando.")
         elif ckpt_p1.exists():
@@ -378,7 +377,7 @@ def main() -> None:
         if not args.dry_run:
             print(" ".join(cmd_p2))
 
-        if _checkpoint_done(ckpt_p2, args.phase2_epochs):
+        if _checkpoint_done(ckpt_p2, args.phase2_epochs, args.patience):
             epoch_done = _checkpoint_epoch(ckpt_p2)
             print(f"  → Fase 2 completa (época {epoch_done + 1}). Pulando.")
         elif ckpt_p2.exists():
