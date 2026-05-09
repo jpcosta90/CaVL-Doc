@@ -395,6 +395,8 @@ def main(args):
             patience=args.patience,
             lr_patience=args.lr_patience,
             lr_reduce_factor=args.lr_reduce_factor,
+            lr_t0=args.lr_t0,
+            lr_t_mult=args.lr_t_mult,
             baseline_alpha=args.baseline_alpha,
             entropy_coeff=args.entropy_coeff,
             seed=args.seed,
@@ -510,7 +512,13 @@ def parse_args():
     
     # Optimizer & Scheduler
     p.add_argument("--optimizer-type", type=str, default="adam", choices=["adam", "adamw", "sgd"], help="Optimizer type")
-    p.add_argument("--scheduler-type", type=str, default=None, choices=["step", "cosine", "plateau", "constant"], help="Scheduler type")
+    p.add_argument("--scheduler-type", type=str, default=None,
+                   choices=["step", "cosine", "plateau", "constant", "cosine_warm"],
+                   help="Scheduler type")
+    p.add_argument("--lr-t0", type=int, default=10,
+                   help="CosineAnnealingWarmRestarts: épocas do primeiro ciclo (T_0)")
+    p.add_argument("--lr-t-mult", type=int, default=2,
+                   help="CosineAnnealingWarmRestarts: fator multiplicador dos ciclos (T_mult)")
     p.add_argument("--weight-decay", type=float, default=1e-4, help="Weight decay for optimizer")
     p.add_argument("--num-workers", type=int, default=0, help="Number of workers for data loading")
 
