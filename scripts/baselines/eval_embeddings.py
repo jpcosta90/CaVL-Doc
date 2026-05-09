@@ -321,14 +321,14 @@ def _compute_eer(scores: np.ndarray, labels: np.ndarray) -> Tuple[float, float]:
 # W&B
 # ---------------------------------------------------------------------------
 
-def _log_wandb(method: str, split_idx: int, eer: float, thr: float,
+def _log_wandb(method: str, split_label: str, eer: float, thr: float,
                n_pairs: int, wandb_entity: str, wandb_project: str) -> None:
     try:
         import wandb
-        run_name = f"Emb_{method}_split{split_idx}"
+        run_name = f"Emb_{method}_split{split_label}"
         run = wandb.init(
             entity=wandb_entity, project=wandb_project, name=run_name,
-            config={"method": method, "split": split_idx, "n_pairs": n_pairs},
+            config={"method": method, "split": split_label, "n_pairs": n_pairs},
             reinit=True,
         )
         wandb.log({"test/eer": eer, "test/threshold": thr, "test/n_pairs": n_pairs})
@@ -368,6 +368,10 @@ def main() -> None:
     p.add_argument("--no-wandb",       action="store_true")
     p.add_argument("--limit",          type=int, default=None,
                    help="Limitar a N pares por split (para teste rápido)")
+    p.add_argument("--eval-csv",       default=None,
+                   help="CSV custom de pares (sobrescreve a resolução automática para split 5)")
+    p.add_argument("--split-label",    default=None,
+                   help="Label do split para W&B e arquivos de saída (ex: '5_synthetic')")
     args = p.parse_args()
 
     if args.gpu_id is not None:
@@ -402,7 +406,9 @@ def main() -> None:
         print(f"{'='*60}")
 
         # Prepare CSV
-        if split_idx == 5:
+        if args.eval_csv and split_idx == 5:
+            val_csv = Path(args.eval_csv)
+        elif split_idx == 5:
             val_csv = WORKSPACE_ROOT / "data" / "generated_splits" / \
                       "eval_test_split5" / "validation_pairs.csv"
             if not val_csv.exists():
@@ -416,6 +422,7 @@ def main() -> None:
                 continue
             val_csv = _prepare_split(args.data_root, split_idx)
 
+        split_label = args.split_label if (args.eval_csv and split_idx == 5) else str(split_idx)
         print(f"  CSV: {val_csv}")
 
         t0 = time.time()
@@ -434,12 +441,12 @@ def main() -> None:
         labels = df_res["is_equal"].values
         eer, thr = _compute_eer(scores, labels)
 
-        df_res["split"] = split_idx
-        pairs_csv = out_dir / f"split{split_idx}_pairs.csv"
+        df_res["split"] = split_label
+        pairs_csv = out_dir / f"split{split_label}_pairs.csv"
         df_res.to_csv(pairs_csv, index=False)
 
         summary_rows.append({
-            "split":        split_idx,
+            "split":        split_label,
             "n_pairs":      len(df_res),
             "eer":          eer,
             "eer_pct":      round(eer * 100, 2),
@@ -451,7 +458,7 @@ def main() -> None:
         print(f"  Resultados: {pairs_csv}")
 
         if not args.no_wandb:
-            _log_wandb(args.method, split_idx, eer, thr, len(df_res),
+            _log_wandb(args.method, split_label, eer, thr, len(df_res),
                        args.wandb_entity, args.wandb_project)
 
     # Summary

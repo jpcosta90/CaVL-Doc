@@ -496,18 +496,18 @@ def _compute_eer(scores: np.ndarray, labels: np.ndarray) -> Tuple[float, float]:
 # W&B logging
 # ---------------------------------------------------------------------------
 
-def _log_wandb(model_key: str, model_id: str, split_idx: int,
+def _log_wandb(model_key: str, model_id: str, split_label: str,
                eer: float, threshold: float, n_pairs: int,
                wandb_entity: str, wandb_project: str) -> None:
     try:
         import wandb
-        run_name = f"VLM_{model_key}_split{split_idx}"
+        run_name = f"VLM_{model_key}_split{split_label}"
         run = wandb.init(
             entity=wandb_entity,
             project=wandb_project,
             name=run_name,
             config={"model_key": model_key, "model_id": model_id,
-                    "split": split_idx, "n_pairs": n_pairs},
+                    "split": split_label, "n_pairs": n_pairs},
             reinit=True,
         )
         wandb.log({"test/eer": eer, "test/threshold": threshold, "test/n_pairs": n_pairs})
@@ -551,6 +551,10 @@ def main() -> None:
                    help="Carregar modelo em 4-bit (NF4) para reduzir VRAM/RAM")
     p.add_argument("--limit",          type=int, default=None,
                    help="Limitar a N pares por split (para teste rápido)")
+    p.add_argument("--eval-csv",       default=None,
+                   help="CSV custom de pares (sobrescreve a resolução automática para split 5)")
+    p.add_argument("--split-label",    default=None,
+                   help="Label do split para W&B e arquivos de saída (ex: '5_synthetic')")
     args = p.parse_args()
 
     model_keys = [m.strip() for m in args.models.split(",") if m.strip()]
@@ -596,7 +600,9 @@ def main() -> None:
             print(f"{'='*60}")
 
             # Prepare CSV
-            if split_idx == 5:
+            if args.eval_csv and split_idx == 5:
+                val_csv = Path(args.eval_csv)
+            elif split_idx == 5:
                 val_csv = WORKSPACE_ROOT / "data" / "generated_splits" / "eval_test_split5" / "validation_pairs.csv"
                 if not val_csv.exists():
                     if not args.data_root:
@@ -609,6 +615,7 @@ def main() -> None:
                     continue
                 val_csv = _prepare_split(args.data_root, split_idx)
 
+            split_label = args.split_label if (args.eval_csv and split_idx == 5) else str(split_idx)
             print(f"  CSV: {val_csv}")
 
             t0 = time.time()
@@ -623,12 +630,12 @@ def main() -> None:
             labels = df_results["is_equal"].values
             eer, thr = _compute_eer(scores, labels)
 
-            df_results["split"] = split_idx
-            pairs_csv = out_dir / f"split{split_idx}_pairs.csv"
+            df_results["split"] = split_label
+            pairs_csv = out_dir / f"split{split_label}_pairs.csv"
             df_results.to_csv(pairs_csv, index=False)
 
             summary_rows.append({
-                "split":     split_idx,
+                "split":     split_label,
                 "n_pairs":   len(df_results),
                 "eer":       eer,
                 "eer_pct":   round(eer * 100, 2),
@@ -640,7 +647,7 @@ def main() -> None:
             print(f"  Resultados salvos: {pairs_csv}")
 
             if not args.no_wandb:
-                _log_wandb(model_key, model_id, split_idx, eer, thr,
+                _log_wandb(model_key, model_id, split_label, eer, thr,
                            len(df_results), args.wandb_entity, args.wandb_project)
 
         # Summary por modelo
