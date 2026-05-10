@@ -61,7 +61,12 @@ def prepare_experiment(args):
         args.wandb_run_name = f"{args.dataset_name}_{args.model_name}_{args.loss_type}_{timestamp}"
     
     experiment_name = args.wandb_run_name
-    base_path = "/mnt/large/checkpoints" if os.path.exists("/mnt/large") else "checkpoints"
+    if os.path.exists("/mnt/nas/joaopaulo"):
+        base_path = "/mnt/nas/joaopaulo/checkpoints"
+    elif os.path.exists("/mnt/large"):
+        base_path = "/mnt/large/checkpoints"
+    else:
+        base_path = "checkpoints"
     
     wandb_id = None
     

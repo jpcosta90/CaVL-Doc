@@ -174,14 +174,13 @@ class _JinaV4Embedder:
         self.device = device
 
     def embed(self, img: Image.Image) -> np.ndarray:
-        # API mudou entre versões: nova usa encode_image(task="retrieval"),
-        # antiga usa encode(task="retrieval.passage").
-        # show_progress_bar=False suprime as barras internas do Jina por batch.
-        if hasattr(self.model, "encode_image"):
-            vec = self.model.encode_image([img], task="retrieval", show_progress_bar=False)
-        else:
-            vec = self.model.encode([img], task="retrieval.passage",
-                                    truncate_dim=None, show_progress_bar=False)
+        import contextlib, io
+        # Jina abre uma barra tqdm interna por chamada; suprimimos via redirect_stderr.
+        with contextlib.redirect_stderr(io.StringIO()):
+            if hasattr(self.model, "encode_image"):
+                vec = self.model.encode_image([img], task="retrieval")
+            else:
+                vec = self.model.encode([img], task="retrieval.passage", truncate_dim=None)
         return vec[0].cpu().float().numpy()
 
     def scores(self, val_csv: Path, base_image_dir: str,
