@@ -175,21 +175,24 @@ class _JinaV4Embedder:
 
     def embed(self, img: Image.Image) -> np.ndarray:
         # API mudou entre versões: nova usa encode_image(task="retrieval"),
-        # antiga usa encode(task="retrieval.passage")
+        # antiga usa encode(task="retrieval.passage").
+        # show_progress_bar=False suprime as barras internas do Jina por batch.
         if hasattr(self.model, "encode_image"):
-            vec = self.model.encode_image([img], task="retrieval")
+            vec = self.model.encode_image([img], task="retrieval", show_progress_bar=False)
         else:
-            vec = self.model.encode([img], task="retrieval.passage", truncate_dim=None)
+            vec = self.model.encode([img], task="retrieval.passage",
+                                    truncate_dim=None, show_progress_bar=False)
         return vec[0].cpu().float().numpy()
 
     def scores(self, val_csv: Path, base_image_dir: str,
                limit: Optional[int]) -> "pd.DataFrame":
         import pandas as pd
+        from tqdm import tqdm
         df = pd.read_csv(val_csv)
         if limit:
             df = df.head(limit)
         rows = []
-        for i, row in df.iterrows():
+        for _, row in tqdm(df.iterrows(), total=len(df), desc="  jina-v4", ncols=90):
             try:
                 img_a = Image.open(Path(base_image_dir) / row["file_a_path"]).convert("RGB")
                 img_b = Image.open(Path(base_image_dir) / row["file_b_path"]).convert("RGB")
@@ -199,10 +202,8 @@ class _JinaV4Embedder:
                              "file_b_path": row["file_b_path"],
                              "is_equal":    int(row["is_equal"]),
                              "similarity_score": score})
-                if len(rows) % 50 == 0:
-                    print(f"  [{len(rows)}/{len(df)}] score={score:.4f}")
             except Exception as e:
-                print(f"  [ERR] par {i}: {e}")
+                tqdm.write(f"  [ERR] {row['file_a_path']}: {e}")
         return pd.DataFrame(rows)
 
     def cleanup(self):
