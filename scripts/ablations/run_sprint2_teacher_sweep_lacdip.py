@@ -551,6 +551,7 @@ def load_sprint1_best_runs(
 def _find_checkpoint_for_run(checkpoint_root: str, run_name: str) -> Optional[str]:
     run_dir = os.path.join(checkpoint_root, run_name)
     preferred = [
+        os.path.join(run_dir, "best_model.pt"),
         os.path.join(run_dir, "best_siam.pt"),
         os.path.join(run_dir, "last_checkpoint.pt"),
     ]
@@ -558,7 +559,7 @@ def _find_checkpoint_for_run(checkpoint_root: str, run_name: str) -> Optional[st
         if os.path.exists(candidate):
             return candidate
 
-    for ckpt_name in ["best_siam.pt", "last_checkpoint.pt"]:
+    for ckpt_name in ["best_model.pt", "best_siam.pt", "last_checkpoint.pt"]:
         pattern = os.path.join(checkpoint_root, f"{run_name}*", ckpt_name)
         matches = glob.glob(pattern)
         if matches:

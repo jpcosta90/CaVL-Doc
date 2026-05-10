@@ -159,13 +159,18 @@ def _resolve_checkpoint_root(user_value: Optional[str]) -> Path:
 def _find_latest_checkpoint_for_loss(checkpoint_root: Path, loss_name: str, name_filter: Optional[str]) -> Optional[Path]:
     candidates = []
 
-    for candidate in checkpoint_root.rglob("best_siam.pt"):
-        parent_name = candidate.parent.name.lower()
-        if loss_name.lower() not in parent_name:
-            continue
-        if name_filter and name_filter.lower() not in parent_name:
-            continue
-        candidates.append(candidate)
+    seen_dirs = set()
+    for ckpt_name in ["best_model.pt", "best_siam.pt"]:
+        for candidate in checkpoint_root.rglob(ckpt_name):
+            if candidate.parent in seen_dirs:
+                continue
+            parent_name = candidate.parent.name.lower()
+            if loss_name.lower() not in parent_name:
+                continue
+            if name_filter and name_filter.lower() not in parent_name:
+                continue
+            candidates.append(candidate)
+            seen_dirs.add(candidate.parent)
 
     if not candidates:
         for candidate in checkpoint_root.rglob("last_checkpoint.pt"):

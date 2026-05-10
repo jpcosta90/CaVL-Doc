@@ -322,7 +322,9 @@ def main() -> None:
         run_p2    = f"Final_S{split_idx}_{args.loss_type}_fase2_teacher_E{args.phase2_epochs}{suffix}"
         ckpt_p1   = checkpoint_root / run_p1  / "last_checkpoint.pt"
         ckpt_p2   = checkpoint_root / run_p2  / "last_checkpoint.pt"
-        best_p1   = checkpoint_root / run_p1  / "best_siam.pt"
+        best_p1   = checkpoint_root / run_p1  / "best_model.pt"
+        if not best_p1.exists():
+            best_p1 = checkpoint_root / run_p1 / "best_siam.pt"  # fallback legado
 
         print(f"\n{'='*80}")
         print(f"Split {split_idx}")
@@ -363,7 +365,7 @@ def main() -> None:
 
         # ── Fase 2: com teacher ───────────────────────────────────────────
         if not best_p1.exists():
-            print(f"  ⚠️  best_siam.pt da fase 1 não encontrado em {best_p1}. Pulando fase 2.")
+            print(f"  ⚠️  best_model.pt da fase 1 não encontrado em {best_p1}. Pulando fase 2.")
             continue
 
         cmd_p2 = _build_cmd(

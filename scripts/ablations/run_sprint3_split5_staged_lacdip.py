@@ -93,7 +93,7 @@ def _resolve_checkpoint_root(user_value: Optional[str]) -> Path:
 def _latest_checkpoint_for_name_filter(checkpoint_root: Path, name_filter: str) -> Optional[Path]:
     filter_lower = name_filter.lower()
     candidates: List[Path] = []
-    for ckpt_name in ["best_siam.pt", "last_checkpoint.pt"]:
+    for ckpt_name in ["best_model.pt", "best_siam.pt", "last_checkpoint.pt"]:
         for candidate in checkpoint_root.rglob(ckpt_name):
             parent_name = candidate.parent.name.lower()
             if filter_lower in parent_name:

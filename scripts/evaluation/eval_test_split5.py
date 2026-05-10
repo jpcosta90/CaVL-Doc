@@ -63,13 +63,18 @@ KNOWN_LOSSES = [
 # ---------------------------------------------------------------------------
 
 def _find_checkpoints(checkpoint_root: Path, name_filter: str) -> List[Path]:
-    """Return best_siam.pt files matching name_filter AND containing 'fase' in the name."""
+    """Return best checkpoint files matching name_filter AND containing 'fase' in the name."""
     found = []
+    seen_dirs = set()
     pattern = name_filter.lower()
-    for ckpt in checkpoint_root.rglob("best_siam.pt"):
-        name = ckpt.parent.name.lower()
-        if pattern in name and "fase" in name:
-            found.append(ckpt)
+    for ckpt_name in ["best_model.pt", "best_siam.pt"]:
+        for ckpt in checkpoint_root.rglob(ckpt_name):
+            if ckpt.parent in seen_dirs:
+                continue  # prefer best_model.pt over best_siam.pt in same dir
+            name = ckpt.parent.name.lower()
+            if pattern in name and "fase" in name:
+                found.append(ckpt)
+                seen_dirs.add(ckpt.parent)
     return sorted(found, key=lambda p: p.parent.name)
 
 

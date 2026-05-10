@@ -29,7 +29,7 @@ def _find_latest_lacdip_source_checkpoint(checkpoint_root: Path, name_filter: st
     candidates: list[Path] = []
     lower_filter = name_filter.lower()
 
-    for ckpt_name in ["best_siam.pt", "last_checkpoint.pt"]:
+    for ckpt_name in ["best_model.pt", "best_siam.pt", "last_checkpoint.pt"]:
         for candidate in checkpoint_root.rglob(ckpt_name):
             parent = candidate.parent.name.lower()
             if lower_filter not in parent:

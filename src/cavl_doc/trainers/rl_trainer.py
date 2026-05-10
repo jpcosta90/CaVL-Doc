@@ -438,9 +438,11 @@ def run_rl_siamese_loop(
         print(f"DEBUG: Exists? {os.path.exists(resume_checkpoint_path)}")
 
     # --- Lógica de Retomada (Resume) ---
-    start_epoch = 0
-    best_val_eer = 1.0
-    baseline = 0.0
+    start_epoch     = 0
+    best_val_eer    = 1.0
+    best_val_loss   = float('inf')
+    best_val_recall = 0.0
+    baseline        = 0.0
     global_batch_step = 0
     
     if resume_checkpoint_path and os.path.exists(resume_checkpoint_path):
@@ -471,9 +473,11 @@ def run_rl_siamese_loop(
 
             
         # Restaura estado do treinamento
-        start_epoch = ckpt.get('epoch', 0) + 1
-        best_val_eer = ckpt.get('metrics', {}).get('eer', 1.0)
-        baseline = ckpt.get('baseline', 0.0)
+        start_epoch     = ckpt.get('epoch', 0) + 1
+        best_val_eer    = ckpt.get('metrics', {}).get('eer',    1.0)
+        best_val_loss   = ckpt.get('metrics', {}).get('loss',   float('inf'))
+        best_val_recall = ckpt.get('metrics', {}).get('recall', 0.0)
+        baseline        = ckpt.get('baseline', 0.0)
         global_batch_step = ckpt.get('global_batch_step', 0)
         no_improve = ckpt.get('no_improve', 0)
         
@@ -636,18 +640,27 @@ def run_rl_siamese_loop(
         
         log_writer.writerow([start_epoch+1, "end", "", "", "", "", "", "", f"{vloss:.4f}", f"{veer:.4f}"])
         
-        if veer < best_val_eer:
-            best_val_eer = veer
+        _eer_improved  = veer < best_val_eer
+        _eer_not_worse = veer <= best_val_eer
+        _secondary_imp = (vloss < best_val_loss) or (vr1 > best_val_recall)
+        if _eer_improved or (_eer_not_worse and _secondary_imp):
+            if _eer_improved:
+                best_val_eer = veer
+            best_val_loss   = min(best_val_loss,   vloss)
+            best_val_recall = max(best_val_recall, vr1)
             no_improve = 0
             backbone_trainable = {n: p.detach().cpu() for n, p in siam.backbone.named_parameters() if p.requires_grad}
             ckpt = {
-                'epoch': start_epoch, 'metrics': {'eer': veer, 'loss': vloss}, 'config': model_config,
+                'epoch': start_epoch,
+                'metrics': {'eer': veer, 'loss': vloss, 'recall': vr1},
+                'config': model_config,
                 'siam_pool': siam.pool.state_dict(), 'siam_head': siam.head.state_dict(),
                 'backbone_trainable': backbone_trainable, 'professor_state': professor_model.state_dict()
             }
             os.makedirs(output_dir, exist_ok=True)
-            torch.save(ckpt, os.path.join(output_dir, "best_siam.pt"))
-            print("Saved best_siam.pt (Recovered)")
+            _reason = "EER" if _eer_improved else ("loss" if vloss < best_val_loss else "recall@1") + " (EER mantida)"
+            torch.save(ckpt, os.path.join(output_dir, "best_model.pt"))
+            print(f"Saved best_model.pt (Recovered) [{_reason}]")
             if use_wandb and wandb:
                 wandb.log({"val/best_eer": best_val_eer, "epoch": start_epoch + 1})
         
@@ -961,15 +974,23 @@ def run_rl_siamese_loop(
 
         log_writer.writerow([epoch+1, "end", "", "", "", "", "", "", f"{vloss:.4f}", f"{veer:.4f}"])
 
-        if veer < best_val_eer:
-            best_val_eer = veer
+        _eer_improved  = veer < best_val_eer
+        _eer_not_worse = veer <= best_val_eer
+        _secondary_imp = (vloss < best_val_loss) or (vr1 > best_val_recall)
+        if _eer_improved or (_eer_not_worse and _secondary_imp):
+            if _eer_improved:
+                best_val_eer = veer
+            best_val_loss   = min(best_val_loss,   vloss)
+            best_val_recall = max(best_val_recall, vr1)
             no_improve = 0
             backbone_trainable = {n: p.detach().cpu() for n, p in siam.backbone.named_parameters() if p.requires_grad}
             ckpt = {
-                'epoch': epoch, 'metrics': {'eer': veer, 'loss': vloss}, 'config': model_config,
+                'epoch': epoch,
+                'metrics': {'eer': veer, 'loss': vloss, 'recall': vr1},
+                'config': model_config,
                 'siam_pool': siam.pool.state_dict(), 'siam_head': siam.head.state_dict(),
-                'backbone_trainable': backbone_trainable, 'professor_state': professor_model.state_dict()
-                , 'student_optimizer': student_optimizer.state_dict(),
+                'backbone_trainable': backbone_trainable, 'professor_state': professor_model.state_dict(),
+                'student_optimizer': student_optimizer.state_dict(),
                 'professor_optimizer': professor_optimizer.state_dict(),
                 'student_scheduler': student_scheduler.state_dict() if student_scheduler else None,
                 'baseline': baseline,
@@ -977,12 +998,10 @@ def run_rl_siamese_loop(
                 'no_improve': no_improve,
                 'stage': 'best'
             }
-            
-            # Garante que o diretório existe antes de salvar (defensivo contra falhas de FS)
             os.makedirs(output_dir, exist_ok=True)
-            torch.save(ckpt, os.path.join(output_dir, "best_siam.pt"))
-            print("Saved best_siam.pt")
-            
+            _reason = "EER" if _eer_improved else ("loss" if vloss < best_val_loss else "recall@1") + " (EER mantida)"
+            torch.save(ckpt, os.path.join(output_dir, "best_model.pt"))
+            print(f"Saved best_model.pt [{_reason}]")
             if use_wandb and wandb:
                 wandb.log({"val/best_eer": best_val_eer, "epoch": epoch + 1})
         else:
@@ -1001,9 +1020,11 @@ def run_rl_siamese_loop(
 
              # Se o scheduler reduziu a LR, recarrega o melhor checkpoint para continuar dali.
              if isinstance(student_scheduler, optim.lr_scheduler.ReduceLROnPlateau) and current_lr < prev_lr:
-                 best_ckpt_path = os.path.join(output_dir, "best_siam.pt")
+                 best_ckpt_path = os.path.join(output_dir, "best_model.pt")
+                 if not os.path.exists(best_ckpt_path):
+                     best_ckpt_path = os.path.join(output_dir, "best_siam.pt")  # fallback legado
                  if os.path.exists(best_ckpt_path):
-                     print(f"🔁 Plateau reduziu LR ({prev_lr:.6g} -> {current_lr:.6g}). Recarregando best_siam.pt...")
+                     print(f"🔁 Plateau reduziu LR ({prev_lr:.6g} -> {current_lr:.6g}). Recarregando {os.path.basename(best_ckpt_path)}...")
                      best_ckpt = torch.load(best_ckpt_path, map_location=device)
                      siam.pool.load_state_dict(best_ckpt['siam_pool'])
                      siam.head.load_state_dict(best_ckpt['siam_head'])

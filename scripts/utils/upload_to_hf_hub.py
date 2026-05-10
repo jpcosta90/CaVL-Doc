@@ -40,37 +40,42 @@ def _find_best_checkpoint_local(
     phase_filter: str = "fase2_profON",
 ) -> tuple[Path, float, str]:
     """
-    Escaneia checkpoint_root procurando por best_siam.pt cujo diretório
-    contenha loss_filter, stage_filter e phase_filter (se fornecidos).
+    Escaneia checkpoint_root procurando por best_model.pt (ou best_siam.pt como fallback)
+    cujo diretório contenha loss_filter, stage_filter e phase_filter (se fornecidos).
     Lê o EER diretamente do arquivo — sem depender de W&B.
     """
     candidates = []
+    seen_dirs: set = set()
 
-    for best_pt in checkpoint_root.rglob("best_siam.pt"):
-        run_name = best_pt.parent.name
-        if loss_filter.lower() not in run_name.lower():
-            continue
-        if stage_filter and stage_filter not in run_name:
-            continue
-        if phase_filter and phase_filter not in run_name:
-            continue
-
-        try:
-            ckpt = torch.load(best_pt, map_location="cpu", weights_only=False)
-            eer = ckpt.get("metrics", {}).get("eer")
-            if eer is None:
+    for ckpt_name in ["best_model.pt", "best_siam.pt"]:
+        for best_pt in checkpoint_root.rglob(ckpt_name):
+            if best_pt.parent in seen_dirs:
+                continue  # já pegamos esse diretório com o nome preferido
+            run_name = best_pt.parent.name
+            if loss_filter.lower() not in run_name.lower():
                 continue
-            candidates.append((float(eer), best_pt, run_name))
-        except Exception as e:
-            print(f"  [SKIP] {run_name} — erro ao ler checkpoint: {e}")
-            continue
+            if stage_filter and stage_filter not in run_name:
+                continue
+            if phase_filter and phase_filter not in run_name:
+                continue
+
+            try:
+                ckpt = torch.load(best_pt, map_location="cpu", weights_only=False)
+                eer = ckpt.get("metrics", {}).get("eer")
+                if eer is None:
+                    continue
+                candidates.append((float(eer), best_pt, run_name))
+                seen_dirs.add(best_pt.parent)
+            except Exception as e:
+                print(f"  [SKIP] {run_name} — erro ao ler checkpoint: {e}")
+                continue
 
     if not candidates:
         filters = f"loss='{loss_filter}'"
         if stage_filter:
             filters += f", stage='{stage_filter}'"
         raise FileNotFoundError(
-            f"Nenhum best_siam.pt encontrado em '{checkpoint_root}' com {filters}."
+            f"Nenhum best_model.pt encontrado em '{checkpoint_root}' com {filters}."
         )
 
     candidates.sort(key=lambda x: x[0])
@@ -264,7 +269,7 @@ def upload(
         if "backbone_trainable" in ckpt:
             inference_ckpt["backbone_trainable"] = ckpt["backbone_trainable"]
 
-        weights_path = tmp / "best_siam.pt"
+        weights_path = tmp / "best_model.pt"
         torch.save(inference_ckpt, weights_path)
         print(f"Peso salvo localmente: {weights_path} ({weights_path.stat().st_size / 1e6:.1f} MB)")
 

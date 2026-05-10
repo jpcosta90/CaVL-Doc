@@ -368,10 +368,16 @@ def main() -> None:
     p.add_argument("--no-wandb",       action="store_true")
     p.add_argument("--limit",          type=int, default=None,
                    help="Limitar a N pares por split (para teste rápido)")
-    p.add_argument("--eval-csv",       default=None,
+    p.add_argument("--eval-csv",             default=None,
                    help="CSV custom de pares (sobrescreve a resolução automática para split 5)")
-    p.add_argument("--split-label",    default=None,
+    p.add_argument("--split-label",          default=None,
                    help="Label do split para W&B e arquivos de saída (ex: '5_synthetic')")
+    p.add_argument("--splits-dir",           default=None,
+                   help="Diretório base com splits pré-construídos (ex: data/generated_splits). "
+                        "Quando fornecido, ignora --data-root e a lógica de preparação automática.")
+    p.add_argument("--split-name-template",  default="RVL-CDIP_zsl_split_{idx}",
+                   help="Template do subdiretório de cada split, relativo a --splits-dir "
+                        "(default: RVL-CDIP_zsl_split_{idx})")
     args = p.parse_args()
 
     if args.gpu_id is not None:
@@ -406,8 +412,16 @@ def main() -> None:
         print(f"{'='*60}")
 
         # Prepare CSV
-        if args.eval_csv and split_idx == 5:
-            val_csv = Path(args.eval_csv)
+        if args.splits_dir:
+            split_name = args.split_name_template.replace("{idx}", str(split_idx))
+            val_csv    = Path(args.splits_dir) / split_name / "validation_pairs.csv"
+            split_label = str(split_idx)
+            if not val_csv.exists():
+                print(f"  ⚠️  CSV não encontrado: {val_csv}. Pulando.")
+                continue
+        elif args.eval_csv and split_idx == 5:
+            val_csv     = Path(args.eval_csv)
+            split_label = args.split_label or "5_custom"
         elif split_idx == 5:
             val_csv = WORKSPACE_ROOT / "data" / "generated_splits" / \
                       "eval_test_split5" / "validation_pairs.csv"
@@ -416,13 +430,13 @@ def main() -> None:
                     print("  ⚠️  Split 5 CSV não encontrado e --data-root não fornecido.")
                     continue
                 val_csv = _prepare_split(args.data_root, split_idx)
+            split_label = str(split_idx)
         else:
             if not args.data_root:
                 print(f"  ⚠️  --data-root necessário para split {split_idx}. Pulando.")
                 continue
-            val_csv = _prepare_split(args.data_root, split_idx)
-
-        split_label = args.split_label if (args.eval_csv and split_idx == 5) else str(split_idx)
+            val_csv     = _prepare_split(args.data_root, split_idx)
+            split_label = str(split_idx)
         print(f"  CSV: {val_csv}")
 
         t0 = time.time()

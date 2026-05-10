@@ -35,8 +35,10 @@ def load_experiment_history(base_dir="checkpoints"):
                 # Adiciona o caminho relativo para referência
                 config['checkpoint_path'] = os.path.dirname(cfg_file)
                 
-                # Tenta encontrar o best_siam.pt para saber se terminou
-                if os.path.exists(os.path.join(config['checkpoint_path'], "best_siam.pt")):
+                # Tenta encontrar o best_model.pt (ou best_siam.pt legado) para saber se terminou
+                _ckpt_dir = config['checkpoint_path']
+                if os.path.exists(os.path.join(_ckpt_dir, "best_model.pt")) or \
+                        os.path.exists(os.path.join(_ckpt_dir, "best_siam.pt")):
                     config['status'] = "✅ Concluído"
                 else:
                     config['status'] = "⚠️ Incompleto/Andamento"
