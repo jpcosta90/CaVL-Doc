@@ -146,6 +146,7 @@ def _build_cmd(
     num_workers: int,
     resume_from: Optional[Path] = None,
     init_from: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
 ) -> List[str]:
     professor_lr    = args.professor_lr if teacher_on else 0.0
     warmup_steps    = args.teacher_warmup_steps if teacher_on else 999_999
@@ -189,6 +190,8 @@ def _build_cmd(
         "--val-subset-size",     str(args.val_subset_size),
         "--seed",                str(args.seed),
     ]
+    if output_dir is not None:
+        cmd += ["--output-dir", str(output_dir)]
     if resume_from is not None:
         cmd += ["--resume-from", str(resume_from)]
     elif init_from is not None:
@@ -337,6 +340,7 @@ def main() -> None:
             args=args, stage_epochs=args.phase1_epochs, teacher_on=False,
             batch_size=args.phase1_batch_size, grad_accum=args.phase1_grad_accum,
             num_workers=args.phase1_num_workers,
+            output_dir=checkpoint_root / run_p1,
         )
         print(f"\n[FASE 1] {run_p1}")
         if not args.dry_run:
@@ -354,6 +358,7 @@ def main() -> None:
                 args=args, stage_epochs=args.phase1_epochs, teacher_on=False,
                 batch_size=args.phase1_batch_size, grad_accum=args.phase1_grad_accum,
                 num_workers=args.phase1_num_workers, resume_from=ckpt_p1,
+                output_dir=checkpoint_root / run_p1,
             )
             if not args.dry_run:
                 subprocess.run(cmd_p1_resume, check=True, env=gpu_env)
@@ -374,6 +379,7 @@ def main() -> None:
             args=args, stage_epochs=args.phase2_epochs, teacher_on=True,
             batch_size=args.phase2_batch_size, grad_accum=args.phase2_grad_accum,
             num_workers=args.phase2_num_workers, init_from=best_p1,
+            output_dir=checkpoint_root / run_p2,
         )
         print(f"\n[FASE 2] {run_p2}")
         if not args.dry_run:
@@ -391,6 +397,7 @@ def main() -> None:
                 args=args, stage_epochs=args.phase2_epochs, teacher_on=True,
                 batch_size=args.phase2_batch_size, grad_accum=args.phase2_grad_accum,
                 num_workers=args.phase2_num_workers, resume_from=ckpt_p2,
+                output_dir=checkpoint_root / run_p2,
             )
             if not args.dry_run:
                 subprocess.run(cmd_p2_resume, check=True, env=gpu_env)

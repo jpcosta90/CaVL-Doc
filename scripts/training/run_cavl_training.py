@@ -61,21 +61,24 @@ def prepare_experiment(args):
         args.wandb_run_name = f"{args.dataset_name}_{args.model_name}_{args.loss_type}_{timestamp}"
     
     experiment_name = args.wandb_run_name
-    if os.path.exists("/mnt/nas/joaopaulo"):
-        base_path = "/mnt/nas/joaopaulo/checkpoints"
+    if args.output_dir:
+        # Diretório explícito passado pelo orquestrador — tem prioridade sobre tudo
+        base_path = None
+    elif os.path.exists("/mnt/nas/joaopaulo/CaVL-Doc"):
+        base_path = "/mnt/nas/joaopaulo/CaVL-Doc/checkpoints"
     elif os.path.exists("/mnt/large"):
         base_path = "/mnt/large/checkpoints"
     else:
         base_path = "checkpoints"
-    
+
     wandb_id = None
-    
+
     # Se estiver retomando, usa o diretório do checkpoint
     if args.resume_from and os.path.exists(args.resume_from):
         # Assume que resume_from é .../run_name/last_checkpoint.pt
         outdir = os.path.dirname(args.resume_from)
         print(f"📂 Usando diretório existente para resume: {outdir}")
-        
+
         # Tenta recuperar o ID do WandB do config
         cfg_path = os.path.join(outdir, "training_config.json")
         if os.path.exists(cfg_path):
@@ -85,6 +88,10 @@ def prepare_experiment(args):
                     wandb_id = old_cfg.get('wandb_id')
             except Exception as e:
                 print(f"⚠️ Erro ao ler config anterior: {e}")
+    elif args.output_dir:
+        outdir = args.output_dir
+        os.makedirs(outdir, exist_ok=True)
+        print(f"📂 Diretório de saída explícito: {outdir}")
     else:
         outdir = setup_experiment_dir(base_path, experiment_name)
     
@@ -510,7 +517,9 @@ def parse_args():
     
     p.add_argument("--seed", type=int, default=42)
     
-    # Resume
+    # Resume / output
+    p.add_argument("--output-dir", type=str, default=None,
+                   help="Diretório de saída explícito para checkpoints (ignora base_path automático)")
     p.add_argument("--resume-from", type=str, default=None, help="Path to checkpoint to resume from")
     p.add_argument("--init-from-checkpoint", type=str, default=None, help="Path to checkpoint to initialize weights for transfer learning (sem retomar estado)")
     p.add_argument("--init-load-professor", action="store_true", help="Também carrega pesos do professor do checkpoint de inicialização")
