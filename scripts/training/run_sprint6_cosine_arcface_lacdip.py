@@ -233,8 +233,8 @@ def main() -> None:
                    help="Steps iniciais onde o professor aprende mas não influencia o student")
 
     # Early stopping / LR
-    p.add_argument("--patience",          type=int,   default=10,
-                   help="Early stopping: épocas sem melhora para encerrar o treino")
+    p.add_argument("--patience",          type=int,   default=9999,
+                   help="Early stopping: épocas sem melhora para encerrar o treino (default: 9999 = desabilitado)")
     p.add_argument("--lr-t0",             type=int,   default=10,
                    help="CosineWarmRestarts: épocas do primeiro ciclo (T_0)")
     p.add_argument("--lr-t-mult",         type=int,   default=2,
