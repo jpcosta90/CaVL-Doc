@@ -660,7 +660,7 @@ def run_rl_siamese_loop(
             os.makedirs(output_dir, exist_ok=True)
             _reason = "EER" if _eer_improved else ("loss" if vloss < best_val_loss else "recall@1") + " (EER mantida)"
             torch.save(ckpt, os.path.join(output_dir, "best_model.pt"))
-            print(f"Saved best_model.pt (Recovered) [{_reason}]")
+            print(f"💾 Saved best_model.pt (Recovered) [{_reason}]")
             if use_wandb and wandb:
                 wandb.log({"val/best_eer": best_val_eer, "epoch": start_epoch + 1})
         
@@ -1001,7 +1001,7 @@ def run_rl_siamese_loop(
             os.makedirs(output_dir, exist_ok=True)
             _reason = "EER" if _eer_improved else ("loss" if vloss < best_val_loss else "recall@1") + " (EER mantida)"
             torch.save(ckpt, os.path.join(output_dir, "best_model.pt"))
-            print(f"Saved best_model.pt [{_reason}]")
+            print(f"💾 Saved best_model.pt [{_reason}] to {output_dir}")
             if use_wandb and wandb:
                 wandb.log({"val/best_eer": best_val_eer, "epoch": epoch + 1})
         else:

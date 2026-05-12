@@ -35,6 +35,9 @@ def _parse_csv_list(raw: str) -> List[str]:
 def _resolve_checkpoint_root(user_value: Optional[str]) -> Path:
     if user_value:
         return Path(user_value).expanduser().resolve()
+    # Padronizado: sempre use /mnt/nas/joaopaulo/CaVL-Doc/checkpoints se existir
+    if Path("/mnt/nas/joaopaulo/CaVL-Doc/checkpoints").exists():
+        return Path("/mnt/nas/joaopaulo/CaVL-Doc/checkpoints")
     if Path("/mnt/large/checkpoints").exists():
         return Path("/mnt/large/checkpoints")
     return (WORKSPACE_ROOT / "checkpoints").resolve()
@@ -89,6 +92,18 @@ def _select_gpu(gpu_id: Optional[int], min_free_mib: int, wait_seconds: float) -
             return max(gpus, key=lambda x: (x[1], -x[0])) if gpus else None
         print(f"  Aguardando GPU com ≥{min_free_mib} MiB livres...")
         time.sleep(30)
+
+
+def _resolve_best_model(run_dir: Path) -> Optional[Path]:
+    """Retorna best_model.pt se existe, senão best_siam.pt legado, senão None."""
+    candidates = [
+        run_dir / "best_model.pt",
+        run_dir / "best_siam.pt",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def _prepare_split(
@@ -325,9 +340,6 @@ def main() -> None:
         run_p2    = f"Sprint6_S{split_idx}_{args.loss_type}_fase2_teacher_E{args.phase2_epochs}{suffix}"
         ckpt_p1   = checkpoint_root / run_p1  / "last_checkpoint.pt"
         ckpt_p2   = checkpoint_root / run_p2  / "last_checkpoint.pt"
-        best_p1   = checkpoint_root / run_p1  / "best_model.pt"
-        if not best_p1.exists():
-            best_p1 = checkpoint_root / run_p1 / "best_siam.pt"  # fallback legado
 
         print(f"\n{'='*80}")
         print(f"Split {split_idx}")
@@ -368,10 +380,15 @@ def main() -> None:
                 subprocess.run(cmd_p1, check=True, env=gpu_env)
                 time.sleep(args.sleep)
 
+        # ── Resolve best_p1 após fase 1 ──────────────────────────────────────
+        best_p1 = _resolve_best_model(checkpoint_root / run_p1)
+
         # ── Fase 2: com teacher ───────────────────────────────────────────
-        if not best_p1.exists():
-            print(f"  ⚠️  best_model.pt da fase 1 não encontrado em {best_p1}. Pulando fase 2.")
+        if best_p1 is None:
+            print(f"  ⚠️  best_model.pt da fase 1 não encontrado. Pulando fase 2.")
             continue
+
+        print(f"  ✅ Iniciando fase 2 com: {best_p1.name}")
 
         cmd_p2 = _build_cmd(
             python_bin=args.python_bin, run_name=run_p2, pairs_csv=pairs_csv,
