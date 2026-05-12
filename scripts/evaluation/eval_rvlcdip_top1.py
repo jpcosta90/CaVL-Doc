@@ -38,6 +38,7 @@ import csv as _csv
 import io
 import json
 import os
+import shutil
 import sys
 import time
 from abc import ABC, abstractmethod
@@ -66,6 +67,31 @@ PIXEL_SIZE       = 448
 DEFAULT_REPO_ID  = "Jpcosta90/cavl-doc-lacdip"
 
 _TRANSFORM_ARCDOC = build_transform(input_size=448)
+
+
+# ---------------------------------------------------------------------------
+# HuggingFace cache cleanup
+# ---------------------------------------------------------------------------
+
+def _delete_model_cache(model_id: str) -> None:
+    try:
+        from huggingface_hub import scan_cache_dir
+        cache_info = scan_cache_dir()
+        deleted_mb = 0.0
+        for repo in cache_info.repos:
+            if repo.repo_id == model_id:
+                for revision in repo.revisions:
+                    for f in revision.files:
+                        p = Path(f.file_path)
+                        if p.exists():
+                            deleted_mb += p.stat().st_size / 1024 / 1024
+                            p.unlink()
+                snapshot_dir = Path(repo.repo_path)
+                if snapshot_dir.exists():
+                    shutil.rmtree(snapshot_dir, ignore_errors=True)
+        print(f"  Cache deleted: {model_id} (~{deleted_mb:.0f} MB freed)")
+    except Exception as e:
+        print(f"  [WARN] Failed to delete cache for {model_id}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -126,9 +152,14 @@ def _load_config(ckpt_path: Path, ckpt: dict) -> dict:
 class ArcDocEmbedder(Embedder):
     name   = "ArcDoc"
     metric = "cosine"
+    # InternVL3-2B backbone is always from HF; checkpoint only if not local
+    hf_model_ids = ["OpenGVLab/InternVL3-2B"]
 
     def __init__(self, repo_id: str, checkpoint_path: str | None,
                  hf_cache_dir: str | None, device: str, max_num: int):
+        # If checkpoint comes from HuggingFace, add its repo to cleanup list
+        if not checkpoint_path:
+            self.hf_model_ids = ["OpenGVLab/InternVL3-2B", repo_id]
         ckpt_path = _resolve_checkpoint(repo_id, checkpoint_path, hf_cache_dir)
         print(f"  Checkpoint: {ckpt_path}")
 
@@ -209,7 +240,8 @@ class ArcDocEmbedder(Embedder):
 # ---------------------------------------------------------------------------
 
 class InternVL3Embedder(Embedder):
-    metric = "cosine"
+    metric       = "cosine"
+    hf_model_ids = ["OpenGVLab/InternVL3-2B"]
 
     def __init__(self, layer: str, device: str, max_num: int = 6):
         assert layer in ("input", "output")
@@ -269,8 +301,9 @@ class InternVL3Embedder(Embedder):
 # ---------------------------------------------------------------------------
 
 class JinaV4Embedder(Embedder):
-    name   = "Jina-v4"
-    metric = "cosine"
+    name         = "Jina-v4"
+    metric       = "cosine"
+    hf_model_ids = ["jinaai/jina-embeddings-v4"]
 
     def __init__(self, device: str):
         from transformers import AutoModel
@@ -301,6 +334,8 @@ class JinaV4Embedder(Embedder):
 # ---------------------------------------------------------------------------
 
 class PixelEmbedder(Embedder):
+    hf_model_ids = []
+
     def __init__(self, metric: str):
         assert metric in ("cosine", "l2")
         self.name   = f"Pixel ({metric.capitalize()})"
@@ -492,8 +527,24 @@ def main() -> None:
 
     all_results: dict[str, dict] = {}  # model_name → per-class results
 
+    # Pre-compute the last index at which each HF model ID is needed, so we
+    # delete each cache exactly once — after its last use.
+    hf_id_last_use: dict[str, int] = {}
+    for i, key in enumerate(args.models):
+        ids_for_key = {
+            "arcdoc":       ["OpenGVLab/InternVL3-2B"]
+                            + ([] if args.checkpoint_path else [args.repo_id]),
+            "internvl3-out": ["OpenGVLab/InternVL3-2B"],
+            "internvl3-in":  ["OpenGVLab/InternVL3-2B"],
+            "jina-v4":       ["jinaai/jina-embeddings-v4"],
+            "pixel-cosine":  [],
+            "pixel-l2":      [],
+        }.get(key, [])
+        for hf_id in ids_for_key:
+            hf_id_last_use[hf_id] = i
+
     # --- run each model sequentially ---
-    for key in args.models:
+    for i, key in enumerate(args.models):
         print(f"\n{'='*60}")
         print(f"MODEL: {key.upper()}")
         print(f"{'='*60}")
@@ -503,6 +554,10 @@ def main() -> None:
             results = _evaluate(embedder, support, query, base)
         finally:
             embedder.cleanup()
+            # Delete HF cache for any model whose last use was this step
+            for hf_id in embedder.hf_model_ids:
+                if hf_id_last_use.get(hf_id) == i:
+                    _delete_model_cache(hf_id)
 
         elapsed = time.time() - t0
         overall = results["OVERALL"]["acc_pct"]
