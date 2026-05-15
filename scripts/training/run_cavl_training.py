@@ -266,7 +266,8 @@ def main(args):
         # 5.1 Prepare DataLoaders
         if val_csv and os.path.exists(val_csv):
             print(f"Carregando validação: {val_csv}")
-            val_dataset = DocumentPairDataset(val_csv, args.base_image_dir, args.input_size, args.max_num_image_tokens, 'cpu')
+            val_base = args.val_base_image_dir or args.base_image_dir
+            val_dataset = DocumentPairDataset(val_csv, val_base, args.input_size, args.max_num_image_tokens, 'cpu')
             train_dataset = dataset
         else:
             print("Split automático treino/val.")
@@ -480,6 +481,8 @@ def parse_args():
     p.add_argument("--dataset-name", type=str, default="LA-CDIP")
     p.add_argument("--pairs-csv", type=str, required=True)
     p.add_argument("--base-image-dir", type=str, required=True)
+    p.add_argument("--val-base-image-dir", type=str, default=None,
+                   help="Diretório base das imagens de validação (default: igual a --base-image-dir)")
     p.add_argument("--model-name", type=str, default="InternVL3-2B")
     
     p.add_argument("--projection-output-dim", type=int, default=512)

@@ -114,6 +114,8 @@ def _build_cmd(
     warmup_steps = args.teacher_warmup_steps if teacher_on else 999_999
     easy_steps   = 0 if teacher_on else 999_999
 
+    val_base = args.val_base_image_dir or args.base_image_dir
+
     cmd = [
         python_bin, str(TRAIN_SCRIPT),
         "--use-wandb",
@@ -123,6 +125,7 @@ def _build_cmd(
         "--model-name",               "InternVL3-2B",
         "--pairs-csv",                str(pairs_csv),
         "--base-image-dir",           base_image_dir,
+        "--val-base-image-dir",       val_base,
         "--loss-type",                "arcface",
         "--optimizer-type",           "adamw",
         "--scheduler-type",           "cosine_warm",
@@ -175,11 +178,14 @@ def main() -> None:
                    help="Nome base do run (sufixo _fase1/_fase2 adicionado automaticamente)")
 
     # Dados
-    p.add_argument("--train-csv",        required=True,
+    p.add_argument("--train-csv",          required=True,
                    help="CSV de treino gerado por prepare_arcdoc_training.py")
-    p.add_argument("--base-image-dir",   required=True,
-                   help="Diretório base das imagens (incluindo augmentadas)")
-    p.add_argument("--checkpoint-root",  default=None)
+    p.add_argument("--base-image-dir",     required=True,
+                   help="Diretório base das imagens de treino augmentadas (images_train/)")
+    p.add_argument("--val-base-image-dir", default=None,
+                   help="Diretório base das imagens de validação augmentadas (images_val/). "
+                        "Default: igual a --base-image-dir")
+    p.add_argument("--checkpoint-root",    default=None)
 
     # Fases — mesmos defaults da Sprint 6
     p.add_argument("--phase1-epochs",    type=int, default=50)
