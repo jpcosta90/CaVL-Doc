@@ -198,14 +198,14 @@ def main() -> None:
     p.add_argument("--lr-t-mult",        type=int,   default=2)
 
     # Otimização
-    p.add_argument("--student-lr",       type=float, default=1e-5)
+    p.add_argument("--student-lr",       type=float, default=9.36e-5)
     p.add_argument("--max-steps-per-epoch", type=int, default=140)
     p.add_argument("--val-subset-size",  type=int,   default=1036)
     p.add_argument("--seed",             type=int,   default=42)
 
     # Loss
-    p.add_argument("--margin",           type=float, default=0.35)
-    p.add_argument("--scale",            type=float, default=24.0)
+    p.add_argument("--margin",           type=float, default=0.132)
+    p.add_argument("--scale",            type=float, default=32.0)
 
     # Batch — fase 1
     p.add_argument("--phase1-batch-size", type=int,  default=8)
