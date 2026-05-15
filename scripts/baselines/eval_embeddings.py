@@ -18,6 +18,10 @@ Métodos disponíveis (--method):
   pixel-cosine     Distância de cosseno entre vetores de pixels (imagens
                    redimensionadas para 448×448, flatten em float32).
 
+  mm-embed         nvidia/MM-Embed — modelo multimodal da NVIDIA baseado em
+                   NV-Embed-v2; recebe imagem + texto vazio e retorna embedding
+                   normalizado.
+
   pixel-l2         Distância L2 normalizada entre vetores de pixels — convertida
                    para similaridade via 1 / (1 + d).
 
@@ -306,6 +310,81 @@ class _InternVL3Embedder:
 
 
 # ---------------------------------------------------------------------------
+# NVIDIA MM-Embed
+# ---------------------------------------------------------------------------
+
+class _MMEmbedEmbedder:
+    MODEL_ID = "nvidia/MM-Embed"
+
+    def __init__(self, device: str):
+        import importlib, types
+        from huggingface_hub import snapshot_download
+        print(f"Carregando {self.MODEL_ID}...")
+
+        model_path = snapshot_download(self.MODEL_ID)
+
+        # Carrega o módulo customizado diretamente, sem passar pelo AutoModel.register
+        # que conflita com LlavaNextConfig já registrado em versões novas do transformers.
+        spec = importlib.util.spec_from_file_location(
+            "modeling_nvmmembed",
+            f"{model_path}/modeling_nvmmembed.py",
+        )
+        mod = types.ModuleType(spec.name)
+
+        # Monkey-patch AutoModel.register para ignorar conflitos de registro
+        from transformers import AutoModel as _AutoModel
+        _orig_register = _AutoModel.register.__func__
+        def _register_noop(cls, config_class, model_class, exist_ok=False):
+            _orig_register(cls, config_class, model_class, exist_ok=True)
+        _AutoModel.register = classmethod(_register_noop)
+
+        spec.loader.exec_module(mod)
+
+        _AutoModel.register = classmethod(_orig_register)  # restaura
+
+        NVMMEmbedModel = mod.NVMMEmbedModel
+        self.model = NVMMEmbedModel.from_pretrained(model_path).to(device).eval()
+        self.device = device
+
+    @torch.no_grad()
+    def embed(self, img: Image.Image) -> np.ndarray:
+        result = self.model.encode(
+            [{"txt": "", "img": img}], max_length=4096
+        )
+        vec = result["hidden_states"][0]
+        if isinstance(vec, torch.Tensor):
+            return vec.cpu().float().numpy()
+        return np.array(vec, dtype=np.float32)
+
+    def scores(self, val_csv: Path, base_image_dir: str,
+               limit: Optional[int]) -> "pd.DataFrame":
+        import pandas as pd
+        from tqdm import tqdm
+        df = pd.read_csv(val_csv)
+        if limit:
+            df = df.head(limit)
+        rows = []
+        for _, row in tqdm(df.iterrows(), total=len(df), desc="  mm-embed", ncols=90):
+            try:
+                img_a = Image.open(Path(base_image_dir) / row["file_a_path"]).convert("RGB")
+                img_b = Image.open(Path(base_image_dir) / row["file_b_path"]).convert("RGB")
+                ea, eb = self.embed(img_a), self.embed(img_b)
+                score  = _cosine(ea, eb)
+                rows.append({"file_a_path": row["file_a_path"],
+                             "file_b_path": row["file_b_path"],
+                             "is_equal":    int(row["is_equal"]),
+                             "similarity_score": score})
+            except Exception as e:
+                tqdm.write(f"  [ERR] {row['file_a_path']}: {e}")
+        return pd.DataFrame(rows)
+
+    def cleanup(self):
+        del self.model
+        torch.cuda.empty_cache()
+        _delete_model_cache(self.MODEL_ID)
+
+
+# ---------------------------------------------------------------------------
 # EER
 # ---------------------------------------------------------------------------
 
@@ -352,7 +431,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Baseline de embeddings para documentos.")
     p.add_argument("--method", required=True,
                    choices=["jina-v4", "internvl3-in", "internvl3-out",
-                            "pixel-cosine", "pixel-l2"],
+                            "mm-embed", "pixel-cosine", "pixel-l2"],
                    help="Método de embedding a avaliar")
     p.add_argument("--data-root",      default=None,
                    help="Raiz do dataset LA-CDIP (necessário para preparar splits)")
@@ -402,6 +481,8 @@ def main() -> None:
             embedder = _InternVL3Embedder(device, layer="input")
         elif args.method == "internvl3-out":
             embedder = _InternVL3Embedder(device, layer="output")
+        elif args.method == "mm-embed":
+            embedder = _MMEmbedEmbedder(device)
 
     import pandas as pd
     summary_rows = []
