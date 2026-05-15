@@ -342,11 +342,20 @@ def main() -> None:
           f"{sum(len(v) for v in val_by_class.values())} imagens únicas | "
           f"{len(val_by_class)} classes")
 
-    # Garante que classes de validação não estão no treino
-    overlap = set(val_by_class.keys()) & set(train_by_class.keys())
+    # Remove do treino qualquer par que contenha classes de validação
+    val_classes = set(val_by_class.keys())
+    overlap = val_classes & set(train_by_class.keys())
     if overlap:
-        print(f"\n  ⚠️  {len(overlap)} classes presentes tanto no treino quanto na validação!")
-        print(f"     Exemplos: {list(overlap)[:5]}")
+        before = len(all_train_rows)
+        all_train_rows = [
+            r for r in all_train_rows
+            if r["class_a_name"] not in val_classes and r["class_b_name"] not in val_classes
+        ]
+        # Recalcula by_class sem as classes filtradas
+        train_by_class = _collect_images_by_class(all_train_rows)
+        print(f"  ⚠️  {len(overlap)} classes de validação removidas do treino.")
+        print(f"     Pares filtrados: {before} → {len(all_train_rows)}")
+        print(f"     Classes de treino restantes: {len(train_by_class)}")
     else:
         print(f"  ✅ Nenhuma sobreposição de classes treino/validação.")
 
