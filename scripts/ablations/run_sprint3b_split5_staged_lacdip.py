@@ -529,7 +529,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--rebuild-protocol-splits",
-        a[c]tion=argparse.BooleanOptionalAction,
+        action=argparse.BooleanOptionalAction,
         default=False,
     )
 
