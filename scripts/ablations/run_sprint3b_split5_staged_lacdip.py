@@ -529,7 +529,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--rebuild-protocol-splits",
-        action=argparse.BooleanOptionalAction,
+        a[c]tion=argparse.BooleanOptionalAction,
         default=False,
     )
 
@@ -585,7 +585,7 @@ def main() -> None:
     parser.add_argument("--source-filter-prefix", default="sprint1")
 
     parser.add_argument("--seeds", default="42")
-    parser.add_argument("--run-suffix", default="")
+    parser.add_argument("--run-suffix", default="s32k3")
     parser.add_argument("--sleep", type=float, default=3.0)
     parser.add_argument("--dry-run", action="store_true")
 
