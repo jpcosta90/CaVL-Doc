@@ -183,6 +183,7 @@ def _build_cmd(
         "--professor-lr",        str(professor_lr),
         "--margin",              str(args.margin),
         "--scale",               str(args.scale),
+        "--num-sub-centers",     str(args.num_sub_centers),
         "--epochs",              str(stage_epochs),
         "--max-steps-per-epoch", str(args.max_steps_per_epoch),
         "--student-batch-size",  str(batch_size),
@@ -223,9 +224,9 @@ def main() -> None:
         description="Treinamento final CaVL-Doc: ArcFace com early stopping em dois estágios."
     )
     p.add_argument("--python-bin",        default=sys.executable)
-    p.add_argument("--wandb-project",     default="CaVL-Doc_LA-CDIP_Sprint6_CosineWarm")
-    p.add_argument("--loss-type",         default="arcface",
-                   help="Função de perda (default: arcface)")
+    p.add_argument("--wandb-project",     default="CaVL-Doc_LA-CDIP_Sprint6_SubArcFace_s32k3")
+    p.add_argument("--loss-type",         default="subcenter_arcface",
+                   help="Função de perda (default: subcenter_arcface)")
     p.add_argument("--splits",            default="0,1,2,3,4")
     p.add_argument("--lacdip-data-root",  required=True,
                    help="Raiz do dataset LA-CDIP (onde ficam splits.csv e protocol.csv)")
@@ -259,14 +260,15 @@ def main() -> None:
                    help="CosineWarmRestarts: fator multiplicador dos ciclos (T_mult)")
 
     # Otimização
-    p.add_argument("--student-lr",        type=float, default=1e-5)
+    p.add_argument("--student-lr",        type=float, default=5e-5)
     p.add_argument("--max-steps-per-epoch", type=int, default=140)
     p.add_argument("--val-subset-size",   type=int,   default=1036)
     p.add_argument("--seed",              type=int,   default=42)
 
     # Loss hyperparams
     p.add_argument("--margin",            type=float, default=0.35)
-    p.add_argument("--scale",             type=float, default=24.0)
+    p.add_argument("--scale",             type=float, default=32.0)
+    p.add_argument("--num-sub-centers",   type=int,   default=3)
 
     # Batch / accum — fase 1 (sem teacher, pode usar batch maior)
     p.add_argument("--phase1-batch-size", type=int,   default=8)
@@ -290,7 +292,7 @@ def main() -> None:
     p.add_argument("--num-queries",       type=int,   default=1)
 
     # GPU
-    p.add_argument("--gpu-id",            type=int,   default=None)
+    p.add_argument("--gpu-id",            type=int,   default=3)
     p.add_argument("--min-free-mib",      type=int,   default=10_000)
     p.add_argument("--gpu-wait",          type=float, default=0.0)
     p.add_argument("--sleep",             type=float, default=3.0)

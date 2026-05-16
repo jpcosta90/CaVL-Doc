@@ -41,7 +41,7 @@ _COARSE_FALLBACK = {
 }
 
 # Valores fixos de cada sprint — marcados nas barras do fine search
-SPRINT3_DEFAULTS  = {"lr": 1e-5,  "margin": 0.35, "label": "S3",  "color": "#e74c3c"}
+SPRINT3_DEFAULTS  = {"lr": 1e-5,  "margin": 0.35, "label": "S3",  "color": "#0000FF"}
 SPRINT3B_DEFAULTS = {"lr": 5e-5,  "margin": 0.35, "label": "S3b", "color": "#e67e22"}
 
 INDUSTRY_STANDARDS = {
@@ -1092,7 +1092,7 @@ def _format_k_selection_section(
             ■ <span style="color:#27ae60">verde</span> = faixa padrão da indústria &nbsp;|&nbsp;
             ■ <span style="color:#2980b9">azul</span> = faixa fine search (escala do coarse)
             <br>
-            <span style="color:#e74c3c;font-weight:bold">|</span> <span style="color:#e74c3c">vermelho</span> = Sprint 3 &nbsp;(LR: 1e-5 &nbsp;| Margin: 0.35) &nbsp;&nbsp;
+            <span style="color:#0000FF;font-weight:bold">|</span> <span style="color:#0000FF">azul</span> = Sprint 3 &nbsp;(LR: 1e-5 &nbsp;| Margin: 0.35) &nbsp;&nbsp;
             <span style="color:#e67e22;font-weight:bold">|</span> <span style="color:#e67e22">laranja</span> = Sprint 3b (LR: 5e-5 &nbsp;| Margin: 0.35)
         </p>
         {multi_k_note}

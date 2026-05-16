@@ -126,13 +126,14 @@ def _build_cmd(
         "--pairs-csv",                str(pairs_csv),
         "--base-image-dir",           base_image_dir,
         "--val-base-image-dir",       val_base,
-        "--loss-type",                "arcface",
+        "--loss-type",                args.loss_type,
         "--optimizer-type",           "adamw",
         "--scheduler-type",           "cosine_warm",
         "--student-lr",               str(args.student_lr),
         "--professor-lr",             str(professor_lr),
         "--margin",                   str(args.margin),
         "--scale",                    str(args.scale),
+        "--num-sub-centers",          str(args.num_sub_centers),
         "--epochs",                   str(stage_epochs),
         "--max-steps-per-epoch",      str(args.max_steps_per_epoch),
         "--student-batch-size",       str(batch_size),
@@ -173,8 +174,8 @@ def main() -> None:
         description="ArcDoc: treino final em todos os splits com augmentation."
     )
     p.add_argument("--python-bin",       default=sys.executable)
-    p.add_argument("--wandb-project",    default="ArcDoc_Final")
-    p.add_argument("--run-name",         default="ArcDoc_v1",
+    p.add_argument("--wandb-project",    default="ArcDoc_SubArcFace_s32k3")
+    p.add_argument("--run-name",         default="ArcDoc_SubArcFace_s32k3",
                    help="Nome base do run (sufixo _fase1/_fase2 adicionado automaticamente)")
 
     # Dados
@@ -197,15 +198,17 @@ def main() -> None:
     p.add_argument("--lr-t0",            type=int,   default=10)
     p.add_argument("--lr-t-mult",        type=int,   default=2)
 
+    # Loss
+    p.add_argument("--loss-type",        default="subcenter_arcface")
+    p.add_argument("--num-sub-centers",  type=int,   default=3)
+    p.add_argument("--margin",           type=float, default=0.35)
+    p.add_argument("--scale",            type=float, default=32.0)
+
     # Otimização
-    p.add_argument("--student-lr",       type=float, default=9.36e-5)
+    p.add_argument("--student-lr",       type=float, default=5e-5)
     p.add_argument("--max-steps-per-epoch", type=int, default=140)
     p.add_argument("--val-subset-size",  type=int,   default=1036)
     p.add_argument("--seed",             type=int,   default=42)
-
-    # Loss
-    p.add_argument("--margin",           type=float, default=0.132)
-    p.add_argument("--scale",            type=float, default=32.0)
 
     # Batch — fase 1
     p.add_argument("--phase1-batch-size", type=int,  default=8)
@@ -229,7 +232,7 @@ def main() -> None:
     p.add_argument("--num-queries",      type=int,   default=1)
 
     # GPU
-    p.add_argument("--gpu-id",           type=int,   default=None)
+    p.add_argument("--gpu-id",           type=int,   default=3)
     p.add_argument("--min-free-mib",     type=int,   default=10_000)
     p.add_argument("--gpu-wait",         type=float, default=0.0)
     p.add_argument("--sleep",            type=float, default=3.0)
