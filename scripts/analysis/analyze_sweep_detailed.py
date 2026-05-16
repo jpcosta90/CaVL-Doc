@@ -40,8 +40,9 @@ _COARSE_FALLBACK = {
     "circle":            {"lr": (1e-6, 1e-3), "margin": (0.1, 0.4),  "scale": (32.0, 256.0)},
 }
 
-# Valores fixos escolhidos para a Sprint 3 (marcados nas barras do fine search)
-SPRINT3_DEFAULTS = {"lr": 1e-5, "margin": 0.35}
+# Valores fixos de cada sprint — marcados nas barras do fine search
+SPRINT3_DEFAULTS  = {"lr": 1e-5,  "margin": 0.35, "label": "S3",  "color": "#e74c3c"}
+SPRINT3B_DEFAULTS = {"lr": 5e-5,  "margin": 0.35, "label": "S3b", "color": "#e67e22"}
 
 INDUSTRY_STANDARDS = {
     "subcenter_arcface": {
@@ -879,10 +880,10 @@ def _range_bar(
     scale_min: float, scale_max: float,
     log_scale: bool = False,
     color: str = "#2980b9",
-    marker: Optional[float] = None,
+    markers: Optional[List] = None,
 ) -> str:
     """Inline bar showing [val_min, val_max] relative to [scale_min, scale_max].
-    If marker is given, draws a red vertical line at that value's position."""
+    markers: list of (value, color, label) — each draws a vertical line."""
     def norm(v: float) -> float:
         if log_scale:
             if scale_min <= 0 or scale_max <= 0 or v <= 0:
@@ -896,13 +897,15 @@ def _range_bar(
     right = max(0.0, min(100.0, norm(val_max) * 100))
     w = max(3.0, right - left)
 
-    marker_html = ""
-    if marker is not None:
-        mp = max(0.0, min(99.5, norm(marker) * 100))
-        marker_html = (
+    markers_html = ""
+    for i, (mval, mcol, mlabel) in enumerate(markers or []):
+        mp = max(0.0, min(99.0, norm(mval) * 100))
+        # Offset de 3px entre marcadores sobrepostos
+        offset = f"margin-left:{i * 3}px;" if i > 0 else ""
+        markers_html += (
             f"<div style='position:absolute;left:{mp:.1f}%;width:2px;height:140%;"
-            f"top:-20%;background:#e74c3c;z-index:3;border-radius:1px;' "
-            f"title='Sprint 3: {marker}'></div>"
+            f"top:-20%;background:{mcol};z-index:{3+i};border-radius:1px;{offset}' "
+            f"title='{mlabel}: {mval}'></div>"
         )
 
     return (
@@ -910,7 +913,7 @@ def _range_bar(
         f"border-radius:4px;display:inline-block;vertical-align:middle;border:1px solid #ccc;'>"
         f"<div style='position:absolute;left:{left:.1f}%;width:{w:.1f}%;height:100%;"
         f"background:{color};border-radius:3px;opacity:0.85;'></div>"
-        f"{marker_html}"
+        f"{markers_html}"
         f"</div>"
     )
 
@@ -951,8 +954,8 @@ def _format_k_selection_section(
     def _bar_cell(val_min: float, val_max: float,
                   scale_min: float, scale_max: float,
                   log_scale: bool, label: str, color: str,
-                  marker: Optional[float] = None) -> str:
-        bar = _range_bar(val_min, val_max, scale_min, scale_max, log_scale, color, marker)
+                  markers: Optional[List] = None) -> str:
+        bar = _range_bar(val_min, val_max, scale_min, scale_max, log_scale, color, markers)
         return (
             f"<div style='white-space:nowrap'>"
             f"{bar}&nbsp;"
@@ -976,16 +979,21 @@ def _format_k_selection_section(
         coarse_lr_cell = _bar_cell(lr_lo, lr_hi, lr_lo, lr_hi, True, coarse_lr_label, "#7f8c8d")
         coarse_mg_cell = _bar_cell(mg_lo, mg_hi, mg_lo, mg_hi, False, coarse_mg_label, "#7f8c8d")
 
-        # Fine cells (com marcadores dos valores fixados na Sprint 3)
+        # Fine cells — marcadores Sprint 3 (vermelho) e Sprint 3b (laranja)
+        lr_markers  = [(SPRINT3_DEFAULTS["lr"],     SPRINT3_DEFAULTS["color"],  "Sprint 3"),
+                       (SPRINT3B_DEFAULTS["lr"],    SPRINT3B_DEFAULTS["color"], "Sprint 3b")]
+        mg_markers  = [(SPRINT3_DEFAULTS["margin"],  SPRINT3_DEFAULTS["color"],  "Sprint 3"),
+                       (SPRINT3B_DEFAULTS["margin"], SPRINT3B_DEFAULTS["color"], "Sprint 3b")]
+
         if in_fine and sw.get("lr_min") is not None:
             flr_lo, flr_hi = sw["lr_min"], sw["lr_max"]
             fmg_lo, fmg_hi = sw["margin_min"], sw["margin_max"]
             fine_lr_cell = _bar_cell(flr_lo, flr_hi, lr_lo, lr_hi, True,
                                      f"{format_float(flr_lo)} ~ {format_float(flr_hi)}", "#2980b9",
-                                     marker=SPRINT3_DEFAULTS["lr"])
+                                     markers=lr_markers)
             fine_mg_cell = _bar_cell(fmg_lo, fmg_hi, mg_lo, mg_hi, False,
                                      f"{format_float(fmg_lo, 4)} ~ {format_float(fmg_hi, 4)}", "#2980b9",
-                                     marker=SPRINT3_DEFAULTS["margin"])
+                                     markers=mg_markers)
             fine_runs = f"cap: {sw['run_cap']}"
             fine_eer = "—"
         else:
@@ -1082,8 +1090,10 @@ def _format_k_selection_section(
         <p style="font-size:0.82em;color:#777;margin-top:6px">
             ■ <span style="color:#7f8c8d">cinza</span> = faixa coarse &nbsp;|&nbsp;
             ■ <span style="color:#27ae60">verde</span> = faixa padrão da indústria &nbsp;|&nbsp;
-            ■ <span style="color:#2980b9">azul</span> = faixa fine search (escala do coarse) &nbsp;|&nbsp;
-            <span style="color:#e74c3c;font-weight:bold">|</span> <span style="color:#e74c3c">vermelho</span> = valor fixado Sprint 3 (LR: 1e-5, Margin: 0.35)
+            ■ <span style="color:#2980b9">azul</span> = faixa fine search (escala do coarse)
+            <br>
+            <span style="color:#e74c3c;font-weight:bold">|</span> <span style="color:#e74c3c">vermelho</span> = Sprint 3 &nbsp;(LR: 1e-5 &nbsp;| Margin: 0.35) &nbsp;&nbsp;
+            <span style="color:#e67e22;font-weight:bold">|</span> <span style="color:#e67e22">laranja</span> = Sprint 3b (LR: 5e-5 &nbsp;| Margin: 0.35)
         </p>
         {multi_k_note}
     </div>
