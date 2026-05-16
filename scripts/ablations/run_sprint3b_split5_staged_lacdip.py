@@ -505,18 +505,18 @@ def main() -> None:
         description="Sprint 3b LA-CDIP: igual ao Sprint 3, mas com LR/margin/scale ótimos por loss do sweep."
     )
     parser.add_argument("--python-bin", default=sys.executable)
-    parser.add_argument("--wandb-project", default="CaVL-Doc_LA-CDIP_Sprint3b_CorrectLR")
+    parser.add_argument("--wandb-project", default="CaVL-Doc_LA-CDIP_Sprint3b_s32_k3")
     parser.add_argument("--wandb-entity", default="jpcosta1990-university-of-brasilia")
     parser.add_argument("--sprint2-project", default="CaVL-Doc_LA-CDIP_Sprint2_TeacherSweep")
 
     parser.add_argument("--sweep-csv", default=str(DEFAULT_SWEEP_CSV),
                         help="CSV com resultados do sweep (sweep_analysis.csv)")
-    parser.add_argument("--no-sweep-params", action="store_true",
+    parser.add_argument("--no-sweep-params", action=argparse.BooleanOptionalAction, default=True,
                         help="Desativa leitura do sweep CSV; usa --student-lr/--margin/--scale para todas as losses.")
 
-    parser.add_argument("--loss-mode", default="top2-plus-contrastive",
+    parser.add_argument("--loss-mode", default="explicit",
                         choices=["top2-plus-contrastive", "explicit"])
-    parser.add_argument("--losses", default="subcenter_cosface,subcenter_arcface,contrastive")
+    parser.add_argument("--losses", default="subcenter_arcface,subcenter_cosface,triplet,contrastive")
 
     parser.add_argument("--splits", default="0,1,2,3,4")
     parser.add_argument("--protocol", default="zsl", choices=["zsl", "gzsl"])
@@ -538,13 +538,12 @@ def main() -> None:
     parser.add_argument("--student-only-epochs", type=int, default=10)
     parser.add_argument("--max-steps-per-epoch", type=int, default=140)
 
-    # Fallback LR/margin/scale used when --no-sweep-params or loss not found in CSV
-    parser.add_argument("--student-lr", type=float, default=1e-5)
+    parser.add_argument("--student-lr", type=float, default=5e-5)
     parser.add_argument("--scheduler-type", default="plateau",
                         choices=["step", "cosine", "plateau", "constant"])
     parser.add_argument("--margin", type=float, default=0.35)
-    parser.add_argument("--scale", type=float, default=24.0)
-    parser.add_argument("--num-sub-centers", type=int, default=2)
+    parser.add_argument("--scale", type=float, default=32.0)
+    parser.add_argument("--num-sub-centers", type=int, default=3)
 
     parser.add_argument("--student-batch-size", type=int, default=4)
     parser.add_argument("--candidate-pool-size", type=int, default=8)

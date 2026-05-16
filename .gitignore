@@ -91,7 +91,7 @@ ipython_config.py
 docs/paper/
 docs_backup/
 cavl_doc_overleaf.zip
-
+sweep_report/
 # Local backup area kept inside the repo but ignored by Git
 .backup/
 # pyenv
