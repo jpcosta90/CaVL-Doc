@@ -207,7 +207,7 @@ def main() -> None:
     # Otimização
     p.add_argument("--student-lr",       type=float, default=5e-5)
     p.add_argument("--max-steps-per-epoch", type=int, default=140)
-    p.add_argument("--val-subset-size",  type=int,   default=1036)
+    p.add_argument("--val-subset-size",  type=int,   default=2000)
     p.add_argument("--seed",             type=int,   default=42)
 
     # Batch — fase 1

@@ -366,7 +366,7 @@ def main() -> None:
         n_val_imgs   = sum(len(v) for v in val_by_class.values())
         print(f"\n[DRY RUN]")
         print(f"  Imagens de treino a augmentar: {n_train_imgs} × {args.n_variants} = {n_train_imgs * args.n_variants}")
-        print(f"  Imagens de val:                {n_val_imgs} originais (sem augmentação)")
+        print(f"  Imagens de val a augmentar:    {n_val_imgs}   × {args.n_variants} = {n_val_imgs * args.n_variants}")
         return
 
     # ── Gera augmentation de treino ──────────────────────────────────────────
@@ -388,12 +388,23 @@ def main() -> None:
     print(f"  Genuínos: {genuine_tr}  |  Impostores: {len(train_pairs) - genuine_tr}  |  Total: {len(train_pairs)}")
     print(f"  CSV: {train_out}")
 
-    # ── Validação: copia pares originais sem augmentação ─────────────────────
-    import shutil
-    val_out = output_dir / "validation_pairs.csv"
-    shutil.copy2(val_csv_path, val_out)
-    print(f"\nValidação: copiando pares originais (sem augmentação)...")
-    print(f"  {len(val_rows)} pares | {sum(len(v) for v in val_by_class.values())} imagens originais")
+    # ── Gera augmentation de validação ───────────────────────────────────────
+    print(f"\nGerando variantes de validação ({args.n_variants} por imagem)...")
+    val_aug_map = generate_augmented_images(
+        by_class=val_by_class,
+        base_image_dir=base_image_dir,
+        aug_dir=val_aug_dir,
+        n_variants=args.n_variants,
+        seed_base=args.seed + 99999,
+        label="[VAL] ",
+    )
+
+    print(f"\nCriando pares de validação augmentados...")
+    val_pairs = build_pairs(val_by_class, val_aug_map, random.Random(args.seed + 1))
+    val_out   = output_dir / "validation_pairs.csv"
+    _write_csv(val_pairs, val_out)
+    genuine_val = sum(1 for r in val_pairs if r["is_equal"] == 1)
+    print(f"  Genuínos: {genuine_val}  |  Impostores: {len(val_pairs) - genuine_val}  |  Total: {len(val_pairs)}")
     print(f"  CSV: {val_out}")
 
     print(f"\n✅ Dados ArcDoc prontos em: {output_dir}")
