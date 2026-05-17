@@ -226,12 +226,28 @@ __marimo__/
 .venv/
 .venv_vlm5
 
-# Cronograma (artefatos de apresentação)
-docs/cronograma_orientador.tex
-docs/cronograma_orientador.pdf
-docs/cronograma_orientador.aux
-docs/cronograma_orientador.log
-docs/cronograma_orientador.out
-docs/cronograma_orientador.fdb_latexmk
-docs/cronograma_orientador.fls
-docs/cronograma_orientador.synctex.gz
+# LaTeX — artefatos de compilação (qualquer diretório)
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.xdv
+docs/**/*.pdf
+docs/**/*.tex
+
+# Dados augmentados — imagens geradas offline (pesadas, vão para o HF Hub)
+data/**/images_train/
+data/**/images_val/
+data/**/*.tif
+
+# Relatórios HTML gerados localmente
+augmentation_report.html
+split_structure.html

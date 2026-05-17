@@ -178,14 +178,27 @@ def main() -> None:
     p.add_argument("--run-name",         default="ArcDoc_SubArcFace_s32k3",
                    help="Nome base do run (sufixo _fase1/_fase2 adicionado automaticamente)")
 
+    _default_data = WORKSPACE_ROOT / "data" / "generated_splits" / "final_split3"
+    _hf_dataset   = "Jpcosta90/cavl-doc-lacdip-split3"
+
     # Dados
-    p.add_argument("--train-csv",          required=True,
+    p.add_argument("--from-hf", action="store_true",
+                   help=f"Baixa o dataset do HF Hub ({_hf_dataset}) antes de treinar.")
+    p.add_argument("--hf-dataset-repo", default=_hf_dataset,
+                   help=f"Repo HF do dataset (default: {_hf_dataset})")
+    p.add_argument("--hf-local-dir", default=None,
+                   help="Diretório local para salvar o dataset baixado do HF. "
+                        "Sobrescreve --train-csv, --base-image-dir e --val-base-image-dir "
+                        "automaticamente. Ex: /mnt/nas/joaopaulo/CaVL-Doc/final_split3")
+    p.add_argument("--train-csv",
+                   default=str(_default_data / "train_pairs.csv"),
                    help="CSV de treino gerado por prepare_arcdoc_training.py")
-    p.add_argument("--base-image-dir",     required=True,
+    p.add_argument("--base-image-dir",
+                   default=str(_default_data / "images_train"),
                    help="Diretório base das imagens de treino augmentadas (images_train/)")
-    p.add_argument("--val-base-image-dir", default=None,
-                   help="Diretório base das imagens de validação augmentadas (images_val/). "
-                        "Default: igual a --base-image-dir")
+    p.add_argument("--val-base-image-dir",
+                   default=str(_default_data / "images_val"),
+                   help="Diretório base das imagens de validação augmentadas (images_val/).")
     p.add_argument("--checkpoint-root",    default=None)
 
     # Fases — mesmos defaults da Sprint 6
@@ -206,7 +219,7 @@ def main() -> None:
 
     # Otimização
     p.add_argument("--student-lr",       type=float, default=5e-5)
-    p.add_argument("--max-steps-per-epoch", type=int, default=140)
+    p.add_argument("--max-steps-per-epoch", type=int, default=500)
     p.add_argument("--val-subset-size",  type=int,   default=2000)
     p.add_argument("--seed",             type=int,   default=42)
 
@@ -243,6 +256,28 @@ def main() -> None:
     checkpoint_root = _resolve_checkpoint_root(args.checkpoint_root)
     if not checkpoint_root.exists():
         raise FileNotFoundError(f"checkpoint_root não encontrado: {checkpoint_root}")
+
+    # ── Download do HF Hub (opcional) ────────────────────────────────────────
+    if args.from_hf:
+        local_dir = Path(args.hf_local_dir) if args.hf_local_dir else Path(args.base_image_dir).parent
+        print(f"Baixando dataset do HF Hub: {args.hf_dataset_repo}")
+        print(f"  Destino: {local_dir}")
+        try:
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id=args.hf_dataset_repo,
+                repo_type="dataset",
+                local_dir=str(local_dir),
+            )
+            print(f"  ✅ Dataset baixado em: {local_dir}")
+        except Exception as e:
+            print(f"  ❌ Falha ao baixar dataset: {e}")
+            sys.exit(1)
+        # Redireciona todos os paths para o diretório local especificado
+        if args.hf_local_dir:
+            args.train_csv        = str(local_dir / "train_pairs.csv")
+            args.base_image_dir   = str(local_dir / "images_train")
+            args.val_base_image_dir = str(local_dir / "images_val")
 
     pairs_csv = Path(args.train_csv)
     if not pairs_csv.exists():

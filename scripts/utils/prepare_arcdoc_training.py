@@ -32,26 +32,26 @@ from itertools import combinations
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import io
+
 import numpy as np
 from PIL import Image, ImageEnhance, ImageFilter
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 
 # ---------------------------------------------------------------------------
-# Augmentation pipeline (reutilizado de generate_synthetic_split5.py)
+# Augmentation pipeline — versão aprimorada para split 3 (11 operações)
 # ---------------------------------------------------------------------------
 
 def _rotate(img: Image.Image, rng: random.Random) -> Image.Image:
-    angle = rng.uniform(-5.0, 5.0)
-    if abs(angle) < 0.3:
-        return img
-    bg = int(img.convert("L").getextrema()[1] * 0.95)
+    angle = rng.uniform(-15.0, 15.0)
+    bg = int(np.array(img.convert("L")).mean())
     return img.rotate(angle, expand=False, fillcolor=bg, resample=Image.BICUBIC)
 
 
 def _perspective(img: Image.Image, rng: random.Random) -> Image.Image:
     w, h = img.size
-    shift = rng.uniform(0.005, 0.02)
+    shift = rng.uniform(0.02, 0.07)
     dx, dy = int(w * shift), int(h * shift)
     src = [(0, 0), (w, 0), (w, h), (0, h)]
     dst = [
@@ -71,66 +71,101 @@ def _perspective_coeffs(pa, pb) -> List[float]:
         matrix.append([0, 0, 0, p1[0], p1[1], 1, -p2[1]*p1[0], -p2[1]*p1[1]])
     A = np.array(matrix, dtype=float)
     B = np.array(pb).reshape(8)
-    res = np.linalg.solve(A, B)
-    return list(res.flatten())
-
-
-def _blur(img: Image.Image, rng: random.Random) -> Image.Image:
-    return img.filter(ImageFilter.GaussianBlur(radius=rng.uniform(0.2, 1.0)))
+    return list(np.linalg.solve(A, B).flatten())
 
 
 def _brightness_contrast(img: Image.Image, rng: random.Random) -> Image.Image:
-    img = ImageEnhance.Brightness(img).enhance(rng.uniform(0.85, 1.15))
-    return ImageEnhance.Contrast(img).enhance(rng.uniform(0.85, 1.15))
+    img = ImageEnhance.Brightness(img).enhance(rng.uniform(0.75, 1.25))
+    return ImageEnhance.Contrast(img).enhance(rng.uniform(0.75, 1.30))
+
+
+def _blur(img: Image.Image, rng: random.Random) -> Image.Image:
+    return img.filter(ImageFilter.GaussianBlur(radius=rng.uniform(0.3, 1.8)))
+
+
+def _sharpen(img: Image.Image, rng: random.Random) -> Image.Image:
+    return ImageEnhance.Sharpness(img).enhance(rng.uniform(1.5, 3.0))
 
 
 def _gaussian_noise(img: Image.Image, rng: random.Random) -> Image.Image:
     arr = np.array(img).astype(np.float32)
-    noise = rng.gauss(0, rng.uniform(1.0, 6.0)) * np.random.randn(*arr.shape)
+    std = rng.uniform(3.0, 12.0)
+    noise = np.random.RandomState(rng.randint(0, 99999)).randn(*arr.shape) * std
     return Image.fromarray(np.clip(arr + noise, 0, 255).astype(np.uint8), mode=img.mode)
 
 
+def _jpeg_compression(img: Image.Image, rng: random.Random) -> Image.Image:
+    quality = rng.randint(30, 70)
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="JPEG", quality=quality)
+    buf.seek(0)
+    result = Image.open(buf).copy()
+    return result.convert(img.mode)
+
+
+def _resolution_jitter(img: Image.Image, rng: random.Random) -> Image.Image:
+    w, h = img.size
+    factor = rng.uniform(0.4, 0.7)
+    small = img.resize((max(1, int(w * factor)), max(1, int(h * factor))), Image.BILINEAR)
+    return small.resize((w, h), Image.BILINEAR)
+
+
+def _crop_pad(img: Image.Image, rng: random.Random) -> Image.Image:
+    w, h = img.size
+    margin = rng.uniform(0.02, 0.08)
+    dx, dy = int(w * margin), int(h * margin)
+    bg = int(np.array(img.convert("L")).mean())
+    cropped = img.crop((dx, dy, w - dx, h - dy))
+    result = Image.new(img.mode, (w, h), bg)
+    result.paste(cropped, (dx, dy))
+    return result
+
+
 def _yellowing(img: Image.Image, rng: random.Random) -> Image.Image:
-    if img.mode != "RGB":
-        img = img.convert("RGB")
-    arr = np.array(img).astype(np.float32)
-    s = rng.uniform(0.02, 0.08)
+    arr = np.array(img.convert("RGB")).astype(np.float32)
+    s = rng.uniform(0.05, 0.15)
     arr[:, :, 2] = np.clip(arr[:, :, 2] * (1 - s * 2), 0, 255)
     arr[:, :, 0] = np.clip(arr[:, :, 0] * (1 + s),     0, 255)
     arr[:, :, 1] = np.clip(arr[:, :, 1] * (1 + s * 0.5), 0, 255)
-    return Image.fromarray(arr.astype(np.uint8), mode="RGB")
+    result = Image.fromarray(arr.astype(np.uint8), mode="RGB")
+    return result.convert(img.mode)
 
 
 def _salt_pepper(img: Image.Image, rng: random.Random) -> Image.Image:
     arr  = np.array(img)
-    prob = rng.uniform(0.0005, 0.003)
-    mask = np.random.random(arr.shape[:2])
+    prob = rng.uniform(0.001, 0.006)
+    mask = np.random.RandomState(rng.randint(0, 99999)).random(arr.shape[:2])
     arr[mask < prob / 2] = 0
     arr[(mask >= prob / 2) & (mask < prob)] = 255
     return Image.fromarray(arr.astype(np.uint8), mode=img.mode)
 
 
+_OPS_PROBS = [
+    (_rotate,             0.8),
+    (_perspective,        0.6),
+    (_brightness_contrast,0.9),
+    (_blur,               0.7),
+    (_sharpen,            0.4),
+    (_gaussian_noise,     0.8),
+    (_jpeg_compression,   0.5),
+    (_resolution_jitter,  0.5),
+    (_crop_pad,           0.5),
+    (_yellowing,          0.4),
+    (_salt_pepper,        0.5),
+]
+
+
 def augment(img: Image.Image, seed: int) -> Image.Image:
-    rng          = random.Random(seed)
+    rng = random.Random(seed)
     original_mode = img.mode
     if original_mode not in ("RGB", "L"):
         img = img.convert("RGB")
-
-    ops = [
-        (_rotate,              0.8),
-        (_perspective,         0.5),
-        (_brightness_contrast, 0.9),
-        (_blur,                0.7),
-        (_gaussian_noise,      0.8),
-        (_salt_pepper,         0.5),
-    ]
-    if original_mode == "RGB":
-        ops.insert(4, (_yellowing, 0.4))
-
-    for fn, prob in ops:
+    for fn, prob in _OPS_PROBS:
         if rng.random() < prob:
-            img = fn(img, rng)
-
+            try:
+                img = fn(img, rng)
+            except Exception:
+                pass
     if original_mode == "L" and img.mode != "L":
         img = img.convert("L")
     return img
@@ -331,9 +366,9 @@ def main() -> None:
           f"{len(train_by_class)} classes")
 
     # ── Validação: split de referência ───────────────────────────────────────
-    val_csv_path = Path(args.val_split_dir) / "train_pairs.csv"
+    val_csv_path = Path(args.val_split_dir) / "validation_pairs.csv"
     if not val_csv_path.exists():
-        val_csv_path = Path(args.val_split_dir) / "validation_pairs.csv"
+        val_csv_path = Path(args.val_split_dir) / "train_pairs.csv"
     if not val_csv_path.exists():
         print(f"ERRO: train_pairs.csv/validation_pairs.csv não encontrado em {args.val_split_dir}")
         sys.exit(1)

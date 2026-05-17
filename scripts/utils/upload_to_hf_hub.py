@@ -305,22 +305,22 @@ def upload(
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Upload do melhor checkpoint CaVL-Doc para o HF Hub.")
 
-    p.add_argument("--repo-id", required=True,
-                   help="ID do repositório HF (ex: seu-usuario/cavl-doc-lacdip)")
+    p.add_argument("--repo-id", default="Jpcosta90/cavl-doc-lacdip",
+                   help="ID do repositório HF (default: Jpcosta90/cavl-doc-lacdip)")
 
-    # Checkpoint manual ou auto-select via W&B
+    # Checkpoint manual ou auto-select
     p.add_argument("--checkpoint-path", default=None,
-                   help="Caminho direto para best_siam.pt (ignora busca W&B).")
+                   help="Caminho direto para best_siam.pt.")
     p.add_argument("--eer", type=float, default=None,
                    help="EER do checkpoint (obrigatório se --checkpoint-path for usado).")
 
-    # Auto-select W&B
-    p.add_argument("--loss-filter", default="subcenter_cosface",
+    # Auto-select local
+    p.add_argument("--loss-filter", default="subcenter_arcface",
                    help="Filtro de loss (substring do nome do diretório de checkpoint).")
-    p.add_argument("--stage-filter", default="Sprint3",
-                   help="Filtro de stage (substring do nome do run). Default: 'Sprint3'.")
-    p.add_argument("--phase-filter", default="fase2_profON",
-                   help="Filtro de fase (substring do nome do run). Default: 'fase2_profON'.")
+    p.add_argument("--stage-filter", default="ArcDoc",
+                   help="Filtro de stage (substring do nome do run). Default: 'ArcDoc'.")
+    p.add_argument("--phase-filter", default="fase2",
+                   help="Filtro de fase (substring do nome do run). Default: 'fase2'.")
     p.add_argument("--checkpoint-root", default=None,
                    help="Raiz dos checkpoints (default: /mnt/large/checkpoints ou ./checkpoints).")
 
