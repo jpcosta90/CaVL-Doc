@@ -89,6 +89,8 @@ ipython_config.py
 
 # paper
 docs/paper/
+docs/assets/*.pdf
+docs/assets/*.png
 docs_backup/
 cavl_doc_overleaf.zip
 sweep_report/
