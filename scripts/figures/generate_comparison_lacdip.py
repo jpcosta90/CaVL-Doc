@@ -27,9 +27,7 @@ plt.rcParams.update({
     "legend.fontsize": 10,
 })
 
-# Average EER (%) across splits 0-4.
-# Sources: results/vlm_metric/*/summary.csv, results/emb_baseline_lacdip/*/summary.csv,
-#          and sprint3_epoch_analysis.html for ArcDoc.
+# Average EER (%) across splits 0-4, sorted best→worst.
 methods = [
     "ArcDoc (Sub-Center ArcFace)",
     "Qwen3-VL-8B (zero-shot)",
@@ -45,7 +43,6 @@ methods = [
 ]
 eer_vals = [0.82, 1.12, 1.30, 2.13, 2.67, 3.08, 4.78, 7.62, 29.99, 31.20, 32.30]
 
-# Colour family: ours → green; zero-shot VLM → steelblue; embedding → orange; pixel → gray
 colors = {
     "ArcDoc (Sub-Center ArcFace)": "#54A24B",
     "Qwen3-VL-8B (zero-shot)":     "#4C78A8",
@@ -55,7 +52,7 @@ colors = {
     "Jina-v4":                     "#F58518",
     "InternVL3-out":               "#F58518",
     "InternVL3-in":                "#F58518",
-    "InternVL-3-2B (unadapted)":   "#BAB0AC",
+    "InternVL-3-2B (unadapted)":   "#4C78A8",  # VLM prompted — zero-shot VLM baseline
     "Pixel (L2)":                  "#BAB0AC",
     "Pixel (Cosine)":              "#BAB0AC",
 }
@@ -64,9 +61,9 @@ fig, ax = plt.subplots(figsize=(8, 5.5))
 
 y_pos = np.arange(len(methods))[::-1]  # top-to-bottom: best at top
 bar_colors = [colors[m] for m in methods]
-bars = ax.barh(y_pos, eer_vals, color=bar_colors, height=0.65, edgecolor="white", linewidth=0.4)
+bars = ax.barh(y_pos, eer_vals, color=bar_colors, height=0.65,
+               edgecolor="white", linewidth=0.4)
 
-# Value labels
 for bar, val in zip(bars, eer_vals):
     ax.text(
         bar.get_width() + 0.3, bar.get_y() + bar.get_height() / 2,
@@ -80,14 +77,12 @@ ax.set_xlabel("Average EER (%)")
 ax.set_title("Method Comparison on LA-CDIP (Avg. EER, Splits 0–4)")
 ax.set_xlim(0, 40)
 
-# "lower is better" annotation
 ax.text(
-    0.98, -0.07, "lower is better",
+    0.98, -0.08, "lower is better",
     transform=ax.transAxes, fontsize=9, color="gray",
     ha="right", va="top",
 )
 
-# Legend for families
 from matplotlib.patches import Patch
 legend_elements = [
     Patch(facecolor="#54A24B", label="ArcDoc (ours)"),
@@ -95,7 +90,9 @@ legend_elements = [
     Patch(facecolor="#F58518", label="Embedding baseline"),
     Patch(facecolor="#BAB0AC", label="Pixel baseline"),
 ]
-ax.legend(handles=legend_elements, loc="lower right", frameon=True, framealpha=0.9)
+# Legend at upper right — bars are densest in the lower-right quadrant
+ax.legend(handles=legend_elements, loc="upper right", frameon=True, framealpha=0.9)
+
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 

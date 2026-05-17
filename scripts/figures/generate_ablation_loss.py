@@ -3,8 +3,13 @@
 Generates ablation_loss.pdf/png for the ArcDoc paper.
 
 Figure 4: Loss function ablation on LA-CDIP.
-Average EER across splits 0-4 for each loss × training phase.
-Data sourced from sprint3_epoch_analysis per-split summaries.
+Three bars per loss function show the cumulative best EER:
+  - Phase 1 only (epochs 1-10, no mining)
+  - Phase 1+2 with teacher mining (epochs 1-15, cumulative best)
+  - Phase 1+2 without mining (epochs 1-15, cumulative best)
+
+Cumulative best: min(best_phase1, best_phase2_only) per split, then averaged.
+Data: results/sprint3_epoch_analysis.html per-split tables.
 
 Run from repo root:
     python scripts/figures/generate_ablation_loss.py
@@ -28,32 +33,59 @@ plt.rcParams.update({
     "legend.fontsize": 10,
 })
 
-# Average EER (%) across splits 0-4, per loss × phase.
-# Source: results/sprint3_epoch_analysis.html per-split tables.
-losses = ["Sub-Center\nArcFace", "Sub-Center\nCosFace", "Triplet", "Contrastive"]
+# Raw per-split best EER (%) from sprint3_epoch_analysis.html
+# p1 = best epoch among 1-10 (Phase 1 only)
+# p2_on / p2_off = best epoch among 11-15 only (Phase 2, with/without teacher)
+_raw = {
+    "Sub-Center\nArcFace": dict(
+        p1    = [2.14, 0.17, 0.35, 0.75, 0.65],
+        p2_on = [2.52, 0.35, 0.53, 0.75, 1.31],
+        p2_off= [2.16, 0.35, 0.53, 0.75, 0.98],
+    ),
+    "Sub-Center\nCosFace": dict(
+        p1    = [1.97, 1.91, 0.18, 1.81, 0.65],
+        p2_on = [1.97, 1.91, 0.18, 1.81, 0.98],
+        p2_off= [1.97, 1.91, 0.00, 1.96, 0.98],
+    ),
+    "Triplet": dict(
+        p1    = [2.33, 1.73, 0.17, 1.51, 0.49],
+        p2_on = [2.16, 2.44, 0.52, 1.66, 0.49],
+        p2_off= [3.77, 1.91, 0.17, 1.81, 0.49],
+    ),
+    "Contrastive": dict(
+        p1    = [3.58, 1.20, 0.70, 3.93, 1.31],
+        p2_on = [3.96, 1.20, 1.05, 3.32, 1.47],
+        p2_off= [4.31, 1.73, 0.70, 3.63, 1.31],
+    ),
+}
 
-phase1     = [0.812, 1.304, 1.246, 2.144]   # Phase 1 (no mining, epoch best)
-phase2_on  = [1.092, 1.370, 1.454, 2.200]   # Phase 2 with teacher mining
-phase2_off = [0.954, 1.364, 1.630, 2.336]   # Phase 2 without mining
-best       = [0.812, 1.268, 1.212, 2.022]   # Best epoch across all phases
+def _cum(p1, p2):
+    """Cumulative best: the best epoch seen across all 15 epochs."""
+    return [min(a, b) for a, b in zip(p1, p2)]
+
+def _avg(vals):
+    return sum(vals) / len(vals)
+
+losses = list(_raw.keys())
+phase1     = [_avg(_raw[l]["p1"])                           for l in losses]
+cum_on     = [_avg(_cum(_raw[l]["p1"], _raw[l]["p2_on"]))   for l in losses]
+cum_off    = [_avg(_cum(_raw[l]["p1"], _raw[l]["p2_off"]))  for l in losses]
 
 x = np.arange(len(losses))
-width = 0.20
+width = 0.26
 
-fig, ax = plt.subplots(figsize=(7, 4))
+fig, ax = plt.subplots(figsize=(7.5, 4))
 
-ax.bar(x - 1.5 * width, phase1,     width, label="Phase 1 (no mining)",  color="#4C78A8")
-ax.bar(x - 0.5 * width, phase2_on,  width, label="Phase 2 with mining",  color="#F58518")
-ax.bar(x + 0.5 * width, phase2_off, width, label="Phase 2 no mining",    color="#72B7B2")
-ax.bar(x + 1.5 * width, best,       width, label="Best (all phases)",     color="#54A24B")
+ax.bar(x - width, phase1,  width, label="Phase 1 only (ep. 1–10)",         color="#4C78A8")
+ax.bar(x,         cum_on,  width, label="Phase 1+2, teacher ON (ep. 1–15)", color="#F58518")
+ax.bar(x + width, cum_off, width, label="Phase 1+2, teacher OFF (ep. 1–15)",color="#72B7B2")
 
 ax.set_ylabel("Average EER (%)")
 ax.set_title("Loss Function Ablation on LA-CDIP (Avg. Splits 0–4)")
 ax.set_xticks(x)
 ax.set_xticklabels(losses)
-ax.set_ylim(0, 5)
+ax.set_ylim(0, 4)
 
-# "lower is better" rotated label
 ax.text(
     -0.08, 0.5, "lower is better",
     fontsize=9, color="gray", rotation=90,
@@ -62,18 +94,18 @@ ax.text(
 )
 
 # Annotate global best
-best_val = min(best)
-best_idx = best.index(best_val)
+all_vals = phase1 + cum_on + cum_off
+best_val = min(all_vals)
+# Find which bar it belongs to (phase1 for ArcFace)
+best_idx = phase1.index(best_val)
 ax.annotate(
     f"Best\n{best_val:.2f}%",
-    xy=(x[best_idx] + 1.5 * width, best_val),
-    xytext=(x[best_idx] + 2.3 * width, best_val + 0.9),
+    xy=(x[best_idx] - width, best_val),
+    xytext=(x[best_idx] + 0.5, best_val + 0.8),
     arrowprops=dict(arrowstyle="->", color="black", lw=1.0),
-    fontsize=9,
-    ha="left",
+    fontsize=9, ha="left",
 )
 
-# Legend in upper right — avoids covering bars
 ax.legend(loc="upper right", frameon=True, framealpha=0.9)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
