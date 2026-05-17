@@ -169,6 +169,17 @@ def _build_cmd(
 # Main
 # ---------------------------------------------------------------------------
 
+def _read_hf_token_file() -> Optional[str]:
+    for candidate in [
+        Path.home() / ".cache" / "huggingface" / "token",
+        Path.home() / ".huggingface" / "token",
+    ]:
+        if candidate.exists():
+            token = candidate.read_text().strip()
+            return token if token else None
+    return None
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         description="ArcDoc: treino final em todos os splits com augmentation."
@@ -264,12 +275,17 @@ def main() -> None:
         print(f"  Destino: {local_dir}")
         try:
             from huggingface_hub import snapshot_download
-            from huggingface_hub.utils import get_token
+            import os
+            _hf_token = (
+                os.environ.get("HF_TOKEN")
+                or os.environ.get("HUGGINGFACE_TOKEN")
+                or _read_hf_token_file()
+            )
             snapshot_download(
                 repo_id=args.hf_dataset_repo,
                 repo_type="dataset",
                 local_dir=str(local_dir),
-                token=get_token(),
+                token=_hf_token or None,
             )
             print(f"  ✅ Dataset baixado em: {local_dir}")
         except Exception as e:
