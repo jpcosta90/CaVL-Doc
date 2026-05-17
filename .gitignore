@@ -251,3 +251,10 @@ data/**/*.tif
 # Relatórios HTML gerados localmente
 augmentation_report.html
 split_structure.html
+
+# Scripts avulsos na raiz (devem ficar em scripts/)
+/parse_html.py
+/replace_latex.py
+
+# LaTeX build artifacts na raiz
+/sn-article.*
