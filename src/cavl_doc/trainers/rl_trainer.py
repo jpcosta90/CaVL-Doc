@@ -218,7 +218,7 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_b
 def run_rl_siamese_loop(
     base_model, student_head, professor_model, tokenizer, dataset, epochs, student_lr, professor_lr,
     device, output_dir, candidate_pool_size, student_batch_size, max_num_image_tokens,
-    val_csv_path=None, base_image_dir=None,
+    val_csv_path=None, base_image_dir=None, val_base_image_dir=None,
     cut_layer=27, projection_output_dim=512, val_fraction=0.05, val_min_size=200,
     patience=3, lr_patience=3, lr_reduce_factor=0.5, lr_t0=10, lr_t_mult=2,
     baseline_alpha=0.01, entropy_coeff=0.01, seed=42,
@@ -505,7 +505,8 @@ def run_rl_siamese_loop(
 
     if val_csv_path and os.path.exists(val_csv_path):
         print(f"Carregando validação: {val_csv_path}")
-        val_dataset = DocumentPairDataset(val_csv_path, base_image_dir, 448, max_num_image_tokens, 'cpu')
+        _val_base = val_base_image_dir or base_image_dir
+        val_dataset = DocumentPairDataset(val_csv_path, _val_base, 448, max_num_image_tokens, 'cpu')
         train_dataset = dataset
     else:
         print("Split automático treino/val.")

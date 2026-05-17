@@ -403,6 +403,7 @@ def main(args):
             projection_output_dim=args.projection_output_dim,
             val_csv_path=val_csv,
             base_image_dir=args.base_image_dir,
+            val_base_image_dir=args.val_base_image_dir or args.base_image_dir,
             val_fraction=args.val_fraction,
             val_min_size=args.val_min_size,
             patience=args.patience,
