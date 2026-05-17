@@ -274,7 +274,6 @@ def main() -> None:
         print(f"Baixando dataset do HF Hub: {args.hf_dataset_repo}")
         print(f"  Destino: {local_dir}")
         try:
-            import os
             import tarfile as _tarfile
             from huggingface_hub import hf_hub_download
 
