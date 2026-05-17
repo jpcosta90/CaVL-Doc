@@ -264,10 +264,12 @@ def main() -> None:
         print(f"  Destino: {local_dir}")
         try:
             from huggingface_hub import snapshot_download
+            from huggingface_hub.utils import get_token
             snapshot_download(
                 repo_id=args.hf_dataset_repo,
                 repo_type="dataset",
                 local_dir=str(local_dir),
+                token=get_token(),
             )
             print(f"  ✅ Dataset baixado em: {local_dir}")
         except Exception as e:
