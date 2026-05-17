@@ -275,41 +275,44 @@ def main() -> None:
         print(f"  Destino: {local_dir}")
         try:
             import os
-            import threading
-            from huggingface_hub import snapshot_download
-            from huggingface_hub.utils import disable_progress_bars
+            import tarfile as _tarfile
+            from huggingface_hub import hf_hub_download
 
             _hf_token = (
                 os.environ.get("HF_TOKEN")
                 or os.environ.get("HUGGINGFACE_TOKEN")
                 or _read_hf_token_file()
             )
+            local_dir.mkdir(parents=True, exist_ok=True)
 
-            # Suprime as barras individuais por arquivo e mostra progresso agregado
-            disable_progress_bars()
-            _done = threading.Event()
+            for tar_name in ["images_train.tar", "images_val.tar"]:
+                folder_name = tar_name.replace(".tar", "")
+                dest = local_dir / folder_name
+                if dest.exists() and any(dest.iterdir()):
+                    print(f"  {folder_name}/ já existe, pulando.")
+                    continue
+                print(f"  Baixando {tar_name}...", flush=True)
+                tar_path = hf_hub_download(
+                    repo_id=args.hf_dataset_repo,
+                    filename=tar_name,
+                    repo_type="dataset",
+                    token=_hf_token or None,
+                )
+                print(f"  Extraindo {tar_name}...", flush=True)
+                with _tarfile.open(tar_path) as tf:
+                    tf.extractall(str(local_dir))
+                print(f"  ✅ {folder_name}/ pronto")
 
-            def _progress_monitor():
-                import time
-                n_total = 11_368  # arquivos no dataset final_split3
-                while not _done.is_set():
-                    n_done = sum(1 for _ in local_dir.rglob("*.tif")) if local_dir.exists() else 0
-                    pct = n_done / n_total * 100
-                    print(f"\r  [{n_done:>6}/{n_total}]  {pct:5.1f}%  arquivos baixados", end="", flush=True)
-                    time.sleep(10)
-                print()
-
-            t = threading.Thread(target=_progress_monitor, daemon=True)
-            t.start()
-            snapshot_download(
-                repo_id=args.hf_dataset_repo,
-                repo_type="dataset",
-                local_dir=str(local_dir),
-                token=_hf_token or None,
-            )
-            _done.set()
-            t.join(timeout=1)
-            print(f"  ✅ Dataset baixado em: {local_dir}")
+            for csv_name in ["train_pairs.csv", "validation_pairs.csv"]:
+                if not (local_dir / csv_name).exists():
+                    hf_hub_download(
+                        repo_id=args.hf_dataset_repo,
+                        filename=csv_name,
+                        repo_type="dataset",
+                        token=_hf_token or None,
+                        local_dir=str(local_dir),
+                    )
+            print(f"  ✅ Dataset pronto em: {local_dir}")
         except Exception as e:
             print(f"  ❌ Falha ao baixar dataset: {e}")
             sys.exit(1)

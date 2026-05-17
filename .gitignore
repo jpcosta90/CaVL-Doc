@@ -247,6 +247,8 @@ docs/**/*.tex
 data/**/images_train/
 data/**/images_val/
 data/**/*.tif
+data/**/*.tar
+data/**/_upload_staging/
 
 # Relatórios HTML gerados localmente
 augmentation_report.html

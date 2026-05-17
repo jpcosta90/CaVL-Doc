@@ -149,27 +149,47 @@ def main() -> None:
         token=token,
     )
 
-    print("Gerando README.md no diretório do dataset...")
-    readme_path = dataset_dir / "README.md"
+    # Cria tars sem compressão (TIFs já são comprimidos) — 1 request de download cada
+    staging = dataset_dir / "_upload_staging"
+    staging.mkdir(exist_ok=True)
+
+    for folder, tar_name in [(img_train, "images_train.tar"), (img_val, "images_val.tar")]:
+        tar_path = staging / tar_name
+        if tar_path.exists():
+            print(f"  {tar_name} já existe, pulando criação.")
+        else:
+            n = sum(1 for _ in folder.rglob("*.tif"))
+            print(f"\nEmpacotando {folder.name}/ ({n:,} arquivos) → {tar_name} ...")
+            import tarfile
+            with tarfile.open(tar_path, "w") as tf:
+                tf.add(str(folder), arcname=folder.name)
+            size_gb = tar_path.stat().st_size / 1e9
+            print(f"  ✅ {tar_name}: {size_gb:.1f} GB")
+
+    # Copia CSVs e README para staging
+    import shutil
+    for f in [train_csv, val_csv]:
+        shutil.copy2(f, staging / f.name)
+    readme_path = staging / "README.md"
     readme_path.write_text(_build_dataset_card(dataset_dir, args.repo_id), encoding="utf-8")
 
-    n_train = sum(1 for _ in img_train.rglob("*.tif"))
-    n_val   = sum(1 for _ in img_val.rglob("*.tif"))
-    print(f"\nEnviando dataset completo ({n_train + n_val:,} arquivos via upload_large_folder)...")
-    print("  (inclui CSVs, images_train/ e images_val/)")
-    api.upload_large_folder(
-        folder_path=str(dataset_dir),
+    # Limpa repo existente e envia os 4 arquivos via LFS (não XET)
+    print(f"\nEnviando para HF Hub via LFS (4 arquivos)...")
+    api.upload_folder(
+        folder_path=str(staging),
         repo_id=args.repo_id,
         repo_type="dataset",
-        print_report=True,
-        print_report_every=30,
+        commit_message="Upload dataset as tar archives (LFS, fast download)",
+        delete_patterns=["images_train/*", "images_val/*"],  # remove arquivos XET antigos
     )
 
     print(f"\n✅ Dataset enviado: https://huggingface.co/datasets/{args.repo_id}")
-    print(f"\nPara baixar em outro servidor:")
-    print(f"  from huggingface_hub import snapshot_download")
-    print(f"  snapshot_download(repo_id='{args.repo_id}', repo_type='dataset',")
-    print(f"                    local_dir='data/generated_splits/final_split3')")
+    print(f"\nPara baixar em outro servidor (download rápido via LFS):")
+    print(f"  from huggingface_hub import hf_hub_download")
+    print(f"  import tarfile")
+    print(f"  for name in ['images_train.tar', 'images_val.tar']:")
+    print(f"      p = hf_hub_download(repo_id='{args.repo_id}', filename=name, repo_type='dataset')")
+    print(f"      tarfile.open(p).extractall('data/generated_splits/final_split3/')")
 
 
 if __name__ == "__main__":
