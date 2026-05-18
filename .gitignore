@@ -237,13 +237,19 @@ __marimo__/
 *.fls
 *.lof
 *.lot
+*.nav
 *.out
 *.run.xml
+*.snm
 *.synctex.gz
 *.toc
 *.xdv
 docs/**/*.pdf
 docs/**/*.tex
+
+# Apresentação do seminário
+/seminario_15min.html
+docs/assets/as_comp_cor.jpg
 
 # Dados augmentados — imagens geradas offline (pesadas, vão para o HF Hub)
 data/**/images_train/
