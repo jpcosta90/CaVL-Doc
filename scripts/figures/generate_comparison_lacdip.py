@@ -37,7 +37,7 @@ methods = [
     "Jina-v4",
     "InternVL3-out",
     "InternVL3-in",
-    "InternVL-3-2B (unadapted)",
+    "InternVL-3-2B",
     "Pixel (L2)",
     "Pixel (Cosine)",
 ]
@@ -52,7 +52,7 @@ colors = {
     "Jina-v4":                     "#F58518",
     "InternVL3-out":               "#F58518",
     "InternVL3-in":                "#F58518",
-    "InternVL-3-2B (unadapted)":   "#4C78A8",  # VLM prompted — zero-shot VLM baseline
+    "InternVL-3-2B":               "#4C78A8",
     "Pixel (L2)":                  "#BAB0AC",
     "Pixel (Cosine)":              "#BAB0AC",
 }
