@@ -250,6 +250,10 @@ docs/**/*.tex
 # Apresentação do seminário
 /seminario_15min.html
 docs/assets/as_comp_cor.jpg
+docs/assets/as_vert_cor.jpg
+
+# Imagens de exemplo de aumentação (geradas offline)
+docs/assets/augmentation_examples/
 
 # Dados augmentados — imagens geradas offline (pesadas, vão para o HF Hub)
 data/**/images_train/
