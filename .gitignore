@@ -251,6 +251,8 @@ docs/**/*.tex
 /seminario_15min.html
 docs/assets/as_comp_cor.jpg
 docs/assets/as_vert_cor.jpg
+docs/assets/huggingfaceicon.jpg
+docs/seminario_bb_15min.*
 
 # Imagens de exemplo de aumentação (geradas offline)
 docs/assets/augmentation_examples/
