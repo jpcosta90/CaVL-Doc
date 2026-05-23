@@ -603,7 +603,7 @@ def run_rl_siamese_loop(
         val_dataset_balanced = Subset(val_source_ds, balanced_val_indices)
 
     val_bs = val_batch_size if val_batch_size is not None else max(4, min(candidate_pool_size, 8))
-    val_loader = DataLoader(val_dataset_balanced, batch_size=val_bs, shuffle=False, num_workers=min(num_workers, 2), collate_fn=rl_full_collate_fn)
+    val_loader = DataLoader(val_dataset_balanced, batch_size=val_bs, shuffle=False, num_workers=0, collate_fn=rl_full_collate_fn)
     
     print(f"Dataset Sizes: Train={len(train_dataset)} | Val (Balanced Subset)={len(val_dataset_balanced)}")
 
