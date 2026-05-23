@@ -3,6 +3,8 @@ import os
 import csv
 import logging
 import math
+import signal
+import sys
 from tqdm import tqdm
 import random
 import time
@@ -18,6 +20,17 @@ from torch.utils.data import DataLoader, Subset
 
 # Imports do Projeto
 from cavl_doc.models.policy import ProfessorNetwork
+
+# ---------------------------------------------------------------------------
+# Graceful shutdown on SIGTERM (GCP SPOT preemption gives 30s warning)
+# ---------------------------------------------------------------------------
+_SHUTDOWN_REQUESTED = False
+
+def _handle_sigterm(signum, frame):
+    global _SHUTDOWN_REQUESTED
+    print("\n⚡ SIGTERM recebido — finalizando step atual e salvando checkpoint de emergência...",
+          flush=True)
+    _SHUTDOWN_REQUESTED = True
 from cavl_doc.modules.losses import build_loss
 from cavl_doc.data.dataset import DocumentPairDataset
 from cavl_doc.models.modeling_cavl import build_cavl_model
@@ -244,6 +257,10 @@ def run_rl_siamese_loop(
     weight_decay=1e-4, # Novo argumento para weight decay
     num_workers=0 # Configuração de workers para DataLoader
 ):
+    global _SHUTDOWN_REQUESTED
+    _SHUTDOWN_REQUESTED = False
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -927,6 +944,32 @@ def run_rl_siamese_loop(
                 wandb.log(log_dict)
 
             log_writer.writerow([epoch+1, global_batch_step, f"{loss.item():.4f}", f"{ploss_val:.4f}", f"{avg_r:.4f}", f"{status_str}", "", "", "", ""])
+
+            # --- Graceful shutdown (SIGTERM / GCP SPOT preemption) ---
+            if _SHUTDOWN_REQUESTED:
+                pbar.close()
+                print(f"\n💾 Salvando checkpoint de emergência (step {global_batch_step})...", flush=True)
+                backbone_trainable = {n: p.detach().cpu() for n, p in siam.backbone.named_parameters() if p.requires_grad}
+                emergency_ckpt = {
+                    'epoch': epoch,
+                    'metrics': {'eer': best_val_eer, 'loss': avg_loss.avg},
+                    'config': model_config,
+                    'siam_pool': siam.pool.state_dict(),
+                    'siam_head': siam.head.state_dict(),
+                    'backbone_trainable': backbone_trainable,
+                    'professor_state': professor_model.state_dict(),
+                    'student_optimizer': student_optimizer.state_dict(),
+                    'professor_optimizer': professor_optimizer.state_dict(),
+                    'student_scheduler': student_scheduler.state_dict() if student_scheduler else None,
+                    'baseline': baseline,
+                    'global_batch_step': global_batch_step,
+                    'no_improve': no_improve,
+                    'stage': 'emergency_shutdown',
+                }
+                os.makedirs(output_dir, exist_ok=True)
+                torch.save(emergency_ckpt, os.path.join(output_dir, "last_checkpoint.pt"))
+                print(f"✅ Checkpoint salvo em {output_dir}/last_checkpoint.pt — encerrando.", flush=True)
+                sys.exit(0)
 
         pbar.close()
 
