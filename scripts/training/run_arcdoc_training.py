@@ -106,6 +106,7 @@ def _build_cmd(
     batch_size: int,
     grad_accum: int,
     num_workers: int,
+    pool_size: Optional[int] = None,
     resume_from: Optional[Path] = None,
     init_from: Optional[Path] = None,
     output_dir: Optional[Path] = None,
@@ -137,7 +138,7 @@ def _build_cmd(
         "--epochs",                   str(stage_epochs),
         "--max-steps-per-epoch",      str(args.max_steps_per_epoch),
         "--student-batch-size",       str(batch_size),
-        "--candidate-pool-size",      str(args.candidate_pool_size),
+        "--candidate-pool-size",      str(pool_size if pool_size is not None else args.candidate_pool_size),
         "--gradient-accumulation-steps", str(grad_accum),
         "--num-workers",              str(num_workers),
         "--patience",                 str(args.patience),
@@ -248,7 +249,12 @@ def main() -> None:
     p.add_argument("--professor-lr",     type=float, default=5e-5)
     p.add_argument("--baseline-alpha",   type=float, default=0.05)
     p.add_argument("--entropy-coeff",    type=float, default=0.01)
-    p.add_argument("--candidate-pool-size", type=int, default=8)
+    p.add_argument("--candidate-pool-size", type=int, default=8,
+                   help="Pool padrão (fallback se --phase1/2-pool-size não forem definidos)")
+    p.add_argument("--phase1-pool-size", type=int, default=None,
+                   help="Pool da fase 1 (sem teacher). Default: --candidate-pool-size")
+    p.add_argument("--phase2-pool-size", type=int, default=None,
+                   help="Pool da fase 2 (com teacher). Default: --candidate-pool-size")
 
     # Arquitetura
     p.add_argument("--max-num-image-tokens", type=int, default=12)
@@ -355,7 +361,8 @@ def main() -> None:
         base_image_dir=args.base_image_dir, wandb_project=args.wandb_project,
         args=args, stage_epochs=args.phase1_epochs, teacher_on=False,
         batch_size=args.phase1_batch_size, grad_accum=args.phase1_grad_accum,
-        num_workers=args.phase1_num_workers, output_dir=checkpoint_root / run_p1,
+        num_workers=args.phase1_num_workers, pool_size=args.phase1_pool_size,
+        output_dir=checkpoint_root / run_p1,
     )
     print(f"\n[FASE 1] {run_p1}")
     if not args.dry_run:
@@ -371,8 +378,8 @@ def main() -> None:
             base_image_dir=args.base_image_dir, wandb_project=args.wandb_project,
             args=args, stage_epochs=args.phase1_epochs, teacher_on=False,
             batch_size=args.phase1_batch_size, grad_accum=args.phase1_grad_accum,
-            num_workers=args.phase1_num_workers, resume_from=ckpt_p1,
-            output_dir=checkpoint_root / run_p1,
+            num_workers=args.phase1_num_workers, pool_size=args.phase1_pool_size,
+            resume_from=ckpt_p1, output_dir=checkpoint_root / run_p1,
         )
         if not args.dry_run:
             subprocess.run(cmd_p1_resume, check=True, env=gpu_env)
@@ -397,8 +404,8 @@ def main() -> None:
         base_image_dir=args.base_image_dir, wandb_project=args.wandb_project,
         args=args, stage_epochs=args.phase2_epochs, teacher_on=True,
         batch_size=args.phase2_batch_size, grad_accum=args.phase2_grad_accum,
-        num_workers=args.phase2_num_workers, init_from=best_p1,
-        output_dir=checkpoint_root / run_p2,
+        num_workers=args.phase2_num_workers, pool_size=args.phase2_pool_size,
+        init_from=best_p1, output_dir=checkpoint_root / run_p2,
     )
     print(f"\n[FASE 2] {run_p2}")
     if not args.dry_run:
@@ -414,8 +421,8 @@ def main() -> None:
             base_image_dir=args.base_image_dir, wandb_project=args.wandb_project,
             args=args, stage_epochs=args.phase2_epochs, teacher_on=True,
             batch_size=args.phase2_batch_size, grad_accum=args.phase2_grad_accum,
-            num_workers=args.phase2_num_workers, resume_from=ckpt_p2,
-            output_dir=checkpoint_root / run_p2,
+            num_workers=args.phase2_num_workers, pool_size=args.phase2_pool_size,
+            resume_from=ckpt_p2, output_dir=checkpoint_root / run_p2,
         )
         if not args.dry_run:
             subprocess.run(cmd_p2_resume, check=True, env=gpu_env)
