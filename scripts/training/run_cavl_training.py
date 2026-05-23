@@ -441,7 +441,9 @@ def main(args):
             easy_mining_steps=args.easy_mining_steps,
             gradient_accumulation_steps=args.gradient_accumulation_steps,
             weight_decay=args.weight_decay,
-            num_workers=args.num_workers
+            num_workers=args.num_workers,
+            val_batch_size=args.val_batch_size,
+            val_chunk_size_override=args.val_chunk_size,
         )
     
     if args.use_wandb:
@@ -510,6 +512,8 @@ def parse_args():
     p.add_argument("--val-min-size", type=int, default=200)
     p.add_argument("--val-samples-per-class", type=int, default=20, help="Number of samples per class for balanced validation subset")
     p.add_argument("--val-subset-size", type=int, default=None, help="Target total size for validation subset (overrides val-samples-per-class)")
+    p.add_argument("--val-batch-size", type=int, default=None, help="Batch size do DataLoader de validação (default: heurística conservadora ≤8)")
+    p.add_argument("--val-chunk-size", type=int, default=None, help="Chunk size para inferência dentro do batch de validação (default: env CAVL_VAL_CHUNK_SIZE ou 4)")
     p.add_argument("--patience", type=int, default=3,
                    help="Early-stopping: épocas sem melhora para parar o treino")
     p.add_argument("--lr-patience", type=int, default=3,

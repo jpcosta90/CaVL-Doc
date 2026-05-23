@@ -156,6 +156,8 @@ def _build_cmd(
         "--easy-mining-steps",        str(easy_steps),
         "--val-subset-size",          str(args.val_subset_size),
         "--seed",                     str(args.seed),
+        *(["--val-batch-size", str(args.val_batch_size)] if args.val_batch_size else []),
+        *(["--val-chunk-size", str(args.val_chunk_size)] if args.val_chunk_size else []),
     ]
     if output_dir is not None:
         cmd += ["--output-dir", str(output_dir)]
@@ -255,6 +257,12 @@ def main() -> None:
                    help="Pool da fase 1 (sem teacher). Default: --candidate-pool-size")
     p.add_argument("--phase2-pool-size", type=int, default=None,
                    help="Pool da fase 2 (com teacher). Default: --candidate-pool-size")
+
+    # Validação
+    p.add_argument("--val-batch-size", type=int, default=None,
+                   help="Batch size do val_loader (default: heurística ≤8). Aumente em GPUs com VRAM extra.")
+    p.add_argument("--val-chunk-size", type=int, default=None,
+                   help="Chunk size para inferência na validação (default: 4). Aumente em GPUs com VRAM extra.")
 
     # Arquitetura
     p.add_argument("--max-num-image-tokens", type=int, default=12)

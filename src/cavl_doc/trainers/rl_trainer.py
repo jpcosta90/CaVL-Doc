@@ -125,7 +125,7 @@ def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_b
     # Lista para Batch Recall (New)
     batch_recalls = []
 
-    val_chunk_size = int(os.getenv("CAVL_VAL_CHUNK_SIZE", "4"))
+    val_chunk_size = val_chunk_size_override if val_chunk_size_override is not None else int(os.getenv("CAVL_VAL_CHUNK_SIZE", "4"))
     val_chunk_size = max(1, val_chunk_size)
 
     with torch.no_grad():
@@ -253,9 +253,11 @@ def run_rl_siamese_loop(
     max_steps_per_epoch=None,
     professor_warmup_steps=0,
     easy_mining_steps=0, # Novo argumento para curriculum de exemplos fáceis
-    gradient_accumulation_steps=1, # Novo argumento para acumulação de gradiente
-    weight_decay=1e-4, # Novo argumento para weight decay
-    num_workers=0 # Configuração de workers para DataLoader
+    gradient_accumulation_steps=1,
+    weight_decay=1e-4,
+    num_workers=0,
+    val_batch_size=None,     # None = usa heurística conservadora (max 8)
+    val_chunk_size_override=None,  # None = usa CAVL_VAL_CHUNK_SIZE env var (default 4)
 ):
     global _SHUTDOWN_REQUESTED
     _SHUTDOWN_REQUESTED = False
@@ -600,10 +602,8 @@ def run_rl_siamese_loop(
         balanced_val_indices = random.sample(current_val_indices, n_samples)
         val_dataset_balanced = Subset(val_source_ds, balanced_val_indices)
 
-    # Validation Batch Size: conservador para evitar OOM com InternVL e batches grandes.
-    # Mantém a validação estável mesmo quando o treino usa professor ativo/pool alto.
-    val_bs = max(4, min(candidate_pool_size, 8))
-    val_loader = DataLoader(val_dataset_balanced, batch_size=val_bs, shuffle=False, num_workers=0, collate_fn=rl_full_collate_fn)
+    val_bs = val_batch_size if val_batch_size is not None else max(4, min(candidate_pool_size, 8))
+    val_loader = DataLoader(val_dataset_balanced, batch_size=val_bs, shuffle=False, num_workers=min(num_workers, 2), collate_fn=rl_full_collate_fn)
     
     print(f"Dataset Sizes: Train={len(train_dataset)} | Val (Balanced Subset)={len(val_dataset_balanced)}")
 
