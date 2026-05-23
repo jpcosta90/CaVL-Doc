@@ -111,7 +111,7 @@ def pairwise_eer_from_scores(labels: np.ndarray, scores: np.ndarray):
     idx = np.argmin(np.abs(fpr - fnr))
     return (fpr[idx] + fnr[idx]) / 2.0, thresholds[idx]
 
-def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_batches=None):
+def validate_siam_on_loader(siam, val_loader, device, student_criterion, limit_batches=None, val_chunk_size_override=None):
     siam.eval()
     student_criterion.eval()
     losses = []
@@ -644,7 +644,7 @@ def run_rl_siamese_loop(
     if resume_checkpoint_path and run_immediate_validation:
         print(f"🚨 Executando validação pendente da Época {start_epoch+1}...")
         # Validação no subset balanceado (sem limite de batches, pois o subset já é pequeno)
-        vloss, veer, vthr, vr1, v_batch_recall = validate_siam_on_loader(siam, val_loader, device, student_criterion)
+        vloss, veer, vthr, vr1, v_batch_recall = validate_siam_on_loader(siam, val_loader, device, student_criterion, val_chunk_size_override=val_chunk_size_override)
         print(f"Val (Recovered): EER={veer*100:.2f}% | R@1={vr1*100:.2f}% | R_Batch={v_batch_recall*100:.2f}% Loss={vloss:.4f}")
         
         if use_wandb and wandb:
@@ -1004,7 +1004,7 @@ def run_rl_siamese_loop(
             torch.cuda.empty_cache()
 
         # Validação no subset balanceado
-        vloss, veer, vthr, vr1, v_batch_recall = validate_siam_on_loader(siam, val_loader, device, student_criterion)
+        vloss, veer, vthr, vr1, v_batch_recall = validate_siam_on_loader(siam, val_loader, device, student_criterion, val_chunk_size_override=val_chunk_size_override)
         print(f"Val: EER={veer*100:.2f}% | R@1={vr1*100:.2f}% | R_Batch={v_batch_recall*100:.2f}% | Loss={vloss:.4f}")
         
         if use_wandb and wandb:
