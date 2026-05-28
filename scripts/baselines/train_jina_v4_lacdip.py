@@ -69,7 +69,8 @@ EMBEDDING_DIM = 2048   # single-vector output do Jina-v4
 TEMPERATURE   = 0.02   # τ do paper (Seção 5.2.3)
 
 # Módulos do decoder Qwen2.5-VL-3B alvo para LoRA
-# r=128 → 36 layers × 4 modules × (A+B) ≈ 59M parâmetros
+# r=16 → ~22M parâmetros (cabe em 24 GB L4)
+# r=128 ultrapassa o L4 pois add_adapter também cobre os projectors do Jina (~176M)
 LORA_TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj"]
 
 # Dimensões para Matryoshka loss (paper Seção 5, truncatable to 128)
@@ -749,7 +750,7 @@ def main():
                    help="1=InfoNCE simétrico (pair training); 2=InfoNCE+ com hard negatives")
 
     # LoRA
-    p.add_argument("--lora-r",       type=int,   default=128,
+    p.add_argument("--lora-r",       type=int,   default=16,
                    help="Rank LoRA. r=128 → ~59M params (paper usa 60M por adapter)")
     p.add_argument("--lora-dropout", type=float, default=0.05)
     p.add_argument("--load-in-4bit", action="store_true",
