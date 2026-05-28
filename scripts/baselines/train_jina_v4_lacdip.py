@@ -75,9 +75,14 @@ LORA_TARGET_MODULES = ["q_proj", "k_proj", "v_proj", "o_proj"]
 # Dimensões para Matryoshka loss (paper Seção 5, truncatable to 128)
 MATRYOSHKA_DIMS = [2048, 1024, 512, 256, 128]
 
-# Prefixo de tarefa seguindo o estilo do Jina-v4 (Seção 5.2)
-# Symmetric retrieval: mesmo prefixo para query e documento
-TASK_PREFIX = "Represent this document image for retrieval:"
+# Template de texto para imagens — formato interno do Jina-v4 (process_images).
+# O task_label seleciona o adapter LoRA; o texto acompanha a imagem no VLM.
+JINA_IMG_TEXT = (
+    "<|im_start|>user\n"
+    "<|vision_start|><|image_pad|><|vision_end|>"
+    "Represent this document image for retrieval."
+    "<|im_end|>\n"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +157,15 @@ def _make_model(lora_r: int, lora_dropout: float, load_in_4bit: bool = False):
         bias="none",
         task_type="FEATURE_EXTRACTION",
     )
-    model = get_peft_model(base, lora_cfg)
+
+    # Jina-v4 já é um PeftModel — usa add_adapter() para adicionar o nosso
+    # sem empacotar novamente (o que duplicaria os adapters e parâmetros)
+    if hasattr(base, "peft_config"):
+        base.add_adapter("lacdip", lora_cfg)
+        base.set_adapter("lacdip")
+        model = base
+    else:
+        model = get_peft_model(base, lora_cfg)
 
     n_trainable = _count_lora_params(model)
     print(f"LoRA adicionado: {n_trainable / 1e6:.1f}M parâmetros treináveis "
@@ -166,39 +179,27 @@ def _make_model(lora_r: int, lora_dropout: float, load_in_4bit: bool = False):
 # Embedding extraction (trainable — gradiente flui pelo LoRA)
 # ---------------------------------------------------------------------------
 
-def _mean_pool(hidden: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-    """Mean pooling sobre tokens válidos (excl. padding)."""
-    mask = attention_mask.unsqueeze(-1).to(hidden.dtype)
-    return (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-8)
+# task_label para retrieval simétrico (texto/imagem → image)
+# 'text-matching' = symmetric similarity (paper Sec 5.2.2)
+# 'retrieval'     = asymmetric query→document (paper Sec 5.2.1)
+JINA_TASK_LABEL = "text-matching"
 
 
-def _get_projector(model) -> Optional[nn.Module]:
-    """Localiza o projetor do Jina-v4 (single-vector head)."""
-    for attr in ["projector", "embedding_projector", "dense"]:
-        if hasattr(model, attr):
-            return getattr(model, attr)
-        if hasattr(model, "base_model") and hasattr(model.base_model, attr):
-            return getattr(model.base_model, attr)
-    return None
-
-
-def _embed(model, inputs: dict, projector: Optional[nn.Module] = None) -> torch.Tensor:
+def _embed(model, inputs: dict) -> torch.Tensor:
     """
-    Extrai embeddings single-vector com gradiente (para treino).
-    Segue o pipeline do Jina-v4: hidden_states → mean pool → projector → L2-norm.
+    Extrai single-vector embeddings via o pipeline nativo do Jina-v4.
+
+    O modelo retorna JinaEmbeddingsV4ModelOutput com single_vec_emb
+    já mean-pooled, projetado e L2-normalizado (2048-dim).
+    O gradiente flui pelo nosso LoRA "lacdip" adicionado sobre o backbone.
+
+    task_label seleciona qual dos adapters internos do Jina-v4 é ativado
+    em conjunto com o nosso. Usamos 'text-matching' (simétrico) pois
+    query e documento são ambos imagens de documentos.
     """
-    outputs = model(
-        **inputs,
-        output_hidden_states=True,
-        return_dict=True,
-    )
-    hidden = outputs.last_hidden_state             # [B, seq_len, D_llm]
-    pooled = _mean_pool(hidden, inputs["attention_mask"])  # [B, D_llm]
-
-    if projector is not None:
-        pooled = projector(pooled)                 # [B, 2048]
-
-    return F.normalize(pooled, dim=-1)             # [B, D_emb]
+    outputs = model(task_label=JINA_TASK_LABEL, **inputs)
+    # single_vec_emb: [B, 2048], já normalizado pelo modelo
+    return outputs.single_vec_emb
 
 
 # ---------------------------------------------------------------------------
@@ -334,38 +335,41 @@ class _JinaDocDataset(Dataset):
         }
 
 
+def _proc_single(img, processor, device):
+    """
+    Processa uma única imagem PIL no formato esperado pelo Jina-v4.
+
+    O Jina-v4 espera pixel_values como [num_images, max_patches, features]
+    (stacked + padded), não o formato flat [total_patches, features] do
+    processor Qwen2.5-VL padrão. Fazemos a conversão manualmente, seguindo
+    o que processor.process_images() faz internamente (linhas 65-88 do modelo).
+    """
+    out = processor(images=[img], text=[JINA_IMG_TEXT],
+                    padding="longest", return_tensors="pt")
+    # Converte pixel_values para formato [num_images, max_patches, features]
+    if "pixel_values" in out and "image_grid_thw" in out:
+        offsets = out["image_grid_thw"][:, 1] * out["image_grid_thw"][:, 2]
+        pvs = torch.split(out["pixel_values"], offsets.tolist())
+        max_len = max(len(pv) for pv in pvs)
+        pvs_padded = [
+            torch.cat([pv, torch.zeros(max_len - len(pv), pv.shape[1],
+                                       dtype=pv.dtype)]) if len(pv) < max_len else pv
+            for pv in pvs
+        ]
+        out["pixel_values"] = torch.stack(pvs_padded)  # [num_images, max_patches, features]
+    return {k: v.to(device) for k, v in out.items() if isinstance(v, torch.Tensor)}
+
+
 def _collate_jina(batch, processor, device="cuda"):
     """
-    Preprocessa imagens com o processor do Jina-v4 e empacota para o modelo.
-    Cada imagem recebe o TASK_PREFIX como texto de acompanhamento.
+    Qwen2.5-VL usa pixel_values flat (não batched), então processa cada
+    imagem individualmente e retorna listas de inputs. O treino embeda
+    cada item e concatena os embeddings para a loss InfoNCE.
     """
-    imgs_a = [item["img_a"] for item in batch]
-    imgs_b = [item["img_b"] for item in batch]
     labels = torch.tensor([item["is_equal"] for item in batch], dtype=torch.float32)
-
-    # Processor do Jina-v4: aceita lista de imagens + texto correspondente
-    prefixes = [TASK_PREFIX] * len(batch)
-
-    try:
-        inputs_a = processor(
-            images=imgs_a, text=prefixes,
-            return_tensors="pt", padding=True,
-        )
-        inputs_b = processor(
-            images=imgs_b, text=prefixes,
-            return_tensors="pt", padding=True,
-        )
-    except Exception:
-        # Fallback: processor só com imagem (sem texto)
-        inputs_a = processor(images=imgs_a, return_tensors="pt", padding=True)
-        inputs_b = processor(images=imgs_b, return_tensors="pt", padding=True)
-
-    inputs_a = {k: v.to(device) for k, v in inputs_a.items()
-                if isinstance(v, torch.Tensor)}
-    inputs_b = {k: v.to(device) for k, v in inputs_b.items()
-                if isinstance(v, torch.Tensor)}
-
-    return inputs_a, inputs_b, labels.to(device)
+    list_a = [_proc_single(item["img_a"], processor, device) for item in batch]
+    list_b = [_proc_single(item["img_b"], processor, device) for item in batch]
+    return list_a, list_b, labels.to(device)
 
 
 # ---------------------------------------------------------------------------
@@ -373,19 +377,19 @@ def _collate_jina(batch, processor, device="cuda"):
 # ---------------------------------------------------------------------------
 
 def _train_epoch(
-    model, optimizer, loader, projector, loss_fn,
+    model, optimizer, loader, loss_fn,
     device, accum_steps, use_matryoshka,
 ) -> float:
     model.train()
     losses = []
     optimizer.zero_grad()
 
-    for step, (inputs_a, inputs_b, labels) in enumerate(
+    for step, (list_a, list_b, labels) in enumerate(
         tqdm(loader, desc="Train", ncols=100, leave=False)
     ):
         try:
-            emb_a = _embed(model, inputs_a, projector)
-            emb_b = _embed(model, inputs_b, projector)
+            emb_a = torch.cat([_embed(model, inp) for inp in list_a], dim=0)
+            emb_b = torch.cat([_embed(model, inp) for inp in list_b], dim=0)
 
             if use_matryoshka:
                 loss = loss_fn(emb_a, emb_b)
@@ -420,7 +424,7 @@ def _train_epoch(
 
 @torch.no_grad()
 def _build_gallery(
-    model, projector, processor, csv_path: Path, base_dir: str,
+    model, processor, csv_path: Path, base_dir: str,
     device: str, max_items: int = 2000,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """
@@ -448,19 +452,8 @@ def _build_gallery(
         try:
             img_path = os.path.join(base_dir, str(row[col_img]))
             img = PILImage.open(img_path).convert("RGB")
-
-            try:
-                inputs = processor(
-                    images=[img], text=[TASK_PREFIX],
-                    return_tensors="pt", padding=True,
-                )
-            except Exception:
-                inputs = processor(images=[img], return_tensors="pt")
-
-            inputs = {k: v.to(device) for k, v in inputs.items()
-                      if isinstance(v, torch.Tensor)}
-
-            emb = _embed(model, inputs, projector).cpu().float().numpy()
+            inputs = _proc_single(img, processor, device)
+            emb = _embed(model, inputs).cpu().float().numpy()
             all_embs.append(emb[0])
 
             if col_cls:
@@ -479,7 +472,7 @@ def _build_gallery(
 
 @torch.no_grad()
 def benchmark_lacdip(
-    model, projector, processor, val_csv: Path, base_dir: str,
+    model, processor, val_csv: Path, base_dir: str,
     device: str, max_gallery: int = 2000, max_queries: int = 500,
 ) -> dict:
     """
@@ -493,7 +486,7 @@ def benchmark_lacdip(
     model.eval()
 
     gallery_embs, gallery_labels = _build_gallery(
-        model, projector, processor, val_csv, base_dir,
+        model, processor, val_csv, base_dir,
         device, max_items=max_gallery,
     )
 
@@ -570,11 +563,6 @@ def _train_split(args, split_idx: int, run_name: str) -> dict:
     model, processor = _make_model(
         args.lora_r, args.lora_dropout, args.load_in_4bit
     )
-    projector = _get_projector(model)
-    if projector is not None:
-        print(f"  Projector encontrado: {type(projector).__name__}")
-    else:
-        print("  Sem projector explícito — usando hidden_dim diretamente.")
 
     # Loss: Fase 1 = MatryoshkaInfoNCE; Fase 2 = InfoNCE+
     if args.phase == 1 or not args.use_hard_negatives:
@@ -598,13 +586,7 @@ def _train_split(args, split_idx: int, run_name: str) -> dict:
         num_workers=0, collate_fn=_collate,
     )
 
-    # Optimizer: apenas LoRA + projector (se descongelado)
     trainable = [p for p in model.parameters() if p.requires_grad]
-    if projector is not None:
-        for p in projector.parameters():
-            p.requires_grad_(True)
-        trainable += list(projector.parameters())
-
     optimizer = torch.optim.AdamW(trainable, lr=args.lr, weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs, eta_min=args.lr * 0.1
@@ -637,14 +619,14 @@ def _train_split(args, split_idx: int, run_name: str) -> dict:
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
         train_loss = _train_epoch(
-            model, optimizer, train_loader, projector,
+            model, optimizer, train_loader,
             loss_fn, device, args.grad_accum, use_matryoshka,
         )
         scheduler.step()
 
         # Benchmark completo a cada época
         metrics = benchmark_lacdip(
-            model, projector, processor, val_csv, args.base_image_dir,
+            model, processor, val_csv, args.base_image_dir,
             device, max_gallery=args.max_val_gallery, max_queries=args.max_val_queries,
         )
 
@@ -716,7 +698,6 @@ def run_benchmark(args):
     )
     model = PeftModel.from_pretrained(base, args.lora_checkpoint)
     processor = AutoProcessor.from_pretrained(MODEL_HF_ID, trust_remote_code=True)
-    projector = _get_projector(model)
     device = next(model.parameters()).device
 
     val_csv = Path(args.data_root) / "splits.csv"   # ajustar conforme protocolo
@@ -724,7 +705,7 @@ def run_benchmark(args):
         raise FileNotFoundError(f"val_csv não encontrado: {val_csv}")
 
     metrics = benchmark_lacdip(
-        model, projector, processor, val_csv, args.base_image_dir,
+        model, processor, val_csv, args.base_image_dir,
         str(device), max_gallery=args.max_val_gallery,
         max_queries=args.max_val_queries,
     )

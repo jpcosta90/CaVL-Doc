@@ -1,3 +1,6 @@
+# Caminhos e configurações locais por servidor (não versionar)
+docs/server_paths.md
+
 # Logs do Weights & Biases
 wandb/
 wandb_backup_20251207_194327/
