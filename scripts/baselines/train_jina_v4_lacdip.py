@@ -379,15 +379,18 @@ def _collate_jina(batch, processor, device="cuda"):
 
 def _train_epoch(
     model, optimizer, loader, loss_fn,
-    device, accum_steps, use_matryoshka,
+    device, accum_steps, use_matryoshka, max_steps=None,
 ) -> float:
     model.train()
     losses = []
     optimizer.zero_grad()
 
     for step, (list_a, list_b, labels) in enumerate(
-        tqdm(loader, desc="Train", ncols=100, leave=False)
+        tqdm(loader, desc="Train", ncols=100, leave=False,
+             total=min(len(loader), max_steps) if max_steps else len(loader))
     ):
+        if max_steps and step >= max_steps:
+            break
         try:
             emb_a = torch.cat([_embed(model, inp) for inp in list_a], dim=0)
             emb_b = torch.cat([_embed(model, inp) for inp in list_b], dim=0)
@@ -565,6 +568,10 @@ def _train_split(args, split_idx: int, run_name: str) -> dict:
         args.lora_r, args.lora_dropout, args.load_in_4bit
     )
 
+    # Limita resolução máxima → reduz tokens visuais e VRAM durante treino
+    if hasattr(processor, "image_processor") and args.max_pixels:
+        processor.image_processor.max_pixels = args.max_pixels
+
     # Loss: Fase 1 = MatryoshkaInfoNCE; Fase 2 = InfoNCE+
     if args.phase == 1 or not args.use_hard_negatives:
         loss_fn = MatryoshkaInfoNCELoss(MATRYOSHKA_DIMS, TEMPERATURE) if args.matryoshka \
@@ -622,6 +629,7 @@ def _train_split(args, split_idx: int, run_name: str) -> dict:
         train_loss = _train_epoch(
             model, optimizer, train_loader,
             loss_fn, device, args.grad_accum, use_matryoshka,
+            max_steps=args.max_steps_per_epoch,
         )
         scheduler.step()
 
@@ -745,7 +753,13 @@ def main():
                    help="Pares por step. InfoNCE beneficia de batches maiores.")
     p.add_argument("--grad-accum",       type=int,   default=8,
                    help="Acumulação de gradiente (batch efetivo = batch × grad_accum)")
-    p.add_argument("--max-train-pairs",  type=int,   default=8000)
+    p.add_argument("--max-train-pairs",    type=int,   default=8000)
+    p.add_argument("--max-steps-per-epoch", type=int, default=None,
+                   help="Limite de steps por época (mesmo protocolo dos outros scripts; "
+                        "None = usa todos os pares)")
+    p.add_argument("--max-pixels",        type=int,   default=401408,
+                   help="Máx de pixels por imagem no processor (~392K = 448×896, "
+                        "reduz tokens visuais e VRAM; default Qwen é 12M)")
     p.add_argument("--phase",            type=int,   default=1, choices=[1, 2],
                    help="1=InfoNCE simétrico (pair training); 2=InfoNCE+ com hard negatives")
 
