@@ -1,6 +1,13 @@
 # Caminhos e configurações locais por servidor (não versionar)
 docs/server_paths.md
 
+# Splits gerados dinamicamente pelo train_jina_v4_lacdip (paths variam por servidor)
+data/generated_splits/split0/
+data/generated_splits/split1/
+data/generated_splits/split2/
+data/generated_splits/split3/
+data/generated_splits/split4/
+
 # Logs do Weights & Biases
 wandb/
 wandb_backup_20251207_194327/
