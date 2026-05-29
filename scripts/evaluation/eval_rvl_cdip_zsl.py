@@ -44,7 +44,7 @@ from cavl_doc.utils.embedding_utils import prepare_inputs_for_multimodal_embeddi
 
 WANDB_ENTITY     = "jpcosta1990-university-of-brasilia"
 WANDB_PROJECT    = "CaVL-Doc_RVL-CDIP_ZSL"
-DEFAULT_REPO_ID  = "Jpcosta90/cavl-doc-lacdip"
+DEFAULT_REPO_ID  = "Jpcosta90/arcdoc"
 EMBEDDING_PROMPT = "<image> Analyze this document"
 
 _TRANSFORM = build_transform(input_size=448)

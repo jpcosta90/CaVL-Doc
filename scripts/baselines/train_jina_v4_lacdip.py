@@ -132,7 +132,7 @@ def _make_model(lora_r: int, lora_dropout: float, load_in_4bit: bool = False):
     print(f"Carregando {MODEL_HF_ID}...")
     load_kwargs = dict(
         trust_remote_code=True,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,        # 'torch_dtype' deprecated no Jina-v4 custom code
         device_map="auto",
     )
     if load_in_4bit:
@@ -167,6 +167,16 @@ def _make_model(lora_r: int, lora_dropout: float, load_in_4bit: bool = False):
         model = base
     else:
         model = get_peft_model(base, lora_cfg)
+
+    # Gradient checkpointing: troca memória de ativações por recomputação
+    # Necessário para caber o backward de um modelo 3.8B em 24 GB
+    model.enable_input_require_grads()
+    try:
+        model.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs={"use_reentrant": False}
+        )
+    except Exception:
+        pass  # alguns modelos custom não suportam; treino segue sem
 
     n_trainable = _count_lora_params(model)
     print(f"LoRA adicionado: {n_trainable / 1e6:.1f}M parâmetros treináveis "

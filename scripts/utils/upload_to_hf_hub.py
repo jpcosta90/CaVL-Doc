@@ -7,12 +7,12 @@ ou aceita um caminho direto via --checkpoint-path.
 
 Uso básico (auto-select via W&B):
     python scripts/utils/upload_to_hf_hub.py \
-        --repo-id seu-usuario/cavl-doc-lacdip \
+        --repo-id seu-usuario/arcdoc \
         --wandb-project CaVL-Doc_LA-CDIP_Sprint3_Staged5x5
 
 Uso com checkpoint explícito:
     python scripts/utils/upload_to_hf_hub.py \
-        --repo-id seu-usuario/cavl-doc-lacdip \
+        --repo-id seu-usuario/arcdoc \
         --checkpoint-path /mnt/large/checkpoints/<run>/best_siam.pt \
         --eer 0.0312
 """
@@ -179,7 +179,7 @@ from cavl_doc.utils.checkpointing import load_trained_siamese
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Baixa os pesos fine-tuned (backbone carregado automaticamente do HF Hub)
-ckpt_path = hf_hub_download(repo_id="{run_name.split('/')[0] if '/' in run_name else 'seu-usuario'}/cavl-doc-lacdip", filename="best_siam.pt")
+ckpt_path = hf_hub_download(repo_id="{run_name.split('/')[0] if '/' in run_name else 'seu-usuario'}/arcdoc", filename="best_siam.pt")
 backbone, _, tokenizer, _, _ = load_model("InternVL3-2B")
 model = load_trained_siamese(ckpt_path, backbone, tokenizer, device)
 model.eval()
@@ -305,8 +305,8 @@ def upload(
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Upload do melhor checkpoint CaVL-Doc para o HF Hub.")
 
-    p.add_argument("--repo-id", default="Jpcosta90/cavl-doc-lacdip",
-                   help="ID do repositório HF (default: Jpcosta90/cavl-doc-lacdip)")
+    p.add_argument("--repo-id", default="Jpcosta90/arcdoc",
+                   help="ID do repositório HF (default: Jpcosta90/arcdoc)")
 
     # Checkpoint manual ou auto-select
     p.add_argument("--checkpoint-path", default=None,

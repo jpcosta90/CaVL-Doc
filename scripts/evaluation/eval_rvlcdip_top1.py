@@ -64,7 +64,7 @@ EMBEDDING_PROMPT = "<image> Analyze this document"
 CUT_LAYER        = 27
 MODEL_NAME       = "InternVL3-2B"
 PIXEL_SIZE       = 448
-DEFAULT_REPO_ID  = "Jpcosta90/cavl-doc-lacdip"
+DEFAULT_REPO_ID  = "Jpcosta90/arcdoc"
 
 _TRANSFORM_ARCDOC = build_transform(input_size=448)
 

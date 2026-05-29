@@ -11,18 +11,18 @@ e cacheado localmente. A loss é lida do config embutido no checkpoint.
 
 Uso:
     python scripts/ablations/run_sprint4_rvl_transfer.py \
-        --hf-model-id Jpcosta90/cavl-doc-lacdip \
+        --hf-model-id Jpcosta90/arcdoc \
         --rvl-data-root /mnt/data/zs_rvl_cdip \
         --base-image-dir /mnt/data/zs_rvl_cdip/data
 
     # GPU específica:
     python scripts/ablations/run_sprint4_rvl_transfer.py \
-        --hf-model-id Jpcosta90/cavl-doc-lacdip \
+        --hf-model-id Jpcosta90/arcdoc \
         --gpu-id 2
 
     # Dry-run (imprime comandos sem executar):
     python scripts/ablations/run_sprint4_rvl_transfer.py \
-        --hf-model-id Jpcosta90/cavl-doc-lacdip \
+        --hf-model-id Jpcosta90/arcdoc \
         --dry-run
 """
 
@@ -220,7 +220,7 @@ def main() -> None:
 
     # Fonte do modelo
     p.add_argument("--hf-model-id", required=True,
-                   help="ID do modelo no HF Hub (ex: Jpcosta90/cavl-doc-lacdip)")
+                   help="ID do modelo no HF Hub (ex: Jpcosta90/arcdoc)")
     p.add_argument("--hf-cache-dir", default=None,
                    help="Diretório local para cache do modelo HF.")
     p.add_argument("--loss-type", default=None,
