@@ -440,6 +440,7 @@ def _build_train_cmd(
     margin: float,
     scale: float,
     resume_from: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
 ) -> List[str]:
     professor_lr = args.professor_lr if teacher_enabled else 0.0
     warmup_steps = args.professor_warmup_steps_on if teacher_enabled else args.professor_warmup_steps_off
@@ -488,6 +489,9 @@ def _build_train_cmd(
         cmd.extend(["--val-subset-size", str(args.val_subset_size)])
     else:
         cmd.extend(["--val-samples-per-class", str(args.val_samples_per_class)])
+
+    if output_dir is not None:
+        cmd.extend(["--output-dir", str(output_dir)])
 
     if resume_from is not None:
         cmd.extend(["--resume-from", str(resume_from)])
@@ -749,6 +753,7 @@ def main() -> None:
                     stage_epochs=args.student_only_epochs, teacher_enabled=False,
                     init_from_checkpoint=source_ckpt, seed=seed,
                     student_lr=loss_lr, margin=loss_margin, scale=loss_scale,
+                    output_dir=checkpoint_root / run_warmup,
                 )
                 cmd_warmup = _build_train_cmd(**_kw_warmup)
 
@@ -765,6 +770,7 @@ def main() -> None:
                     stage_epochs=args.teacher_epochs, teacher_enabled=True,
                     init_from_checkpoint=ckpt_warmup, seed=seed,
                     student_lr=loss_lr, margin=loss_margin, scale=loss_scale,
+                    output_dir=checkpoint_root / run_on,
                 )
                 cmd_on = _build_train_cmd(**_kw_on)
 
@@ -779,6 +785,7 @@ def main() -> None:
                     stage_epochs=args.teacher_epochs, teacher_enabled=False,
                     init_from_checkpoint=ckpt_warmup, seed=seed,
                     student_lr=loss_lr, margin=loss_margin, scale=loss_scale,
+                    output_dir=checkpoint_root / run_off_cont,
                 )
                 cmd_off_cont = _build_train_cmd(**_kw_off)
 
