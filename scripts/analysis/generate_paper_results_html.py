@@ -42,9 +42,11 @@ PROJECTS = {
     "exp0_fine_la":   "CaVL-Doc_LA-CDIP_FineSearch",
     "exp1":           "CaVL-Doc_LA-CDIP_Sprint1_Top5Validation",
     "exp3":           "CaVL-Doc_LA-CDIP_Sprint3_Staged5x5",
+    "exp3b":          "CaVL-Doc_LA-CDIP_Sprint3b_s32_k3",
     "exp_test":       "CaVL-Doc_LA-CDIP_Sprint3_TestSplit5",
     "exp4":           "CaVL-Doc_RVL_Sprint4_Transfer",
     "emb_baseline":   "CaVL-Doc_LA-CDIP_Embedding_Baseline",
+    "jina_lora":      "CaVL-Doc_LA-CDIP_JinaV4_LoRA",
     "vlm_metric":     "CaVL-Doc_LA-CDIP_VLM_Metric",
 }
 
@@ -403,7 +405,7 @@ def _build_exp1(runs: List) -> Tuple[pd.DataFrame, str]:
 # Experiment 3 — Staged Curriculum (LA-CDIP)
 # ---------------------------------------------------------------------------
 
-def _build_exp3(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, str, str, bool, List[int]]:
+def _build_exp3(runs: List, run_prefix: str = "Sprint3_") -> Tuple[pd.DataFrame, pd.DataFrame, str, str, bool, List[int]]:
     """
     Retorna:
       - table_phase1: comparação de losses (10 épocas sem hard mining)
@@ -414,7 +416,7 @@ def _build_exp3(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, str, str, bool,
     records = []
     for r in runs:
         name = r.name or ""
-        if not name.startswith("Sprint3_"):
+        if not name.startswith(run_prefix):
             continue
         eer  = _eer(r)
         loss = _loss_from_name(name)
@@ -530,13 +532,24 @@ def _build_exp3(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, str, str, bool,
     best_on_by_loss: Dict[str, List[float]] = {}
     best_off_by_loss: Dict[str, List[float]] = {}
 
+    def _to_scalar(v) -> Optional[float]:
+        """Converte Series ou escalar para float (melhor EER), ou None."""
+        if v is None:
+            return None
+        if isinstance(v, pd.Series):
+            return float(v.min()) if not v.empty else None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
     for loss in all_losses_c:
         on_vals, off_vals = [], []
         for split in all_splits_c:
             idx = (loss, split)
-            p1_eer  = df_p1.get(idx)
-            on_eer  = df_p2on.get(idx)
-            off_eer = df_p2off.get(idx)
+            p1_eer  = _to_scalar(df_p1.get(idx))
+            on_eer  = _to_scalar(df_p2on.get(idx))
+            off_eer = _to_scalar(df_p2off.get(idx))
             if on_eer is not None and p1_eer is not None:
                 on_vals.append(min(p1_eer, on_eer))
             elif on_eer is not None:
@@ -741,10 +754,14 @@ def _build_exp4(runs: List) -> Tuple[pd.DataFrame, str, bool, List[int]]:
 # Baselines — Embedding
 # ---------------------------------------------------------------------------
 
-def _build_baselines_embedding(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, str, str]:
+def _build_baselines_embedding(
+    runs: List,
+    extra_runs: Optional[List] = None,
+) -> Tuple[pd.DataFrame, pd.DataFrame, str, str]:
     """
     Returns: table_cv (splits 0-4), table_test (split 5), chart_cv, chart_test.
     Run name format: Emb_{method}_split{N}
+    extra_runs: runs adicionais no formato JinaV4_LoRA_LA-CDIP_S{N}_* (adicionados como "Jina-v4 finetuned").
     """
     records = []
     for r in runs:
@@ -759,6 +776,24 @@ def _build_baselines_embedding(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, 
         if eer is None:
             continue
         records.append({"method": method, "split": split_idx, "eer": eer})
+
+    # Jina-v4 finetuned (LoRA) — injeta como método extra
+    for r in (extra_runs or []):
+        name = r.name or ""
+        m = re.match(r"JinaV4_LoRA_LA-CDIP_S(\d+)_", name)
+        if not m:
+            # run de agregação: lê split_{N}/eer
+            s = _summary(r)
+            for split_idx in range(5):
+                eer = _scalar(s.get(f"split_{split_idx}/eer"))
+                if eer is not None:
+                    records.append({"method": "Jina-v4 finetuned", "split": split_idx, "eer": eer})
+            continue
+        split_idx = int(m.group(1))
+        s   = _summary(r)
+        eer = _scalar(s.get("val/best_eer")) or _scalar(s.get("best_eer"))
+        if eer is not None:
+            records.append({"method": "Jina-v4 finetuned", "split": split_idx, "eer": eer})
 
     if not records:
         return pd.DataFrame(), pd.DataFrame(), "", ""
@@ -817,6 +852,66 @@ def _build_baselines_embedding(runs: List) -> Tuple[pd.DataFrame, pd.DataFrame, 
     )
 
     return table_cv, table_test, chart_cv, chart_test
+
+
+# ---------------------------------------------------------------------------
+# Baselines — Jina-v4 LoRA (fine-tuned on LA-CDIP)
+# ---------------------------------------------------------------------------
+
+def _build_jina_lora(runs: List) -> Tuple[pd.DataFrame, str]:
+    """
+    Extrai EER por split dos runs de fine-tuning do Jina-v4 com LoRA.
+    Run name format: JinaV4_LoRA_LA-CDIP_S{N}_r{r}_ph{phase}_{timestamp}
+    Métrica: val/best_eer (por split) ou split_{N}/eer (run de agregação).
+    """
+    records = []
+    for r in runs:
+        name = r.name or ""
+        m = re.match(r"JinaV4_LoRA_LA-CDIP_S(\d+)_", name)
+        if m:
+            split_idx = int(m.group(1))
+            s   = _summary(r)
+            eer = _scalar(s.get("val/best_eer")) or _scalar(s.get("best_eer"))
+            if eer is not None:
+                records.append({"split": split_idx, "eer": eer})
+        else:
+            # run de agregação: lê split_{N}/eer
+            s = _summary(r)
+            for split_idx in range(5):
+                eer = _scalar(s.get(f"split_{split_idx}/eer"))
+                if eer is not None:
+                    records.append({"split": split_idx, "eer": eer})
+
+    if not records:
+        return pd.DataFrame(), ""
+
+    df = pd.DataFrame(records)
+    df = df.groupby("split", as_index=False)["eer"].min()
+
+    row: dict = {"Método": "Jina-v4 (LoRA, r=48)"}
+    vals: list = []
+    for s in range(5):
+        sub = df[df["split"] == s]
+        v = float(sub["eer"].iloc[0]) if not sub.empty else None
+        row[f"Split {s}"] = _fmt_eer(v)
+        if v is not None:
+            vals.append(v)
+    row["Média"] = _fmt_eer(np.mean(vals) if vals else None)
+    row["Std"]   = f"{np.std(vals)*100:.2f} pp" if len(vals) > 1 else "—"
+
+    table_cv = pd.DataFrame([row])
+
+    split_vals = [
+        df[df["split"] == s]["eer"].iloc[0] if not df[df["split"] == s].empty else None
+        for s in range(5)
+    ]
+    chart_cv = _grouped_bar_chart(
+        [f"Split {s}" for s in range(5)],
+        {"Jina-v4 (LoRA, r=48)": split_vals},
+        "Jina-v4 LoRA — EER por split (LA-CDIP)",
+    )
+
+    return table_cv, chart_cv
 
 
 # ---------------------------------------------------------------------------
@@ -986,11 +1081,12 @@ def build_html(
     exp1_table: pd.DataFrame, exp1_chart: str,
     exp3_t1: pd.DataFrame, exp3_t2: pd.DataFrame, exp3_t3: pd.DataFrame,
     exp3_c1: str, exp3_c2: str, exp3_c3: str, exp3_partial: bool, exp3_missing: List[int],
-    exp_test_table: pd.DataFrame, exp_test_chart: str, exp_test_partial: bool, exp_test_missing: List[int],
+    exp3b_t1: pd.DataFrame, exp3b_t2: pd.DataFrame, exp3b_t3: pd.DataFrame,
+    exp3b_c1: str, exp3b_c2: str, exp3b_c3: str, exp3b_partial: bool, exp3b_missing: List[int],
     exp4_table: pd.DataFrame, exp4_chart: str, exp4_partial: bool, exp4_missing: List[int],
-    emb_cv: pd.DataFrame, emb_test: pd.DataFrame, emb_chart_cv: str, emb_chart_test: str,
-    vlm_metric_cv: pd.DataFrame, vlm_metric_test: pd.DataFrame,
-    vlm_metric_chart_cv: str, vlm_metric_chart_test: str,
+    emb_cv: pd.DataFrame, emb_chart_cv: str,
+    vlm_metric_cv: pd.DataFrame,
+    vlm_metric_chart_cv: str,
 ) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
 
@@ -1073,24 +1169,25 @@ def build_html(
   </p>
   {_chart_html(exp3_c3)}
   {_table_html(exp3_t3)}
+
+  <h3>Sprint3b — ArcDoc (UnB) {partial_badge(exp3b_partial)}</h3>
+  <p class="desc">
+    Pipeline Sprint3b: treinamento em dois estágios com professor RL ativo desde o início do estágio 2.
+    Backbone InternVL3-2B congelado, loss Sub-Center CosFace/ArcFace (s=32, k=3), 140 steps/época.
+    Resultados reportados como <code>min(EER_fase1, EER_fase2)</code> por split.
+  </p>
+  {missing_note(exp3b_missing)}
+  <h4 style="font-size:0.88rem;color:#555;margin:10px 0 4px">Estágio 1 — Pré-treinamento</h4>
+  {_chart_html(exp3b_c1)}
+  {_table_html(exp3b_t1)}
+  <h4 style="font-size:0.88rem;color:#555;margin:10px 0 4px">Estágio 2 — Efeito do Hard Negative Mining</h4>
+  {_chart_html(exp3b_c2)}
+  {_table_html(exp3b_t2)}
+  <h4 style="font-size:0.88rem;color:#555;margin:10px 0 4px">Melhor EER acumulado — Sprint3b</h4>
+  {_chart_html(exp3b_c3)}
+  {_table_html(exp3b_t3)}
 </div>""")
 
-    # --- Exp TEST ---
-    sections.append(f"""
-<div class="section">
-  <h2>4. Avaliação no Split de Teste 5 (Zero-Shot) {partial_badge(exp_test_partial)}</h2>
-  <p class="desc">
-    Resultado no split 5, reservado exclusivamente para avaliação final e nunca visto durante o treino.
-    Para cada (loss, split), seleciona-se automaticamente o melhor checkpoint acumulado:
-    <code>min(EER_fase1, EER_fase2)</code>. As colunas <em>Com Mineração</em> e <em>Sem Mineração</em>
-    correspondem aos ramos <strong>profON</strong> e <strong>profOFF</strong> do estágio 2.
-    O delta Δ indica a diferença em pontos percentuais entre os dois ramos
-    (negativo = mineração melhora o resultado).
-  </p>
-  {missing_note(exp_test_missing)}
-  {_chart_html(exp_test_chart)}
-  {_table_html(exp_test_table)}
-</div>""")
 
     # --- Exp 5 (Transfer) ---
     sections.append(f"""
@@ -1112,16 +1209,12 @@ def build_html(
 <div class="section">
   <h2>6. Baselines — Similaridade por Embedding</h2>
   <p class="desc">
-    Comparação de métodos de embedding sem treinamento supervisionado: pixel bruto (cosseno e L2),
-    Jina-v4 (modelo multimodal de recuperação) e InternVL3-2B (tokens de entrada e saída da camada 27).
-    Os resultados são apresentados separadamente para a validação cruzada (splits 0–4) e o split de teste (split 5).
+    Comparação de métodos de embedding: pixel bruto (cosseno e L2),
+    Jina-v4 e InternVL3-2B sem treinamento supervisionado, e Jina-v4 finetuned (LoRA r=48, InfoNCE no LA-CDIP).
+    Resultados sobre validação cruzada (splits 0–4).
   </p>
-  <h3>Splits 0–4 (Validação Cruzada)</h3>
   {_chart_html(emb_chart_cv)}
   {_table_html(emb_cv)}
-  <h3>Split 5 (Teste Reservado)</h3>
-  {_chart_html(emb_chart_test)}
-  {_table_html(emb_test)}
 </div>""")
 
     # --- Baselines: VLM (Métrica Numérica) ---
@@ -1133,12 +1226,8 @@ def build_html(
     sem JSON e sem justificativa, reduzindo latência e erros de parse.
     Projeto W&amp;B separado para comparação isolada.
   </p>
-  <h3>Splits 0–4 (Validação Cruzada)</h3>
   {_chart_html(vlm_metric_chart_cv)}
   {_table_html(vlm_metric_cv)}
-  <h3>Split 5 (Teste Reservado)</h3>
-  {_chart_html(vlm_metric_chart_test)}
-  {_table_html(vlm_metric_test)}
 </div>""")
 
     return f"""<!DOCTYPE html>
@@ -1170,29 +1259,30 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     print("Buscando runs no W&B...")
-    runs0_cla    = _fetch_runs(PROJECTS["exp0_coarse_la"])
-    runs0_fla    = _fetch_runs(PROJECTS["exp0_fine_la"])
-    runs1        = _fetch_runs(PROJECTS["exp1"])
-    runs3        = _fetch_runs(PROJECTS["exp3"])
-    runs_test    = _fetch_runs(PROJECTS["exp_test"])
-    runs4        = _fetch_runs(PROJECTS["exp4"])
-    runs_emb     = _fetch_runs(PROJECTS["emb_baseline"])
-    runs_vlm_met = _fetch_runs(PROJECTS["vlm_metric"])
+    runs0_cla      = _fetch_runs(PROJECTS["exp0_coarse_la"])
+    runs0_fla      = _fetch_runs(PROJECTS["exp0_fine_la"])
+    runs1          = _fetch_runs(PROJECTS["exp1"])
+    runs3          = _fetch_runs(PROJECTS["exp3"])
+    runs3b         = _fetch_runs(PROJECTS["exp3b"])
+    runs4          = _fetch_runs(PROJECTS["exp4"])
+    runs_emb       = _fetch_runs(PROJECTS["emb_baseline"])
+    runs_jina_lora = _fetch_runs(PROJECTS["jina_lora"])
+    runs_vlm_met   = _fetch_runs(PROJECTS["vlm_metric"])
 
     print("Construindo seções...")
     exp0_prog, exp0_table              = _build_exp0(runs0_cla, runs0_fla)
     exp1_table, exp1_chart             = _build_exp1(runs1)
-    exp3_t1, exp3_t2, exp3_t3, exp3_c1, exp3_c2, exp3_c3, exp3_partial, exp3_missing = _build_exp3(runs3)
-    exp_test_table, exp_test_chart, exp_test_partial, exp_test_missing = _build_exp_test(runs_test)
-    exp4_table, exp4_chart, exp4_partial, exp4_missing = _build_exp4(runs4)
-    emb_cv, emb_test, emb_chart_cv, emb_chart_test                    = _build_baselines_embedding(runs_emb)
-    vlm_metric_cv, vlm_metric_test, vlm_metric_chart_cv, vlm_metric_chart_test = _build_baselines_vlm(
+    exp3_t1, exp3_t2, exp3_t3, exp3_c1, exp3_c2, exp3_c3, exp3_partial, exp3_missing   = _build_exp3(runs3)
+    exp3b_t1, exp3b_t2, exp3b_t3, exp3b_c1, exp3b_c2, exp3b_c3, exp3b_partial, exp3b_missing = _build_exp3(runs3b, run_prefix="Sprint3b_")
+    exp4_table, exp4_chart, exp4_partial, exp4_missing                 = _build_exp4(runs4)
+    emb_cv, _, emb_chart_cv, _                                        = _build_baselines_embedding(runs_emb, extra_runs=runs_jina_lora)
+    vlm_metric_cv, _, vlm_metric_chart_cv, _                          = _build_baselines_vlm(
         runs_vlm_met, "Baselines VLM (Métrica)")
 
     if exp3_partial:
         print(f"  Exp. 3 PARCIAL — splits pendentes: {exp3_missing}")
-    if exp_test_partial:
-        print(f"  Exp. Test PARCIAL — splits pendentes: {exp_test_missing}")
+    if exp3b_partial:
+        print(f"  Exp. 3b PARCIAL — splits pendentes: {exp3b_missing}")
     if exp4_partial:
         print(f"  Exp. 4 PARCIAL — splits pendentes: {exp4_missing}")
 
@@ -1200,10 +1290,10 @@ def main() -> None:
         exp0_prog, exp0_table,
         exp1_table, exp1_chart,
         exp3_t1, exp3_t2, exp3_t3, exp3_c1, exp3_c2, exp3_c3, exp3_partial, exp3_missing,
-        exp_test_table, exp_test_chart, exp_test_partial, exp_test_missing,
+        exp3b_t1, exp3b_t2, exp3b_t3, exp3b_c1, exp3b_c2, exp3b_c3, exp3b_partial, exp3b_missing,
         exp4_table, exp4_chart, exp4_partial, exp4_missing,
-        emb_cv, emb_test, emb_chart_cv, emb_chart_test,
-        vlm_metric_cv, vlm_metric_test, vlm_metric_chart_cv, vlm_metric_chart_test,
+        emb_cv, emb_chart_cv,
+        vlm_metric_cv, vlm_metric_chart_cv,
     )
 
     output.write_text(html, encoding="utf-8")
