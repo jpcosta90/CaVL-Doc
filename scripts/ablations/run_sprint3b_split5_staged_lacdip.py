@@ -796,6 +796,7 @@ def main() -> None:
                 ckpt_off_cont_path = checkpoint_root / run_off_cont / "last_checkpoint.pt"
 
                 # Warmup
+                best_warmup = checkpoint_root / run_warmup / "best_model.pt"
                 if ckpt_warmup.exists():
                     done = _checkpoint_epoch(ckpt_warmup)
                     if done >= args.student_only_epochs - 1:
@@ -805,6 +806,8 @@ def main() -> None:
                         cmd_warmup_resume = _build_train_cmd(**{**_kw_warmup, "resume_from": ckpt_warmup})
                         subprocess.run(cmd_warmup_resume, check=True, env=gpu_env)
                         time.sleep(args.sleep)
+                elif best_warmup.exists():
+                    print(f"[SKIP] {run_warmup} — best_model.pt encontrado, treino completo.")
                 else:
                     subprocess.run(cmd_warmup, check=True, env=gpu_env)
                     time.sleep(args.sleep)
