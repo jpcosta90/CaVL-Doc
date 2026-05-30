@@ -809,6 +809,9 @@ def main() -> None:
                     subprocess.run(cmd_warmup, check=True, env=gpu_env)
                     time.sleep(args.sleep)
 
+                if args.teacher_epochs == 0:
+                    continue  # fase2 desativada — só fase1
+
                 if not ckpt_warmup.exists():
                     raise FileNotFoundError(f"Checkpoint warmup não encontrado: {ckpt_warmup}")
 
