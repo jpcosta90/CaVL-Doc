@@ -177,6 +177,9 @@ class MeanPooling(nn.Module):
         self.ln = nn.LayerNorm(hidden_dim, eps=1e-6)
         
     def forward(self, tokens: torch.Tensor, mask: Optional[torch.Tensor] = None):
+        target_dtype = self.ln.weight.dtype
+        if tokens.dtype != target_dtype:
+            tokens = tokens.to(dtype=target_dtype)
         if mask is None:
             pooled = tokens.mean(dim=1)
         else:

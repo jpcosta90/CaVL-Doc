@@ -505,7 +505,7 @@ def _build_train_cmd(
         "--cut-layer",
         str(args.cut_layer),
         "--pooler-type",
-        "attention",
+        args.pooler_type,
         "--head-type",
         "mlp",
         "--num-queries",
@@ -595,6 +595,9 @@ def main() -> None:
     parser.add_argument("--patience", type=int, default=15)
     parser.add_argument("--lr-reduce-factor", type=float, default=0.5)
     parser.add_argument("--num-queries", type=int, default=1)
+    parser.add_argument("--pooler-type", default="attention",
+                        choices=["attention", "mean"],
+                        help="Tipo de pooler: attention (MQAP) ou mean (ablação)")
     parser.add_argument("--max-num-image-tokens", type=int, default=12)
     parser.add_argument("--cut-layer", type=int, default=27)
 
@@ -689,7 +692,7 @@ def main() -> None:
         print(f"  losses (Sprint 3): {', '.join(losses)}")
         print("=" * 90)
 
-    if args.teacher_warmup_epochs >= args.teacher_epochs:
+    if args.teacher_epochs > 0 and args.teacher_warmup_epochs >= args.teacher_epochs:
         raise ValueError(
             f"--teacher-warmup-epochs ({args.teacher_warmup_epochs}) deve ser menor que "
             f"--teacher-epochs ({args.teacher_epochs}), senão o professor nunca é aplicado."
