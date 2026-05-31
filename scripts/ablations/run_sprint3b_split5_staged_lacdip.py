@@ -586,7 +586,7 @@ def main() -> None:
     parser.add_argument("--checkpoint-root", default=None)
     parser.add_argument(
         "--source-init-mode",
-        default="latest-by-loss",
+        default="none",
         choices=["latest-by-loss", "none"],
     )
     parser.add_argument("--source-filter-prefix", default="sprint1")
