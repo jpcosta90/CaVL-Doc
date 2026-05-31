@@ -94,6 +94,26 @@ def prepare_experiment(args):
         print(f"📂 Diretório de saída explícito: {outdir}")
     else:
         outdir = setup_experiment_dir(base_path, experiment_name)
+
+    # PROTEÇÃO CRÍTICA: recusa sobrescrever checkpoint com arquitetura diferente
+    existing_best = os.path.join(outdir, "best_model.pt")
+    if os.path.exists(existing_best) and not args.resume_from:
+        try:
+            import torch as _torch
+            existing = _torch.load(existing_best, map_location="cpu", weights_only=False)
+            existing_pooler = existing.get("config", {}).get("pooler_type")
+            if existing_pooler and existing_pooler != args.pooler_type:
+                raise SystemExit(
+                    f"\n🚨 ERRO CRÍTICO: tentativa de sobrescrever checkpoint existente com arquitetura diferente!\n"
+                    f"   Diretório : {outdir}\n"
+                    f"   Pooler existente : {existing_pooler}\n"
+                    f"   Pooler solicitado: {args.pooler_type}\n"
+                    f"   Use --output-dir para especificar um diretório diferente."
+                )
+        except SystemExit:
+            raise
+        except Exception:
+            pass  # checkpoint ilegível — deixa o treinamento prosseguir normalmente
     
     cfg = vars(args)
     cfg['timestamp'] = timestamp

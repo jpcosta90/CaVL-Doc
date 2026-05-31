@@ -228,6 +228,18 @@ def _build_siam(backbone, tokenizer, device: str, cfg: dict):
 
 def _load_weights(siam, ckpt_path: Path, device: str) -> dict:
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+    cfg  = ckpt.get("config", {})
+
+    # Reconstrói o pool se o tipo do checkpoint diferir do siam atual
+    ckpt_pooler = cfg.get("pooler_type", POOLER_TYPE)
+    if "siam_pool" in ckpt and ckpt_pooler != getattr(siam.pool, "_pooler_type_tag", POOLER_TYPE):
+        from cavl_doc.modules.poolers import build_pooler
+        proj_out = cfg.get("projection_output_dim", PROJ_OUT_DIM)
+        new_pool = build_pooler(ckpt_pooler, hidden_dim=proj_out).to(device)
+        siam.pool = new_pool
+        siam.pool._pooler_type_tag = ckpt_pooler
+        print(f"  ⚙️  Pool reconstruído: {ckpt_pooler}")
+
     if "siam_pool" in ckpt:
         siam.pool.load_state_dict(ckpt["siam_pool"])
     if "siam_head" in ckpt:
@@ -235,7 +247,7 @@ def _load_weights(siam, ckpt_path: Path, device: str) -> dict:
     if "backbone_trainable" in ckpt and ckpt["backbone_trainable"]:
         siam.backbone.load_state_dict(ckpt["backbone_trainable"], strict=False)
     siam.eval()
-    return ckpt.get("config", {})
+    return cfg
 
 
 # ---------------------------------------------------------------------------
@@ -500,6 +512,7 @@ def main() -> None:
 
     # Constrói siam shell (pesos carregados por checkpoint)
     siam = _build_siam(backbone, tokenizer, device, cfg={})
+    siam.pool._pooler_type_tag = POOLER_TYPE  # marca o tipo atual para detecção de mudança
 
     results: List[dict] = []
 
