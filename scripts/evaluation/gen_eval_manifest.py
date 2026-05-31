@@ -37,15 +37,16 @@ KNOWN_LOSSES = [
 ]
 
 
-def _find_checkpoints(checkpoint_root: Path, run_prefix: str) -> list[Path]:
+def _find_checkpoints(checkpoint_root: Path, run_prefix: str, name_filter: str | None = None) -> list[Path]:
     found, seen_dirs = [], set()
     prefix = run_prefix.lower()
+    nf = name_filter.lower() if name_filter else None
     for ckpt_name in ["best_model.pt", "best_siam.pt"]:
         for ckpt in checkpoint_root.rglob(ckpt_name):
             if ckpt.parent in seen_dirs:
                 continue
             name = ckpt.parent.name.lower()
-            if name.startswith(prefix) and "fase" in name:
+            if name.startswith(prefix) and "fase" in name and (nf is None or nf in name):
                 found.append(ckpt)
                 seen_dirs.add(ckpt.parent)
     return sorted(found, key=lambda p: p.parent.name)
@@ -88,6 +89,8 @@ def main() -> None:
     p.add_argument("--checkpoint-root", required=True)
     p.add_argument("--run-prefix", default="Sprint3_",
                    help="Prefixo dos runs (Sprint3_ ou Sprint3b_)")
+    p.add_argument("--name-filter", default=None,
+                   help="Substring obrigatória no nome do diretório (ex: s32k3)")
     p.add_argument("--output", default="data/eval_manifest.json")
     p.add_argument("--merge", action="store_true",
                    help="Faz merge com o JSON existente (evita duplicatas por checkpoint_path)")
@@ -98,7 +101,7 @@ def main() -> None:
         print(f"❌ Diretório não encontrado: {checkpoint_root}")
         sys.exit(1)
 
-    ckpts = _find_checkpoints(checkpoint_root, args.run_prefix)
+    ckpts = _find_checkpoints(checkpoint_root, args.run_prefix, args.name_filter)
     if not ckpts:
         print(f"Nenhum checkpoint encontrado em '{checkpoint_root}' com prefixo '{args.run_prefix}'.")
         sys.exit(0)
