@@ -5,7 +5,6 @@ from torch.utils.data import Dataset, DataLoader
 import os
 from transformers import AutoModelForCausalLM, AutoProcessor, AutoTokenizer, BitsAndBytesConfig
 import torch.nn as nn
-from peft import PeftModel
 from cavl_doc.modules.layers import NewConnector # Ou onde quer que NewConnector esteja definida
 from cavl_doc.modules.heads import MPProjectionHead
 import glob
@@ -151,6 +150,7 @@ def load_model(
         # ... (lógica do LoRA não muda) ...
         print(f"--- 2. Anexando Adaptadores LoRA de: {adapter_path} ---")
         try:
+            from peft import PeftModel
             final_model = PeftModel.from_pretrained(base_model, adapter_path)
             final_model.eval()
             print("    -> Adaptadores LoRA aplicados com sucesso.")

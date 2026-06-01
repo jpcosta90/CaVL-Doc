@@ -7,7 +7,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.lines import Line2D
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
 np.random.seed(42)
 
@@ -17,7 +16,7 @@ PANEL  = 'white'
 GRID   = '#cccccc'
 FG     = '#111111'
 CLS_C  = ['#d62728', '#1f77b4', '#2ca02c']   # red / blue / green
-CLS_N  = ['Classe A', 'Classe B', 'Classe C']
+CLS_N  = ['Class A', 'Class B', 'Class C']
 GREEN  = '#2ca02c'
 RED    = '#d62728'
 ORANGE = '#e07b00'
@@ -25,7 +24,7 @@ ORANGE = '#e07b00'
 plt.rcParams.update({
     'font.family'      : 'serif',
     'mathtext.fontset' : 'dejavuserif',
-    'font.size'        : 9,
+    'font.size'        : 13,
 })
 
 # ── Synthetic token embeddings ────────────────────────────────────────────────
@@ -59,11 +58,11 @@ def style_ax(ax, lim=None):
     for axis in [ax.xaxis, ax.yaxis, ax.zaxis]:
         axis.pane.fill = False
         axis.pane.set_edgecolor(GRID)
-    ax.tick_params(colors=FG, labelsize=5.5, pad=1)
+    ax.tick_params(colors=FG, labelsize=8, pad=1)
     ax.grid(True, color=GRID, alpha=0.45, linewidth=0.5)
-    ax.set_xlabel(r'$h_1$', fontsize=8, labelpad=-2)
-    ax.set_ylabel(r'$h_2$', fontsize=8, labelpad=-2)
-    ax.set_zlabel(r'$h_3$', fontsize=8, labelpad=-2)
+    ax.set_xlabel(r'$h_1$', fontsize=11, labelpad=-2)
+    ax.set_ylabel(r'$h_2$', fontsize=11, labelpad=-2)
+    ax.set_zlabel(r'$h_3$', fontsize=11, labelpad=-2)
     if lim:
         if isinstance(lim, (list, tuple)):
             ax.set_xlim(lim[0], lim[1])
@@ -84,26 +83,26 @@ def scatter_tokens(ax, pts, alpha=0.72, size=18):
 def formula_box(ax, text):
     ax.text2D(0.50, -0.04, text,
               transform=ax.transAxes, ha='center', va='top',
-              fontsize=8.5, color=FG,
+              fontsize=11, color=FG,
               bbox=dict(boxstyle='round,pad=0.45', facecolor='white',
                         edgecolor='#aaaaaa', linewidth=0.9))
 
 def norm_label(ax):
     ax.text2D(0.03, 0.94, r'$\|\mathbf{h}_t\|=1$',
-              transform=ax.transAxes, fontsize=8, color=FG,
+              transform=ax.transAxes, fontsize=11, color=FG,
               bbox=dict(boxstyle='round,pad=0.30', facecolor='white',
                         edgecolor='#bbbbbb', linewidth=0.7))
 
 # ════════════════════════════════════════════════════════════════════════════
-# 3D axes in matplotlib have large internal padding — we overlap the bounding
-# boxes intentionally so the visible content (not whitespace) fills the figure.
-# W is intentionally > 0.5: the 3D bbox has ~17% internal padding on each side,
-# so overlapping bboxes by 0.20 brings the visible plots ~1 cm apart.
-W, H = 0.70, 0.46
-fig = plt.figure(figsize=(13, 10), facecolor=BG)
+# 1×4 horizontal layout. 3D axes have ~17% internal padding on each side, so
+# bounding boxes overlap intentionally; visible content stays evenly spaced.
+W, H = 0.32, 0.72
+DX   = 0.25   # horizontal step between panel origins
+BOT  = 0.28   # bottom of each axes bbox (space for legend + formula boxes below)
+fig = plt.figure(figsize=(16, 5.5), facecolor=BG)
 
 # ── (a) Contrastive Loss ──────────────────────────────────────────────────────
-ax1 = fig.add_axes([-0.10, 0.52, W, H], projection='3d', facecolor=PANEL)
+ax1 = fig.add_axes([-0.04, BOT, W, H], projection='3d', facecolor=PANEL)
 scatter_tokens(ax1, raw_pts)
 
 rng = np.random.default_rng(1)
@@ -127,13 +126,13 @@ for j, idx in enumerate([0, 4, 9]):
     ax1.text(p[0]+0.06, p[1]+0.03, p[2]+0.06,
              rf'$h_{{t_{j+1}}}$', color=CLS_C[0], fontsize=7)
 
-ax1.set_title('(a) Contrastive Loss', fontsize=11, fontweight='bold',
-              color=FG, pad=10, loc='left')
+ax1.set_title('(a) Contrastive Loss', fontsize=13, fontweight='bold',
+              color=FG, pad=10, loc='center')
 formula_box(ax1, r'$\mathcal{L} = \frac{1}{2}\left[y\,d^2 + (1-y)\max(m-d,0)^2\right]$')
 style_ax(ax1, lim=(-1.3, 2.0))
 
 # ── (b) Triplet Loss ──────────────────────────────────────────────────────────
-ax2 = fig.add_axes([0.36, 0.52, W, H], projection='3d', facecolor=PANEL)
+ax2 = fig.add_axes([-0.04 + DX, BOT, W, H], projection='3d', facecolor=PANEL)
 scatter_tokens(ax2, raw_pts, alpha=0.15, size=12)
 
 anchor   = raw_pts[lbls == 0][0]
@@ -161,13 +160,13 @@ ax2.text(*(anchor   + [-0.14, -0.06,  0.14]), r'$\mathbf{h}^{(a)}$', color='blac
 ax2.text(*(positive + [ 0.09,  0.00,  0.00]), r'$\mathbf{h}^{(p)}$', color=CLS_C[0], fontsize=8.5)
 ax2.text(*(negative + [ 0.09,  0.00,  0.00]), r'$\mathbf{h}^{(n)}$', color=CLS_C[1], fontsize=8.5)
 
-ax2.set_title('(b) Triplet Loss', fontsize=11, fontweight='bold',
-              color=FG, pad=10, loc='left')
+ax2.set_title('(b) Triplet Loss', fontsize=13, fontweight='bold',
+              color=FG, pad=10, loc='center')
 formula_box(ax2, r'$\mathcal{L} = \max(d_+ - d_- + m,\; 0)$')
 style_ax(ax2, lim=(-1.3, 2.0))
 
 # ── (c) ArcFace — Angular Margin ─────────────────────────────────────────────
-ax3 = fig.add_axes([-0.10, 0.07, W, H], projection='3d', facecolor=PANEL)
+ax3 = fig.add_axes([-0.04 + 2*DX, BOT, W, H], projection='3d', facecolor=PANEL)
 ax3.plot_wireframe(*SPH, color=GRID, alpha=0.18, linewidth=0.25)
 scatter_tokens(ax3, norm_pts)
 
@@ -186,14 +185,14 @@ ax3.text(mid[0]*1.14, mid[1]*1.14, mid[2]*1.08,
          r'$\theta_y + m$', color=ORANGE, fontsize=8.5)
 
 norm_label(ax3)
-ax3.set_title('(c) ArcFace — Angular Margin Softmax', fontsize=11,
-              fontweight='bold', color=FG, pad=10, loc='left')
+ax3.set_title('(c) ArcFace', fontsize=13, fontweight='bold',
+              color=FG, pad=10, loc='center')
 formula_box(ax3,
     r'$\mathcal{L} = -\log\frac{e^{s\cos(\theta_y+m)}}{e^{s\cos(\theta_y+m)}+\sum_{j\neq y}e^{s\cos\theta_j}}$')
 style_ax(ax3, lim=1.35)
 
 # ── (d) CosFace — Cosine Margin ───────────────────────────────────────────────
-ax4 = fig.add_axes([0.36, 0.07, W, H], projection='3d', facecolor=PANEL)
+ax4 = fig.add_axes([-0.04 + 3*DX, BOT, W, H], projection='3d', facecolor=PANEL)
 ax4.plot_wireframe(*SPH, color=GRID, alpha=0.18, linewidth=0.25)
 scatter_tokens(ax4, norm_pts)
 
@@ -229,8 +228,8 @@ ax4.text(ring0[10, 0], ring0[10, 1], ring0[10, 2] + 0.10,
          r'$\cos\theta_y - m$', color=ORANGE, fontsize=8.5)
 
 norm_label(ax4)
-ax4.set_title('(d) CosFace — Cosine Margin Softmax', fontsize=11,
-              fontweight='bold', color=FG, pad=10, loc='left')
+ax4.set_title('(d) CosFace', fontsize=13, fontweight='bold',
+              color=FG, pad=10, loc='center')
 formula_box(ax4,
     r'$\mathcal{L} = -\log\frac{e^{s(\cos\theta_y - m)}}{e^{s(\cos\theta_y-m)}+\sum_{j\neq y}e^{s\cos\theta_j}}$')
 style_ax(ax4, lim=1.35)
@@ -242,35 +241,22 @@ handles = [
     for i in range(3)
 ] + [
     Line2D([0], [0], color=GREEN,  lw=1.5,
-           label=r'Par positivo / $d_+$  (mesma classe)'),
+           label=r'Positive pair / $d_+$ (same class)'),
     Line2D([0], [0], color=RED,    lw=1.5, linestyle='--',
-           label=r'Par negativo / $d_-$ (classes distintas)'),
+           label=r'Negative pair / $d_-$ (different class)'),
     Line2D([0], [0], color=ORANGE, lw=1.8, linestyle=':',
-           label=r'Margem angular $\theta_y + m$ (ArcFace)'),
+           label=r'Angular margin $\theta_y + m$ (ArcFace)'),
     Line2D([0], [0], color=ORANGE, lw=1.8, linestyle='--',
-           label=r'Margem coseno $\cos\theta_y - m$ (CosFace)'),
-    Line2D([0], [0], color='gray', lw=0, marker=r'$\mathbf{W}$', markersize=10,
-           label=r'Protótipos de classe $\mathbf{W}_i$ (esfera unitária)'),
+           label=r'Cosine margin $\cos\theta_y - m$ (CosFace)'),
+    Line2D([0], [0], color='gray', lw=0, marker=r'$\mathbf{W}$', markersize=12,
+           label=r'Class prototypes $\mathbf{W}_j$ (unit sphere)'),
 ]
-fig.legend(handles=handles, loc='lower center', ncol=3,
-           facecolor='white', labelcolor=FG, fontsize=8.5,
+fig.legend(handles=handles, loc='lower center', ncol=4,
+           facecolor='white', labelcolor=FG, fontsize=12,
            framealpha=1.0, edgecolor='#aaaaaa',
            bbox_to_anchor=(0.5, 0.0))
 
-# ── Caption ───────────────────────────────────────────────────────────────────
-fig.text(
-    0.5, -0.005,
-    r'Fig. X — 3D projection of token embedding spaces $\mathbf{h}_t \in \mathbb{R}^d$ under four metric learning objectives. '
-    r'Each point represents a document token embedding.'
-    '\n'
-    r'(a–b) Pair/triplet methods enforce constraints via Euclidean distances with no geometric anchor. '
-    r'(c–d) Face-recognition losses project embeddings onto the unit hypersphere ($\|\mathbf{h}_t\|=1$) and '
-    r'enforce inter-class angular or cosine margins between fixed class prototypes $\mathbf{W}_i$.',
-    ha='center', va='top', fontsize=7.8, color='#333333', style='italic',
-    wrap=True
-)
-
 out = 'docs/assets/losses_embedding_space.png'
-plt.savefig(out, dpi=200, bbox_inches='tight', facecolor=BG)
+plt.savefig(out, dpi=250, bbox_inches='tight', facecolor=BG)
 print(f'Saved: {out}')
 plt.show()
