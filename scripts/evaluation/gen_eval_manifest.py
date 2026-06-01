@@ -91,6 +91,10 @@ def main() -> None:
                    help="Prefixo dos runs (Sprint3_ ou Sprint3b_)")
     p.add_argument("--name-filter", default=None,
                    help="Substring obrigatória no nome do diretório (ex: s32k3)")
+    p.add_argument("--loss-filter", default=None,
+                   help="Só inclui estas losses (vírgula). Ex: subcenter_arcface,triplet")
+    p.add_argument("--loss-exclude", default=None,
+                   help="Exclui estas losses (vírgula). Ex: subcenter_arcface")
     p.add_argument("--output", default="data/eval_manifest.json")
     p.add_argument("--merge", action="store_true",
                    help="Faz merge com o JSON existente (evita duplicatas por checkpoint_path)")
@@ -117,12 +121,20 @@ def main() -> None:
             existing = json.load(f)
         existing_paths = {e["checkpoint_path"] for e in existing}
 
+    loss_include = {l.strip() for l in args.loss_filter.split(",")} if args.loss_filter else None
+    loss_exclude = {l.strip() for l in args.loss_exclude.split(",")} if args.loss_exclude else set()
+
     new_entries = []
     for ckpt in ckpts:
         ckpt_str = str(ckpt)
         if ckpt_str in existing_paths:
             continue
         info = _parse(ckpt.parent.name)
+        loss = info["loss"] or "unknown"
+        if loss_include is not None and loss not in loss_include:
+            continue
+        if loss in loss_exclude:
+            continue
         new_entries.append({
             "sprint":          info["sprint"],
             "split":           info["split"],

@@ -219,6 +219,9 @@ def _grouped_bar_chart(
     ax.set_xticklabels(groups, fontsize=9)
     ax.legend(fontsize=8)
     ax.grid(axis="y", alpha=0.3)
+    # Aumenta margem superior para não cortar labels dos valores
+    ymax = ax.get_ylim()[1]
+    ax.set_ylim(top=ymax * 1.15)
     fig.tight_layout()
     return _b64_png(fig)
 
@@ -439,12 +442,18 @@ def _build_exp3(runs: List, run_prefix: str = "Sprint3_") -> Tuple[pd.DataFrame,
             continue
 
         records.append({"loss": loss, "split": split, "phase": phase,
-                         "eer": eer, "run": name})
+                         "eer": eer, "run": name,
+                         "is_noinit": "noinit" in name.lower()})
 
     if not records:
         return pd.DataFrame(), pd.DataFrame(), "", "", False, list(ALL_SPLITS)
 
     df = pd.DataFrame(records)
+    # Para losses que têm runs noinit, descarta as versões sem noinit
+    # Losses sem noinit ficam completamente intactas
+    losses_with_noinit = set(df[df["is_noinit"]]["loss"].unique())
+    if losses_with_noinit:
+        df = df[~((df["loss"].isin(losses_with_noinit)) & (~df["is_noinit"]))].reset_index(drop=True)
     completed = sorted(df["split"].dropna().unique().astype(int).tolist())
     missing   = sorted(set(ALL_SPLITS) - set(completed))
     is_partial = bool(missing)
