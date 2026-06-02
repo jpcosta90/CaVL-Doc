@@ -359,7 +359,7 @@ def _print_summary(results: List[dict]) -> None:
         eers = grp["eer"].values * 100
         splits_str = ",".join(map(str, sorted(grp["split"].tolist())))
         print(
-            f"\n  [{sprint}] {loss:25s}  {phase:15s}  splits=[{splits_str}]"
+            f"\n  [{sprint}] {str(loss):25s}  {str(phase):15s}  splits=[{splits_str}]"
             f"\n    Média={eers.mean():.2f}%  Std={eers.std():.2f} pp"
             f"  Mín={eers.min():.2f}%  Máx={eers.max():.2f}%"
         )
