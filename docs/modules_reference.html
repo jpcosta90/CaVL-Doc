@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CaVL-Doc — Referência de Módulos</title>
+<style>
+  :root {
+    --bg:        #0f1117;
+    --surface:   #181b24;
+    --card:      #1e2130;
+    --border:    #2a2f45;
+    --text:      #e2e8f0;
+    --muted:     #8892a4;
+    --accent:    #7c6af5;
+    --visual:    #3b82f6;   /* azul — tokens visuais */
+    --textual:   #22c55e;   /* verde — tokens textuais */
+    --mixed:     #f59e0b;   /* âmbar — agnostic/mixed */
+    --danger:    #ef4444;
+    --code-bg:   #141720;
+    --code-border:#2e344f;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.65;
+    font-size: 15px;
+  }
+
+  /* ── Nav ── */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(15,17,23,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex; align-items: center; gap: 2rem;
+    height: 52px;
+  }
+  nav .brand { font-weight: 700; font-size: 16px; color: var(--accent); white-space: nowrap; }
+  .cmp-grid { grid-template-columns: repeat(4, 1fr) !important; }
+  nav a { color: var(--muted); text-decoration: none; font-size: 13px; transition: color .15s; }
+  nav a:hover { color: var(--text); }
+
+  /* ── Layout ── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 3rem 2rem 6rem; }
+
+  h1 { font-size: 2rem; font-weight: 800; margin-bottom: .4rem; }
+  .subtitle { color: var(--muted); font-size: 15px; margin-bottom: 3rem; }
+
+  h2 { font-size: 1.3rem; font-weight: 700; margin: 3rem 0 1.2rem;
+       padding-bottom: .5rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 1.05rem; font-weight: 600; margin: 0 0 .6rem; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute; top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--accent);
+    border-radius: 10px 0 0 10px;
+  }
+  .card.visual-card::before   { background: var(--visual); }
+  .card.textual-card::before  { background: var(--textual); }
+  .card.mixed-card::before    { background: var(--mixed); }
+  .card.loss-card::before     { background: #a855f7; }
+
+  /* ── Tags ── */
+  .tags { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 1rem; }
+  .tag {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+    padding: 2px 8px; border-radius: 4px;
+  }
+  .tag.visual  { background: rgba(59,130,246,.18); color: #93c5fd; border: 1px solid rgba(59,130,246,.3); }
+  .tag.textual { background: rgba(34,197,94,.15);  color: #86efac; border: 1px solid rgba(34,197,94,.25); }
+  .tag.mixed   { background: rgba(245,158,11,.15); color: #fcd34d; border: 1px solid rgba(245,158,11,.25); }
+  .tag.agnostic{ background: rgba(148,163,184,.12);color: #94a3b8; border: 1px solid rgba(148,163,184,.2); }
+  .tag.registry{ background: rgba(124,106,245,.15);color: #c4b5fd; border: 1px solid rgba(124,106,245,.25);}
+  .tag.loss    { background: rgba(168,85,247,.15);  color: #d8b4fe; border: 1px solid rgba(168,85,247,.25);}
+
+  /* ── Modal analysis box ── */
+  .modal-box {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    margin: 1rem 0;
+    font-size: 13.5px;
+  }
+  .modal-box h4 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+                   color: var(--muted); margin-bottom: .7rem; }
+  .modal-row { display: grid; grid-template-columns: 120px 1fr; gap: .5rem; margin-bottom: .35rem; align-items: start; }
+  .modal-label { font-weight: 600; font-size: 12px; }
+  .modal-label.v { color: #93c5fd; }
+  .modal-label.t { color: #86efac; }
+  .modal-label.m { color: #fcd34d; }
+  .modal-label.n { color: #94a3b8; }
+
+  /* ── Code blocks ── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--code-border);
+    border-radius: 8px;
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.7;
+    margin: .8rem 0;
+  }
+  code { font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; }
+  pre code { font-size: inherit; }
+  .kw   { color: #c792ea; }
+  .fn   { color: #82aaff; }
+  .cls  { color: #ffcb6b; }
+  .str  { color: #c3e88d; }
+  .cmt  { color: #546e7a; font-style: italic; }
+  .num  { color: #f78c6c; }
+  .vt   { color: #89ddff; }   /* tokens visuais highlight */
+  .tt   { color: #c3e88d; }   /* tokens textuais highlight */
+
+  /* ── Param table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: .8rem 0; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11px;
+       text-transform: uppercase; letter-spacing: .06em; padding: .4rem .7rem;
+       border-bottom: 1px solid var(--border); }
+  td { padding: .5rem .7rem; border-bottom: 1px solid rgba(42,47,69,.6); vertical-align: top; }
+  td code { background: rgba(124,106,245,.12); color: #c4b5fd; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+  td:first-child { font-weight: 500; color: #a5b4fc; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+  /* ── Alert note ── */
+  .note {
+    background: rgba(245,158,11,.08); border-left: 3px solid var(--mixed);
+    border-radius: 0 6px 6px 0; padding: .7rem 1rem; font-size: 13px;
+    color: #fde68a; margin: .8rem 0;
+  }
+  .note.info {
+    background: rgba(59,130,246,.08); border-color: var(--visual); color: #bfdbfe;
+  }
+
+  /* ── Collapsible loss groups ── */
+  details { margin-bottom: .8rem; }
+  summary {
+    cursor: pointer; user-select: none;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 7px; padding: .7rem 1rem;
+    font-weight: 600; font-size: 14px;
+    display: flex; align-items: center; gap: .6rem;
+    list-style: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: '▶'; font-size: 10px; color: var(--muted); transition: transform .2s; }
+  details[open] summary::before { transform: rotate(90deg); }
+  details[open] summary { border-radius: 7px 7px 0 0; border-bottom-color: transparent; }
+  .loss-body {
+    background: var(--card); border: 1px solid var(--border); border-top: none;
+    border-radius: 0 0 7px 7px; padding: 1.2rem 1.5rem;
+  }
+
+  /* ── Section anchor offset ── */
+  [id] { scroll-margin-top: 64px; }
+
+  /* ── Architecture diagram ── */
+  .arch {
+    background: var(--code-bg); border: 1px solid var(--code-border);
+    border-radius: 10px; padding: 1.5rem; margin: 1.5rem 0;
+    display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;
+    justify-content: center; font-size: 13px;
+  }
+  .arch-block {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 7px; padding: .6rem 1rem; text-align: center;
+    min-width: 110px;
+  }
+  .arch-block.visual { border-color: var(--visual); color: #93c5fd; }
+  .arch-block.textual{ border-color: var(--textual); color: #86efac; }
+  .arch-block.pooler { border-color: var(--accent);  color: #c4b5fd; font-weight: 700; }
+  .arch-block.head   { border-color: #f59e0b; color: #fcd34d; }
+  .arch-arrow { color: var(--muted); font-size: 18px; }
+
+  /* ── Comparison grid ── */
+  .cmp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 700px) { .cmp-grid { grid-template-columns: 1fr; } }
+  .cmp-item { background: var(--code-bg); border: 1px solid var(--code-border); border-radius: 8px; padding: 1rem; }
+  .cmp-item h5 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: .5rem; }
+
+  /* ── Footer ── */
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 2rem; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">CaVL-Doc · Módulos</span>
+  <a href="#poolers">Poolers</a>
+  <a href="#heads">Heads</a>
+  <a href="#layers">Layers</a>
+  <a href="#losses">Losses</a>
+</nav>
+
+<div class="container">
+
+  <h1>Referência de Módulos</h1>
+  <p class="subtitle">
+    <code>src/cavl_doc/modules/</code> — Poolers, Heads, Connectors e Losses do CaVL-Doc.<br>
+    Ênfase em como cada pooler trata os tokens <span style="color:#93c5fd">visuais</span> e <span style="color:#86efac">textuais</span> na sequência multimodal.
+  </p>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- CONTEXTO: SEQUÊNCIA MULTIMODAL NO INTERNVL3            -->
+  <!-- ══════════════════════════════════════════════════════ -->
+
+  <h2 id="context">Contexto: Sequência Multimodal no InternVL3</h2>
+
+  <p style="color:var(--muted); margin-bottom:1rem;">
+    Antes de entender o que cada pooler faz, é necessário entender o que ele recebe.
+    No InternVL3, a sequência de entrada do LLM é formada pela concatenação de tokens visuais e textuais:
+  </p>
+
+  <div class="arch">
+    <div class="arch-block visual">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:3px">visual</div>
+      &lt;IMG_CONTEXT&gt; × N<br>
+      <span style="font-size:11px;color:var(--muted)">~256 por sub-imagem</span>
+    </div>
+    <span class="arch-arrow">⊕</span>
+    <div class="arch-block textual">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:3px">textual</div>
+      Prompt tokens<br>
+      <span style="font-size:11px;color:var(--muted)">~10–30 tokens</span>
+    </div>
+    <span class="arch-arrow">→</span>
+    <div class="arch-block" style="color:var(--text)">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:3px">sequência unificada</div>
+      LLM hidden states<br>
+      <span style="font-size:11px;color:var(--muted)">[B, seq_len, dim]</span>
+    </div>
+    <span class="arch-arrow">→</span>
+    <div class="arch-block pooler">Pooler</div>
+    <span class="arch-arrow">→</span>
+    <div class="arch-block head">Head</div>
+    <span class="arch-arrow">→</span>
+    <div class="arch-block" style="color:var(--text)">
+      Embedding<br><span style="font-size:11px;color:var(--muted)">[B, 512]</span>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>Proporção típica:</strong> com MAX_NUM=6, o InternVL3 gera 6 blocos × 256 tokens visuais = <strong>1.536 tokens visuais</strong> contra ~20 textuais.
+    Um mean pool ingênuo de toda a sequência produz um embedding ~98% visual — efetivamente ignorando o prompt.
+  </div>
+
+  <div class="note info">
+    <strong>O parâmetro <code>mask</code></strong> de todos os poolers é um tensor booleano <code>[B, seq_len]</code>.
+    Quem controla <em>quais</em> tokens entram no pool é o código chamador — o pooler em si
+    é agnóstico à modalidade. A análise abaixo descreve o comportamento <em>padrão</em> (sem filtro externo).
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- POOLERS                                                -->
+  <!-- ══════════════════════════════════════════════════════ -->
+
+  <h2 id="poolers">Poolers &mdash; <code>poolers.py</code></h2>
+
+  <!-- ─── AttentionPooling ─── -->
+  <div class="card" id="attention-pooling">
+    <div class="tags">
+      <span class="tag registry">registry: "attention"</span>
+      <span class="tag mixed">modality: learned re-weighting</span>
+    </div>
+    <h3>AttentionPooling</h3>
+    <p style="color:var(--muted); margin-bottom:.8rem;">
+      Pooler principal do CaVL-Doc. Aprende um vetor de query global (ou múltiplos) que atende
+      a todos os tokens da sequência via Multi-Head Attention. Permite dois modos de operação
+      controlados por <code>num_queries</code>, mantendo retrocompatibilidade de checkpoint.
+    </p>
+
+    <table>
+      <tr><th>Parâmetro</th><th>Tipo</th><th>Padrão</th><th>Descrição</th></tr>
+      <tr><td>hidden_dim</td><td><code>int</code></td><td><code>1536</code></td><td>Dimensão dos tokens de entrada (InternVL3-2B)</td></tr>
+      <tr><td>num_heads</td><td><code>int</code></td><td><code>8</code></td><td>Cabeças de atenção no MHA</td></tr>
+      <tr><td>num_queries</td><td><code>int</code></td><td><code>1</code></td><td>1 = modo legado; >1 = multi-query com projeção</td></tr>
+      <tr><td>dropout</td><td><code>float</code></td><td><code>0.0</code></td><td>Dropout no MHA</td></tr>
+    </table>
+
+    <div class="modal-box">
+      <h4>Análise de Modalidade</h4>
+      <div class="modal-row">
+        <span class="modal-label v">Tokens Visuais</span>
+        <span>Atuam como <strong>keys e values</strong> no MHA. Quanto mais a query aprendida apontar para eles, maior o peso. Sem filtro externo, dominam numericamente (>95% da sequência), mas a atenção pode aprender a equilibrar ou a ignorar tokens redundantes.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label t">Tokens Textuais</span>
+        <span>Também atuam como keys e values. São minoria numérica, mas se semanticamente relevantes, a query aprendida pode atribuir-lhes alto peso. Não há distinção estrutural entre modalidades — o balanço é inteiramente aprendido.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label m">Query Aprendida</span>
+        <span>Parâmetro <code>self.query</code> treinado end-to-end. Não distingue modalidades a priori — aprende empiricamente quais tokens (visuais ou textuais) são mais informativos para a tarefa de classificação.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label n">Mask</span>
+        <span>Passada como <code>key_padding_mask</code> no MHA (negada para o padrão PyTorch). Tokens mascarados são excluídos da atenção. Pode ser usada para restringir o pool a uma única modalidade.</span>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:.8rem;">
+      <div>
+        <p style="font-size:12px; color:var(--muted); margin-bottom:.4rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Modo Single-Query (num_queries=1)</p>
+        <pre><code><span class="cmt"># query: [1, dim] → [1, B, dim]</span>
+q = self.query.unsqueeze(<span class="num">1</span>).expand(<span class="num">1</span>, b, d)
+attn_out, _ = self.mha(q, tokens_t, tokens_t)
+<span class="cmt"># out: [1, B, dim] → squeeze → [B, dim]</span>
+<span class="kw">return</span> self.ln(attn_out.squeeze(<span class="num">0</span>))</code></pre>
+      </div>
+      <div>
+        <p style="font-size:12px; color:var(--muted); margin-bottom:.4rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em;">Modo Multi-Query (num_queries>1)</p>
+        <pre><code><span class="cmt"># query: [Q, 1, dim] → [Q, B, dim]</span>
+q = self.query.expand(<span class="num">-1</span>, b, <span class="num">-1</span>)
+attn_out, _ = self.mha(q, tokens_t, tokens_t)
+<span class="cmt"># out: [Q, B, dim] → [B, Q*dim]</span>
+flat = attn_out.transpose(<span class="num">0</span>,<span class="num">1</span>).reshape(b, <span class="num">-1</span>)
+<span class="kw">return</span> self.ln_out(self.proj(flat))</code></pre>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:.8rem;">
+      <strong>Viés de desequilíbrio:</strong> Com toda a sequência como keys/values e sem mask,
+      o gradiente flui predominantemente dos tokens visuais (maioria). Se o objetivo é sensibilidade ao
+      prompt, passar <code>mask</code> ou combinar com balanced pool é recomendado.
+    </div>
+  </div>
+
+  <!-- ─── PositionalAttentionPooling ─── -->
+  <div class="card" id="positional-attention-pooling">
+    <div class="tags">
+      <span class="tag registry">registry: "positional_attention"</span>
+      <span class="tag mixed">modality: learned re-weighting + ordem</span>
+    </div>
+    <h3>PositionalAttentionPooling</h3>
+    <p style="color:var(--muted); margin-bottom:.8rem;">
+      Extensão do <code>AttentionPooling</code> que adiciona <strong>encodings posicionais aprendíveis</strong>
+      aos tokens antes da atenção. Útil quando a posição relativa entre tokens (ex: ordem de leitura)
+      carrega informação semântica que não está nos hidden states.
+    </p>
+
+    <table>
+      <tr><th>Parâmetro</th><th>Tipo</th><th>Padrão</th><th>Descrição</th></tr>
+      <tr><td>hidden_dim</td><td><code>int</code></td><td><code>1536</code></td><td>Dimensão dos tokens</td></tr>
+      <tr><td>num_heads</td><td><code>int</code></td><td><code>8</code></td><td>Cabeças de atenção</td></tr>
+      <tr><td>num_queries</td><td><code>int</code></td><td><code>1</code></td><td>1 = single; >1 = multi-query</td></tr>
+      <tr><td>max_len</td><td><code>int</code></td><td><code>4096</code></td><td>Comprimento máximo para o pos_embed; sequências maiores são interpoladas</td></tr>
+    </table>
+
+    <div class="modal-box">
+      <h4>Análise de Modalidade</h4>
+      <div class="modal-row">
+        <span class="modal-label v">Tokens Visuais</span>
+        <span>Recebem o encoding posicional da sua posição na sequência (índice no input_ids do LLM, não posição espacial no patch grid). O pos_embed é <em>global e sequencial</em>, não espacial — não codifica a grade 2D da imagem.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label t">Tokens Textuais</span>
+        <span>Recebem encoding posicional do índice que ocupam após o bloco visual na sequência. Isso pode beneficiar o pooler ao distinguir, por exemplo, tokens iniciais (BOS, system prompt) de tokens de query.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label m">Interpolação</span>
+        <span>Se <code>seq_len &gt; max_len</code>, o pos_embed é interpolado linearmente — evita OOM mas pode degradar a qualidade posicional para sequências muito longas.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label n">Diferença do base</span>
+        <span>Idêntico ao <code>AttentionPooling</code> em tudo exceto pela adição de <code>tokens = tokens + pe</code> antes do MHA. O tratamento de modalidade é o mesmo (sem distinção estrutural).</span>
+      </div>
+    </div>
+
+    <pre><code><span class="cmt"># Diferença-chave em relação ao AttentionPooling:</span>
+<span class="kw">if</span> seq_len > self.pos_embed.shape[<span class="num">1</span>]:
+    pe = F.interpolate(self.pos_embed.transpose(<span class="num">1</span>,<span class="num">2</span>),
+                       size=seq_len, mode=<span class="str">'linear'</span>)
+    pe = pe.transpose(<span class="num">1</span>,<span class="num">2</span>)
+<span class="kw">else</span>:
+    pe = self.pos_embed[:, :seq_len, :]
+
+<span class="vt">tokens</span> = <span class="vt">tokens</span> + pe   <span class="cmt"># ← única adição em relação ao base</span></code></pre>
+  </div>
+
+  <!-- ─── MeanPooling ─── -->
+  <div class="card" id="mean-pooling">
+    <div class="tags">
+      <span class="tag registry">registry: "mean"</span>
+      <span class="tag agnostic">modality: agnóstico — domínio visual por padrão</span>
+    </div>
+    <h3>MeanPooling</h3>
+    <p style="color:var(--muted); margin-bottom:.8rem;">
+      Pooler mais simples: média aritmética sobre os tokens (opcionalmente mascarada), seguida de
+      LayerNorm. Sem parâmetros treináveis além da norm. Serve como baseline e referência para
+      comparação de qualidade de representação.
+    </p>
+
+    <table>
+      <tr><th>Parâmetro</th><th>Tipo</th><th>Padrão</th><th>Descrição</th></tr>
+      <tr><td>hidden_dim</td><td><code>int</code></td><td><code>1536</code></td><td>Dimensão para o LayerNorm</td></tr>
+    </table>
+
+    <div class="modal-box">
+      <h4>Análise de Modalidade</h4>
+      <div class="modal-row">
+        <span class="modal-label v">Tokens Visuais</span>
+        <span>Sem mask, contribuem proporcionalmente ao seu número — ~98% do peso total para MAX_NUM=6. O embedding resultante é praticamente um resumo visual, insensível ao prompt.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label t">Tokens Textuais</span>
+        <span>Diluídos pela maioria visual. Com mask apontando apenas para tokens textuais (<code>mask = seq != img_ctx_id</code>), o comportamento inverte completamente — funciona como sentence embedding ignorando a imagem.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label m">Mask ponderada</span>
+        <span>Quando <code>mask</code> é fornecida, a média é calculada apenas sobre os tokens <code>True</code>, com divisão pela contagem real (<code>sum_mask.clamp(min=1e-9)</code> — evita divisão por zero).</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label n">Caso de uso ideal</span>
+        <span>Baseline ou quando combinado externamente com pooling por modalidade (ex: o <code>_balanced_pool_layer</code> do DocPromptStudy que calcula two separate means e combina 50/50).</span>
+      </div>
+    </div>
+
+    <pre><code><span class="kw">if</span> mask <span class="kw">is</span> None:
+    pooled = tokens.mean(dim=<span class="num">1</span>)          <span class="cmt"># media de TODOS os tokens</span>
+<span class="kw">else</span>:
+    mask = mask.unsqueeze(<span class="num">-1</span>).float()
+    <span class="tt">tokens</span> = <span class="tt">tokens</span> * mask
+    sum_tokens = <span class="tt">tokens</span>.sum(dim=<span class="num">1</span>)
+    sum_mask   = mask.sum(dim=<span class="num">1</span>).clamp(min=<span class="num">1e-9</span>)
+    pooled     = sum_tokens / sum_mask      <span class="cmt"># media dos tokens selecionados</span>
+<span class="kw">return</span> self.ln(pooled)</code></pre>
+
+    <div class="note">
+      Para uso multimodal balanceado, este pooler deve ser chamado <em>duas vezes</em> com máscaras distintas
+      (uma para visual, outra para textual) e os resultados combinados externamente.
+      O <code>AttentionPooling</code> faz isso implicitamente via atenção aprendida.
+    </div>
+  </div>
+
+  <!-- ─── PromptGuidedPooler ─── -->
+  <div class="card" id="prompt-guided-pooler" style="border-color: #7c6af5;">
+    <div class="tags">
+      <span class="tag registry">registry: "prompt_guided"</span>
+      <span class="tag mixed">modality: cross-modal — prompt-conditioned</span>
+      <span class="tag" style="background:rgba(124,106,245,.2);color:#c4b5fd;border:1px solid rgba(124,106,245,.35);">novo</span>
+    </div>
+    <h3>PromptGuidedPooler <span style="color:var(--muted); font-weight:400; font-size:13px;">(solução para sensibilidade ao prompt)</span></h3>
+
+    <!-- Diagnóstico -->
+    <div style="background:rgba(239,68,68,.07); border-left:3px solid #ef4444; border-radius:0 6px 6px 0; padding:.8rem 1.1rem; margin-bottom:1rem; font-size:13.5px; color:#fca5a5;">
+      <strong>Problema que resolve:</strong> em VLMs causais (InternVL3, Qwen2-VL), os tokens visuais
+      aparecem <em>antes</em> do texto na sequência. A máscara causal bloqueia que eles vejam o prompt —
+      seus hidden states na Layer&nbsp;-1 são <strong>completamente invariantes ao texto</strong>.
+      Um pooler sobre tokens visuais produz o mesmo embedding para qualquer prompt na mesma imagem.
+    </div>
+
+    <!-- Diagrama de atenção causal -->
+    <div class="modal-box" style="margin-bottom:1rem;">
+      <h4>Direção da atenção causal</h4>
+      <pre style="border:none; background:none; padding:0; margin:0; font-size:12.5px;"><code>Sequência:  [BOS] [v₁][v₂]···[v₁₅₃₆]  [t₁][t₂]···[t₂₀]
+                    ←── visuais ──→      ←── prompt ──→
+
+Token vₖ  pode atender a: BOS, v₁..vₖ          ✓
+Token vₖ  NÃO vê: t₁..t₂₀                       ✗  ← bloqueado pela máscara causal
+
+Token tₗ  pode atender a: TODOS os vₖ + t₁..tₗ  ✓  ← cross-modal por natureza</code></pre>
+      <p style="font-size:12.5px; color:var(--muted); margin-top:.6rem;">
+        Consequência: <code>hidden_states[-1][img_pos]</code> é cego ao prompt.
+        <code>hidden_states[-1][text_pos]</code> já integrou visão + texto.
+      </p>
+    </div>
+
+    <p style="color:var(--muted); margin-bottom:.8rem;">
+      Usa os tokens textuais como <strong>queries</strong> para fazer cross-attention sobre os tokens visuais,
+      produzindo um resumo visual condicionado no que o prompt perguntou. Combina o resultado com o
+      pool textual (já cross-modal pelo LLM) via um escalar α aprendível.
+    </p>
+
+    <table>
+      <tr><th>Parâmetro</th><th>Tipo</th><th>Padrão</th><th>Descrição</th></tr>
+      <tr><td>hidden_dim</td><td><code>int</code></td><td><code>1536</code></td><td>Dimensão dos tokens (InternVL3-2B)</td></tr>
+      <tr><td>num_heads</td><td><code>int</code></td><td><code>8</code></td><td>Cabeças no cross-attention MHA</td></tr>
+      <tr><td>dropout</td><td><code>float</code></td><td><code>0.0</code></td><td>Dropout no MHA</td></tr>
+      <tr><td>fixed_alpha</td><td><code>float|None</code></td><td><code>None</code></td><td>Se None, α é aprendível via sigmoid; caso contrário, fixo (ex: 0.5)</td></tr>
+    </table>
+
+    <div class="modal-box">
+      <h4>Análise de Modalidade</h4>
+      <div class="modal-row">
+        <span class="modal-label v">Tokens Visuais</span>
+        <span>Atuam como <strong>keys e values</strong> no cross-attention. Não precisam ser sensíveis ao prompt — a seleção é feita pelas queries textuais. O resultado <code>v_attended</code> é um resumo dos patches mais relevantes para o que o texto pergunta.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label t">Tokens Textuais</span>
+        <span>A sua média, <code>t_pool</code>, serve como <strong>query única</strong> no cross-attention E como componente direto do embedding final. Por serem naturalmente cross-modais (viram toda a imagem via atenção causal), carregam a fusão visual+textual de graça.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label m">α (blend)</span>
+        <span>Parâmetro <code>sigmoid(_alpha_logit)</code> treinável. Controla quanto do embedding final vem da seleção visual (<code>v_attended</code>) vs. do resumo textual (<code>t_pool</code>). Inicializa em 0.5 (logit=0). Pode ser fixado via <code>fixed_alpha=0.5</code>.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label n">Interface</span>
+        <span>Diferente dos outros poolers, este recebe <strong>dois tensores separados</strong>: <code>visual_tokens [B,V,D]</code> e <code>text_tokens [B,T,D]</code>. Use <code>InternVLExtractor.extract_tokens()</code> para obtê-los do VLM.</span>
+      </div>
+    </div>
+
+    <pre><code><span class="cmt"># t_pool: mean dos text tokens — já vision+prompt conditioned</span>
+t_pool = text_tokens.mean(dim=<span class="num">1</span>)               <span class="cmt"># [B, D]</span>
+
+<span class="cmt"># cross-attention: text como query, visual como K/V</span>
+q = t_pool.unsqueeze(<span class="num">1</span>)                          <span class="cmt"># [B, 1, D]</span>
+v_attended, _ = self.cross_attn(
+    query=q,                                      <span class="cmt"># ← o prompt guia a seleção</span>
+    key=<span class="vt">visual_tokens</span>, value=<span class="vt">visual_tokens</span>
+)
+v_attended = v_attended.squeeze(<span class="num">1</span>)              <span class="cmt"># [B, D]</span>
+
+<span class="cmt"># blend aprendível: α * visual_guiado + (1-α) * texto</span>
+a = torch.sigmoid(self._alpha_logit)
+output = a * self.ln_v(v_attended) + (<span class="num">1</span> - a) * self.ln_t(t_pool)</code></pre>
+
+    <div class="note info" style="margin-top:.8rem;">
+      <strong>Uso com extractor:</strong>
+      <pre style="margin-top:.5rem; background:transparent; border:none; padding:0;"><code>tokens = extractor.extract_tokens(image, prompt, layer=-<span class="num">1</span>)
+emb = pooler(
+    visual_tokens=tokens[<span class="str">"visual"</span>],
+    text_tokens=tokens[<span class="str">"text"</span>],
+)</code></pre>
+    </div>
+  </div>
+
+  <!-- Comparativo -->
+  <h3 style="margin-top:2rem;">Comparativo dos Poolers</h3>
+  <div class="cmp-grid" style="grid-template-columns: repeat(4, 1fr);">
+    <div class="cmp-item">
+      <h5>AttentionPooling</h5>
+      <p style="font-size:13px; color:var(--muted);">Balanço <strong>aprendido</strong> entre modalidades. Pode, em teoria, equilibrar visual e textual, mas não tem garantia de sensibilidade ao prompt sem inductive bias explícito.</p>
+    </div>
+    <div class="cmp-item">
+      <h5>PositionalAttentionPooling</h5>
+      <p style="font-size:13px; color:var(--muted);">Mesma lógica + encoding posicional sequencial. Não distingue estruturalmente posição na grade visual de posição no texto.</p>
+    </div>
+    <div class="cmp-item">
+      <h5>MeanPooling</h5>
+      <p style="font-size:13px; color:var(--muted);">Sem parâmetros. Exige filtro externo via <code>mask</code>. Com <code>mask=text</code>, é o Tier&nbsp;1 de sensibilidade ao prompt — simples e eficaz.</p>
+    </div>
+    <div class="cmp-item" style="border-color:#7c6af5;">
+      <h5 style="color:#c4b5fd;">PromptGuidedPooler ★</h5>
+      <p style="font-size:13px; color:var(--muted);">Usa texto como query sobre visual. Resolve o viés causal estruturalmente. É o único pooler aqui cujo output muda semanticamente com o prompt para a <em>mesma imagem</em>.</p>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- HEADS                                                  -->
+  <!-- ══════════════════════════════════════════════════════ -->
+
+  <h2 id="heads">Heads &mdash; <code>heads.py</code></h2>
+  <p style="color:var(--muted); margin-bottom:1rem;">
+    As heads operam no embedding já poolado <code>[B, hidden_dim]</code> e o projetam para o espaço
+    de embedding final <code>[B, proj_out]</code>. Nenhuma delas tem consciência de modalidade —
+    recebem apenas o vetor do pooler.
+  </p>
+
+  <!-- ProjectionHead -->
+  <div class="card">
+    <div class="tags">
+      <span class="tag registry">registry: "mlp"</span>
+      <span class="tag agnostic">post-pooling</span>
+    </div>
+    <h3>ProjectionHead <span style="color:var(--muted); font-weight:400; font-size:13px;">(SimCLR style)</span></h3>
+    <p style="color:var(--muted); margin-bottom:.8rem;">
+      Head padrão com dois layers lineares (bottleneck), ativação GELU e normalização L2 opcional.
+      Boa para aprendizado contrastivo puro, mas a projeção pode distorcer a geometria do espaço aprendido pelo pooler.
+    </p>
+    <table>
+      <tr><th>Parâmetro</th><th>Padrão</th><th>Descrição</th></tr>
+      <tr><td>input_dim</td><td><code>1536</code></td><td>Saída do pooler</td></tr>
+      <tr><td>proj_hidden</td><td><code>4096</code></td><td>Dimensão do bottleneck intermediário</td></tr>
+      <tr><td>proj_out</td><td><code>512</code></td><td>Espaço de embedding final</td></tr>
+      <tr><td>use_norm</td><td><code>True</code></td><td>Normalização L2 na saída (projeção na hiper-esfera)</td></tr>
+    </table>
+    <pre><code>x = self.ln(x)          <span class="cmt"># LayerNorm na entrada</span>
+x = self.fc1(x)         <span class="cmt"># [B, 1536] → [B, 4096]</span>
+x = self.act(x)         <span class="cmt"># GELU</span>
+x = self.fc2(x)         <span class="cmt"># [B, 4096] → [B, 512]</span>
+<span class="kw">if</span> self.use_norm:
+    x = F.normalize(x, p=<span class="num">2</span>, dim=<span class="num">-1</span>)   <span class="cmt"># ||x||₂ = 1</span></code></pre>
+  </div>
+
+  <!-- MPProjectionHead -->
+  <div class="card">
+    <div class="tags">
+      <span class="tag registry">registry: "simple_mlp"</span>
+      <span class="tag agnostic">legacy</span>
+    </div>
+    <h3>MPProjectionHead <span style="color:var(--muted); font-weight:400; font-size:13px;">(legacy)</span></h3>
+    <p style="color:var(--muted); margin-bottom:.8rem;">
+      Head minimalista: Linear → ReLU → Linear. Sem LayerNorm, sem normalização de saída.
+      Mantida para retrocompatibilidade de checkpoints antigos.
+    </p>
+    <pre><code><span class="kw">return</span> self.fc2(self.relu(self.fc1(x)))
+<span class="cmt"># Nenhuma normalização — adequado apenas para loss Euclidiana (ContrastiveLoss)</span></code></pre>
+  </div>
+
+  <!-- ResidualProjectionHead -->
+  <div class="card">
+    <div class="tags">
+      <span class="tag registry">registry: "residual"</span>
+      <span class="tag agnostic">recommended for metric learning</span>
+    </div>
+    <h3>ResidualProjectionHead <span style="color:var(--muted); font-weight:400; font-size:13px;">(recomendada para ArcFace/CosFace)</span></h3>
+    <p style="color:var(--muted); margin-bottom:.8rem;">
+      Head com conexão residual (shortcut) para preservar a geometria do espaço do pooler.
+      A normalização L2 na saída é obrigatória para compatibilidade com as losses de margem angular.
+      Usa SiLU (Swish) em vez de ReLU para gradientes mais suaves.
+    </p>
+    <table>
+      <tr><th>Parâmetro</th><th>Padrão</th><th>Descrição</th></tr>
+      <tr><td>input_dim</td><td><code>1536</code></td><td>Saída do pooler</td></tr>
+      <tr><td>proj_hidden</td><td><code>4096</code></td><td>Dimensão interna do bloco de transformação</td></tr>
+      <tr><td>proj_out</td><td><code>512</code></td><td>Espaço de embedding final</td></tr>
+      <tr><td>dropout</td><td><code>0.1</code></td><td>Dropout no bloco principal</td></tr>
+    </table>
+    <pre><code>normalized_x = self.ln_in(x)
+features  = self.net(normalized_x)    <span class="cmt"># Linear→SiLU→Dropout→Linear</span>
+residual  = self.shortcut(normalized_x)  <span class="cmt"># projeção linear se dim muda</span>
+out = features + residual
+out = self.ln_out(out)
+<span class="kw">return</span> F.normalize(out, p=<span class="num">2</span>, dim=<span class="num">-1</span>)  <span class="cmt"># projeção na hiper-esfera</span></code></pre>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- LAYERS                                                 -->
+  <!-- ══════════════════════════════════════════════════════ -->
+
+  <h2 id="layers">Connector Layer &mdash; <code>layers.py</code></h2>
+
+  <div class="card">
+    <div class="tags">
+      <span class="tag visual">ViT → LLM bridge</span>
+    </div>
+    <h3>NewConnector</h3>
+    <p style="color:var(--muted); margin-bottom:.8rem;">
+      Camada linear simples que faz a ponte entre a saída do ViT (<code>1024</code>) e a dimensão de entrada
+      esperada pelo LLM/head (<code>1536</code>). Substitui o <code>mlp1</code> original quando há incompatibilidade
+      de dimensões. Opera exclusivamente no domínio visual — recebe features do encoder de visão e as projeta
+      para o espaço do LLM.
+    </p>
+    <table>
+      <tr><th>Parâmetro</th><th>Padrão</th><th>Descrição</th></tr>
+      <tr><td>vit_output_dim</td><td><code>1024</code></td><td>Dimensão de saída do ViT (InternViT-300M)</td></tr>
+      <tr><td>llm_input_dim</td><td><code>1536</code></td><td>Dimensão de entrada do LLM (InternLM2-1.8B)</td></tr>
+    </table>
+    <pre><code><span class="kw">def</span> <span class="fn">forward</span>(self, <span class="vt">x</span>: torch.Tensor) -> torch.Tensor:
+    <span class="cmt"># x: [B, n_patches, 1024] → [B, n_patches, 1536]</span>
+    <span class="kw">return</span> self.linear(<span class="vt">x</span>)</code></pre>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════ -->
+  <!-- LOSSES                                                 -->
+  <!-- ══════════════════════════════════════════════════════ -->
+
+  <h2 id="losses">Losses &mdash; <code>losses.py</code></h2>
+  <p style="color:var(--muted); margin-bottom:1rem;">
+    Todas as losses operam no espaço de embedding final — recebem vetores <code>[B, proj_out]</code>
+    já processados pela head e são agnósticas a modalidades. Agrupadas por família.
+  </p>
+
+  <!-- Pairwise -->
+  <details open>
+    <summary><span class="tag loss" style="margin-right:.5rem">Pairwise</span> Contrastive &amp; Triplet</summary>
+    <div class="loss-body">
+
+      <div class="card loss-card" style="margin-bottom:1rem">
+        <div class="tags">
+          <span class="tag registry">registry: "contrastive"</span>
+        </div>
+        <h3>ContrastiveLoss <span style="color:var(--muted); font-weight:400; font-size:13px;">(Siamese, distância Euclidiana)</span></h3>
+        <p style="color:var(--muted); font-size:13.5px; margin-bottom:.6rem;">
+          Baseada em pares com label binário: <code>1 = mesmo documento</code>, <code>0 = diferentes</code>.
+          Minimiza distância para pares positivos e a empurra além de uma margem para negativos.
+        </p>
+        <pre><code>loss_pos = label       * d²
+loss_neg = (1-label) * clamp(margin - d, 0)²
+<span class="cmt"># d = ||emb1 - emb2||₂</span></code></pre>
+        <p style="font-size:12.5px; color:var(--muted);">
+          <strong>Hiperparâmetros:</strong> <code>margin=1.0</code>.
+          Suporta <code>forward_individual</code> para uso com RL Professor.
+        </p>
+      </div>
+
+      <div class="card loss-card">
+        <div class="tags">
+          <span class="tag registry">registry: "triplet"</span>
+        </div>
+        <h3>OnlineTripletLoss <span style="color:var(--muted); font-weight:400; font-size:13px;">(Batch Hard mining)</span></h3>
+        <p style="color:var(--muted); font-size:13.5px; margin-bottom:.6rem;">
+          Para cada âncora no batch, seleciona automaticamente o <em>positivo mais difícil</em>
+          (maior distância à âncora) e o <em>negativo mais difícil</em> (menor distância à âncora).
+          Requer batches com múltiplas amostras por classe.
+        </p>
+        <pre><code>loss = max(0, d(a,p_hardest) - d(a,n_hardest) + margin)</code></pre>
+        <p style="font-size:12.5px; color:var(--muted);">
+          <strong>Hiperparâmetros:</strong> <code>margin=0.3</code>.
+        </p>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- Angular Margin -->
+  <details>
+    <summary><span class="tag loss" style="margin-right:.5rem">Angular Margin</span> ArcFace, CosFace, ExpFace e variantes Elastic</summary>
+    <div class="loss-body">
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "arcface"</span></div>
+        <h3>ArcFaceLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Adiciona margem angular <code>m</code> ao ângulo da classe correta:
+          <code>φ = cos(θ + m)</code>. Escala logits por <code>s</code> antes do softmax.
+          Requer embeddings normalizados. Padrões: <code>s=64, m=0.50</code>.
+        </p>
+      </div>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "elastic_arcface"</span></div>
+        <h3>ElasticArcFaceLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Relaxa a margem fixa: <code>m ~ N(mean_m, std)</code> amostrado por exemplo no batch.
+          Melhora generalização em dados ruidosos. Padrões: <code>m=0.50, std=0.05</code>.
+        </p>
+      </div>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "cosface"</span></div>
+        <h3>CosFaceLoss <span style="color:var(--muted); font-weight:400; font-size:13px;">(Large Margin Cosine)</span></h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Margem aditiva diretamente no cosseno: <code>φ = cos(θ) - m</code>.
+          Mais estável que ArcFace numericamente. Padrões: <code>s=64, m=0.35</code>.
+        </p>
+      </div>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "elastic_cosface"</span></div>
+        <h3>ElasticCosFaceLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Versão elástica do CosFace: <code>m ~ N(mean_m, std)</code> por elemento do batch.
+          Padrões: <code>m=0.4, std=0.05</code>.
+        </p>
+      </div>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "expface"</span></div>
+        <h3>ExpFaceLoss <span style="color:var(--muted); font-weight:400; font-size:13px;">(Exponential Angular Margin)</span></h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Margem não-linear: <code>T(θ) = cos((θ/π)^m × π)</code>.
+          Concentra gradiente em exemplos centrais (ângulo pequeno), ignorando ruidosos.
+          Padrões: <code>s=64, m=0.7</code>.
+        </p>
+      </div>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "elastic_expface"</span></div>
+        <h3>ElasticExpFaceLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Versão elástica do ExpFace: <code>m ~ N(mean_m, std)</code> por elemento.
+          Padrões: <code>m=0.7, std=0.05</code>.
+        </p>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- SubCenter -->
+  <details>
+    <summary><span class="tag loss" style="margin-right:.5rem">Sub-Center</span> Multi-centróide para variância intra-classe</summary>
+    <div class="loss-body">
+      <p style="color:var(--muted); font-size:13.5px; margin-bottom:1rem;">
+        Substitui o único centróide de classe por K sub-centros. Para cada classe, computa
+        a similaridade com todos os K sub-centros e usa o <em>melhor</em> (max pooling).
+        Ideal para classes com layouts muito distintos (ex: "Invoice" pode ser tabela ou texto corrido).
+      </p>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "subcenter_arcface"</span></div>
+        <h3>SubCenterArcFaceLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          K sub-centros com margem angular ArcFace. Pesos: <code>[num_classes × K, proj_out]</code>.
+          Padrões: <code>K=3, s=64, m=0.50</code>.
+        </p>
+        <pre><code>cosine_all = F.linear(emb, weight)          <span class="cmt"># [B, Classes×K]</span>
+cosine_all = cosine_all.view(-1, classes, k)  <span class="cmt"># [B, Classes, K]</span>
+cosine, _  = torch.max(cosine_all, dim=2)    <span class="cmt"># [B, Classes] — melhor sub-centro</span></code></pre>
+      </div>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "subcenter_cosface"</span></div>
+        <h3>SubCenterCosFaceLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Mesma lógica com margem CosFace. Mais estável em datasets ruidosos.
+          Padrões: <code>K=3, s=64, m=0.35</code>.
+        </p>
+      </div>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "subcenter_circle"</span></div>
+        <h3>SubCenterCircleLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Combina sub-centros (K) com a ponderação dinâmica da Circle Loss.
+          Padrões: <code>K=3, m=0.25, gamma=256</code>.
+        </p>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- Circle Loss -->
+  <details>
+    <summary><span class="tag loss" style="margin-right:.5rem">Circle Loss</span> Ponderação dinâmica de pares</summary>
+    <div class="loss-body">
+      <p style="color:var(--muted); font-size:13.5px; margin-bottom:1rem;">
+        Atribui pesos dinâmicos <code>α</code> a positivos e negativos com base em quão difícil
+        cada par é. Foca em hard negatives e relaxa em pares fáceis.
+        Formula: <code>loss = softplus(logsumexp(logit_neg) + logsumexp(logit_pos))</code>.
+      </p>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "circle"</span></div>
+        <h3>CircleLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Circle Loss padrão. Padrões: <code>m=0.25, gamma=256</code>.
+        </p>
+      </div>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "elastic_circle"</span></div>
+        <h3>ElasticCircleLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Margem elástica: <code>m ~ N(mean_m, std)</code> amostrado independentemente para
+          positivos e negativos. Padrões: <code>m=0.25, std=0.0125, gamma=256</code>.
+        </p>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- Iso -->
+  <details>
+    <summary><span class="tag loss" style="margin-right:.5rem">Isotropic</span> Correção do Cone de Representação</summary>
+    <div class="loss-body">
+      <p style="color:var(--muted); font-size:13.5px; margin-bottom:1rem;">
+        Família projetada para embeddings de alta dimensão de ViT/LLM que sofrem de <em>anisotropia</em>
+        (o "cone effect" — todos os embeddings apontam para uma direção dominante, reduzindo a
+        discriminabilidade). Aplica uma projeção isotrópica antes de computar a similaridade:
+        <code>x_iso = x - (x · u)u</code>, onde <code>u</code> é o eixo do cone estimado por
+        média móvel exponencial dos batches de treinamento.
+      </p>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "iso_arcface"</span></div>
+        <h3>IsoArcFaceLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Projeção isotrópica + ArcFace. Padrões: <code>s=64, m=0.50, momentum=0.9</code>.
+        </p>
+        <pre><code><span class="cmt"># Atualiza eixo do cone via EMA:</span>
+batch_dir = F.normalize(embeddings.mean(dim=<span class="num">0</span>), dim=<span class="num">0</span>)
+self.cone_axis = momentum * self.cone_axis + (1-momentum) * batch_dir
+
+<span class="cmt"># Remove componente do cone:</span>
+cone_comp = (embeddings @ self.cone_axis).unsqueeze(<span class="num">1</span>) * self.cone_axis
+emb_iso = embeddings - cone_comp   <span class="cmt"># projeção no complemento ortogonal</span></code></pre>
+      </div>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "iso_cosface"</span></div>
+        <h3>IsoCosFaceLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Projeção isotrópica + CosFace. Padrões: <code>s=64, m=0.35, momentum=0.9</code>.
+        </p>
+      </div>
+
+      <div class="card loss-card">
+        <div class="tags"><span class="tag registry">registry: "iso_circle"</span></div>
+        <h3>IsoCircleLoss</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Projeção isotrópica + Circle Loss (ponderação dinâmica).
+          Padrões: <code>m=0.25, gamma=256, momentum=0.9</code>.
+        </p>
+      </div>
+
+    </div>
+  </details>
+
+  <!-- Builders -->
+  <h3 style="margin-top:2rem;">Registry &amp; Builders</h3>
+  <pre><code><span class="kw">from</span> cavl_doc.modules.poolers <span class="kw">import</span> build_pooler
+<span class="kw">from</span> cavl_doc.modules.heads   <span class="kw">import</span> build_head
+<span class="kw">from</span> cavl_doc.modules.losses  <span class="kw">import</span> build_loss
+
+<span class="cmt"># Pooler sensível ao prompt (recomendado)</span>
+pooler = <span class="fn">build_pooler</span>(<span class="str">"prompt_guided"</span>, hidden_dim=<span class="num">1536</span>, num_heads=<span class="num">8</span>)
+
+<span class="cmt"># Pooler com atenção balanceada (legado)</span>
+pooler = <span class="fn">build_pooler</span>(<span class="str">"attention"</span>, hidden_dim=<span class="num">1536</span>, num_heads=<span class="num">8</span>, num_queries=<span class="num">4</span>)
+
+<span class="cmt"># Head residual para ArcFace</span>
+head = <span class="fn">build_head</span>(<span class="str">"residual"</span>, input_dim=<span class="num">1536</span>, proj_hidden=<span class="num">4096</span>, proj_out=<span class="num">512</span>)
+
+<span class="cmt"># Loss isotrópica com margem angular</span>
+loss_fn = <span class="fn">build_loss</span>(<span class="str">"iso_arcface"</span>, in_features=<span class="num">512</span>, num_classes=<span class="num">16</span>, s=<span class="num">64</span>, m=<span class="num">0.5</span>)</code></pre>
+
+</div><!-- /container -->
+
+<footer>
+  CaVL-Doc &mdash; <code>src/cavl_doc/modules/</code> &mdash; Gerado em 2026-06-04
+</footer>
+
+</body>
+</html>

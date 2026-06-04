@@ -362,7 +362,9 @@ def main(args):
             hidden_states = out.hidden_states
             lm = backbone.language_model.model
             idx = cut_layer + 1 if len(hidden_states) == (len(lm.layers) + 1) else cut_layer
-            return hidden_states[idx], None
+            # 3rd element: input_ids used by PromptGuidedPooler to compute visual_mask.
+            # Ignored by all other poolers (backward-compatible).
+            return hidden_states[idx], batch_attention_mask, batch_input_ids
 
         siam = build_cavl_model(
             backbone=backbone, 
@@ -483,7 +485,7 @@ def parse_args():
     p.add_argument("--loss-type", type=str, default="contrastive", 
                    choices=["contrastive", "triplet", "arcface", "elastic_arcface", "cosface", "elastic_cosface", "expface", "elastic_expface", "subcenter_arcface", "subcenter_cosface", "circle", "elastic_circle", "subcenter_circle", "angular", "iso_arcface", "iso_cosface", "iso_circle"],
                    help="Type of loss function")
-    p.add_argument("--pooler-type", type=str, default="attention", choices=["attention", "mean", "gem", "netvlad"])
+    p.add_argument("--pooler-type", type=str, default="attention", choices=["attention", "mean", "gem", "netvlad", "prompt_guided"])
     p.add_argument("--head-type", type=str, default="mlp", choices=["mlp", "simple_mlp", "residual"])
     p.add_argument("--num-queries", type=int, default=1, help="Number of attention queries for pooling")
     p.add_argument("--num-classes", type=int, default=16, help="Number of classes (fallback if not detected)")

@@ -6,8 +6,7 @@ from transformers import PreTrainedModel, AutoModel, AutoTokenizer
 
 # Imports internos
 from cavl_doc.models.configuration_cavl import CaVLConfig
-# Importa os BUILDERS (fábricas), não as classes diretas
-from cavl_doc.modules.poolers import build_pooler
+from cavl_doc.modules.poolers import build_pooler, PromptGuidedPooler
 from cavl_doc.modules.heads import build_head
 
 class CaVLModel(PreTrainedModel):
@@ -79,6 +78,16 @@ class CaVLModel(PreTrainedModel):
 
         self.prompt = prompt
 
+        # Token id used to identify visual positions in input_ids.
+        # Required by PromptGuidedPooler; harmless for all other poolers.
+        if tokenizer is not None:
+            try:
+                self.img_ctx_id = tokenizer.convert_tokens_to_ids("<IMG_CONTEXT>")
+            except Exception:
+                self.img_ctx_id = None
+        else:
+            self.img_ctx_id = None
+
         # --- Configurações Comuns ---
         if hasattr(self.backbone, "gradient_checkpointing_enable"):
             self.backbone.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
@@ -146,7 +155,13 @@ class CaVLModel(PreTrainedModel):
     def _extract_tokens_via_encode_fn(self, images, device=None, **encode_kwargs):
         assert callable(self.encode_fn), "encode_fn not provided in legacy mode."
         out = self.encode_fn(self.backbone, images, cut_layer=self.cut_layer, **encode_kwargs)
-        return (out[0], out[1]) if isinstance(out, tuple) else (out, None)
+        if isinstance(out, tuple):
+            tokens, mask = out[0], out[1]
+            # 3rd element is input_ids — passed by encode_fn when PromptGuidedPooler is active
+            extra_ids = out[2] if len(out) > 2 else None
+        else:
+            tokens, mask, extra_ids = out, None, None
+        return tokens, mask, extra_ids
 
     def _extract_tokens_via_hidden_states(self, input_ids=None, attention_mask=None, device=None, **kwargs):
         lm = self.backbone.language_model.model
@@ -159,23 +174,32 @@ class CaVLModel(PreTrainedModel):
         idx = self.config.cut_layer + 1 if len(hs) == (len(lm.layers) + 1) else self.config.cut_layer
         return hs[idx], None
 
+    def _compute_visual_mask(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Returns bool [B, seq] with True at <IMG_CONTEXT> positions."""
+        return (input_ids == self.img_ctx_id)
+
     def forward(self, images=None, input_ids=None, attention_mask=None, device=None, encode_kwargs=None, image_a=None, image_b=None):
         device = device or (next(self.parameters()).device)
-        
+
         if image_a is not None and image_b is not None:
             za = self.forward(images=image_a, device=device)
             zb = self.forward(images=image_b, device=device)
             return za, zb
 
         if self.encode_fn is not None and images is not None:
-            # Se for tensor, move para device. Se for lista, deixa o encode_fn lidar.
             if isinstance(images, torch.Tensor):
                 images = images.to(device)
-            tokens, mask = self._extract_tokens_via_encode_fn(images, device=device, **(encode_kwargs or {}))
+            tokens, mask, extra_ids = self._extract_tokens_via_encode_fn(images, device=device, **(encode_kwargs or {}))
         else:
             tokens, mask = self._extract_tokens_via_hidden_states(input_ids=input_ids, attention_mask=attention_mask, device=device, **(encode_kwargs or {}))
-        
-        pooled = self.pool(tokens, mask=mask)
+            extra_ids = input_ids  # already available in this path
+
+        if isinstance(self.pool, PromptGuidedPooler) and self.img_ctx_id is not None and extra_ids is not None:
+            visual_mask = self._compute_visual_mask(extra_ids.to(tokens.device))
+            pooled = self.pool(tokens, mask=mask, visual_mask=visual_mask)
+        else:
+            pooled = self.pool(tokens, mask=mask)
+
         return self.head(pooled)
 
     # --- Métodos de Salvar/Carregar ---

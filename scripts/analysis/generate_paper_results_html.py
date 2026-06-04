@@ -48,6 +48,7 @@ PROJECTS = {
     "emb_baseline":   "CaVL-Doc_LA-CDIP_Embedding_Baseline",
     "jina_lora":      "CaVL-Doc_LA-CDIP_JinaV4_LoRA",
     "vlm_metric":     "CaVL-Doc_LA-CDIP_VLM_Metric",
+    "full_eval":      "CaVL-Doc_LA-CDIP_FullEval",
 }
 
 KNOWN_LOSSES = [
@@ -177,6 +178,18 @@ def _created_at(run) -> float:
         return run.created_at or 0
     except Exception:
         return 0
+
+
+def _to_scalar(v) -> Optional[float]:
+    """Converte Series, ndarray ou escalar para float (melhor valor), ou None."""
+    if v is None:
+        return None
+    if isinstance(v, pd.Series):
+        return float(v.min()) if not v.empty else None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -540,17 +553,6 @@ def _build_exp3(runs: List, run_prefix: str = "Sprint3_") -> Tuple[pd.DataFrame,
 
     best_on_by_loss: Dict[str, List[float]] = {}
     best_off_by_loss: Dict[str, List[float]] = {}
-
-    def _to_scalar(v) -> Optional[float]:
-        """Converte Series ou escalar para float (melhor EER), ou None."""
-        if v is None:
-            return None
-        if isinstance(v, pd.Series):
-            return float(v.min()) if not v.empty else None
-        try:
-            return float(v)
-        except (TypeError, ValueError):
-            return None
 
     for loss in all_losses_c:
         on_vals, off_vals = [], []
@@ -924,6 +926,159 @@ def _build_jina_lora(runs: List) -> Tuple[pd.DataFrame, str]:
 
 
 # ---------------------------------------------------------------------------
+# Full Evaluation — eval_lacdip_full.py results
+# ---------------------------------------------------------------------------
+
+def _build_full_eval(runs: List):
+    """
+    Resultados do eval_lacdip_full.py nos CSVs completos de validação.
+    Retorna a mesma estrutura que _build_exp3:
+    (table_p1, table_p2, table_p3, chart_p1, chart_p2, chart_p3, is_partial, missing)
+    """
+    records = []
+    for r in runs:
+        name = r.name or ""
+        if not name.startswith("FullEval_"):
+            continue
+        s   = _summary(r)
+        eer = _scalar(s.get("val/eer"))
+        if eer is None:
+            continue
+
+        cfg   = dict(r.config) if hasattr(r, "config") else {}
+        loss  = cfg.get("loss") or _loss_from_name(name)
+        split = cfg.get("split")
+        raw_phase = cfg.get("phase", "")
+
+        if split is None:
+            m = re.search(r"_S(\d+)_", name)
+            split = int(m.group(1)) if m else None
+
+        nl = name.lower()
+        if "fase2_profon" in nl or raw_phase == "fase2_profON":
+            phase = "phase2_on"
+        elif "fase2_profoff" in nl or raw_phase == "fase2_profOFF":
+            phase = "phase2_off"
+        else:
+            phase = "phase1"
+
+        records.append({"loss": loss, "split": split, "phase": phase, "eer": eer, "run": name})
+
+    if not records:
+        empty = pd.DataFrame()
+        return empty, empty, empty, "", "", "", False, list(ALL_SPLITS)
+
+    # Reutiliza a lógica de _build_exp3 diretamente via DataFrame
+    # Injeta os records num DataFrame e chama as mesmas funções de stats
+    import copy
+    fake_runs_df = pd.DataFrame(records)
+
+    # Usa a mesma lógica interna de _build_exp3
+    completed  = sorted(fake_runs_df["split"].dropna().unique().astype(int).tolist())
+    missing    = sorted(set(ALL_SPLITS) - set(completed))
+    is_partial = bool(missing)
+
+    def _stats_row(label, series):
+        if series.empty:
+            return {k: "—" for k in ["Loss Function", "Média", "Std", "Mediana", "Mín", "Máx"]}
+        return {
+            "Loss Function": label,
+            "Média":   _fmt_eer(series.mean()),
+            "Std":     f'{series.std()*100:.2f} pp' if len(series) > 1 else "—",
+            "Mediana": _fmt_eer(series.median()),
+            "Mín":     _fmt_eer(series.min()),
+            "Máx":     _fmt_eer(series.max()),
+        }
+
+    # Part A — fase1
+    p1 = fake_runs_df[fake_runs_df["phase"] == "phase1"].groupby("loss")["eer"].agg(["mean"]).reset_index()
+    rows_a = []
+    for _, row in p1.sort_values("mean").iterrows():
+        sub = fake_runs_df[(fake_runs_df["phase"] == "phase1") & (fake_runs_df["loss"] == row["loss"])]["eer"]
+        rows_a.append(_stats_row(LOSS_LABELS.get(row["loss"], row["loss"]), sub))
+    table_p1 = pd.DataFrame(rows_a)
+    labels_a  = [LOSS_LABELS.get(r["loss"], r["loss"]) for _, r in p1.sort_values("mean").iterrows()]
+    chart_p1  = _grouped_bar_chart(labels_a,
+                                   {"EER médio": [r["mean"] for _, r in p1.sort_values("mean").iterrows()]},
+                                   "Full Eval — Estágio 1 (fase1, pares completos)")
+
+    # Part B — fase2 profON vs profOFF
+    p2_on_mean  = fake_runs_df[fake_runs_df["phase"] == "phase2_on"].groupby("loss")["eer"].mean()
+    p2_off_mean = fake_runs_df[fake_runs_df["phase"] == "phase2_off"].groupby("loss")["eer"].mean()
+    all_losses_p2 = sorted(set(list(p2_on_mean.index) + list(p2_off_mean.index)))
+    rows_b = []
+    for loss in all_losses_p2:
+        label  = LOSS_LABELS.get(loss, loss)
+        on_s   = fake_runs_df[(fake_runs_df["phase"] == "phase2_on")  & (fake_runs_df["loss"] == loss)]["eer"]
+        off_s  = fake_runs_df[(fake_runs_df["phase"] == "phase2_off") & (fake_runs_df["loss"] == loss)]["eer"]
+        on_m   = on_s.mean()  if not on_s.empty  else None
+        off_m  = off_s.mean() if not off_s.empty else None
+        rows_b.append({
+            "Loss Function": label,
+            "Com Min. Média": _fmt_eer(on_m),  "Com Min. Std": f'{on_s.std()*100:.2f} pp' if len(on_s)>1 else "—",
+            "Sem Min. Média": _fmt_eer(off_m), "Sem Min. Std": f'{off_s.std()*100:.2f} pp' if len(off_s)>1 else "—",
+            "Δ média (pp)": _fmt_delta(on_m, off_m) if on_m and off_m else "—",
+        })
+    table_p2  = pd.DataFrame(rows_b)
+    chart_p2  = _grouped_bar_chart(
+        [LOSS_LABELS.get(l, l) for l in all_losses_p2],
+        {"Com Mineração": [p2_on_mean.get(l) for l in all_losses_p2],
+         "Sem Mineração": [p2_off_mean.get(l) for l in all_losses_p2]},
+        "Full Eval — Estágio 2 (efeito do professor, pares completos)")
+
+    # Part C — melhor acumulado
+    df_p1   = fake_runs_df[fake_runs_df["phase"] == "phase1"].set_index(["loss", "split"])["eer"]
+    df_p2on = fake_runs_df[fake_runs_df["phase"] == "phase2_on"].set_index(["loss", "split"])["eer"]
+    df_p2off= fake_runs_df[fake_runs_df["phase"] == "phase2_off"].set_index(["loss", "split"])["eer"]
+    all_losses_c = sorted(set(df_p2on.index.get_level_values("loss")) |
+                          set(df_p2off.index.get_level_values("loss")) |
+                          set(df_p1.index.get_level_values("loss")))
+    all_splits_c = sorted(fake_runs_df["split"].dropna().unique().astype(int))
+
+    best_on, best_off = {}, {}
+    for loss in all_losses_c:
+        on_v, off_v = [], []
+        for sp in all_splits_c:
+            idx = (loss, sp)
+            p1e  = _to_scalar(df_p1.get(idx))
+            one  = _to_scalar(df_p2on.get(idx))
+            offe = _to_scalar(df_p2off.get(idx))
+            if one  is not None: on_v.append(min(p1e, one)  if p1e is not None else one)
+            if offe is not None: off_v.append(min(p1e, offe) if p1e is not None else offe)
+            # se só tiver fase1
+            if one is None and offe is None and p1e is not None:
+                on_v.append(p1e); off_v.append(p1e)
+        best_on[loss] = on_v; best_off[loss] = off_v
+
+    rows_c = []
+    for loss in all_losses_c:
+        label = LOSS_LABELS.get(loss, loss)
+        on_s  = pd.Series(best_on[loss],  dtype=float)
+        off_s = pd.Series(best_off[loss], dtype=float)
+        on_m  = on_s.mean()  if not on_s.empty  else None
+        off_m = off_s.mean() if not off_s.empty else None
+        rows_c.append({
+            "Loss Function": label,
+            "Com Min. Média": _fmt_eer(on_m),  "Com Min. Std": f'{on_s.std()*100:.2f} pp' if len(on_s)>1 else "—",
+            "Sem Min. Média": _fmt_eer(off_m), "Sem Min. Std": f'{off_s.std()*100:.2f} pp' if len(off_s)>1 else "—",
+            "Δ média (pp)": _fmt_delta(on_m, off_m) if on_m and off_m else "—",
+        })
+    table_p3 = pd.DataFrame(rows_c)
+
+    sort_key = {l: best_on[l][0] if best_on[l] else 1.0 for l in all_losses_c}
+    labels_c = [LOSS_LABELS.get(l, l) for l in sorted(all_losses_c, key=lambda l: sort_key[l])]
+    chart_p3 = _grouped_bar_chart(
+        labels_c,
+        {"Com Mineração": [np.mean(best_on[l])  if best_on[l]  else None
+                           for l in sorted(all_losses_c, key=lambda l: sort_key[l])],
+         "Sem Mineração": [np.mean(best_off[l]) if best_off[l] else None
+                           for l in sorted(all_losses_c, key=lambda l: sort_key[l])]},
+        "Full Eval — Melhor EER acumulado (pares completos)")
+
+    return table_p1, table_p2, table_p3, chart_p1, chart_p2, chart_p3, is_partial, missing
+
+
+# ---------------------------------------------------------------------------
 # Baselines — VLM
 # ---------------------------------------------------------------------------
 
@@ -1093,6 +1248,9 @@ def build_html(
     exp3b_t1: pd.DataFrame, exp3b_t2: pd.DataFrame, exp3b_t3: pd.DataFrame,
     exp3b_c1: str, exp3b_c2: str, exp3b_c3: str, exp3b_partial: bool, exp3b_missing: List[int],
     exp4_table: pd.DataFrame, exp4_chart: str, exp4_partial: bool, exp4_missing: List[int],
+    full_eval_t1: pd.DataFrame, full_eval_t2: pd.DataFrame, full_eval_t3: pd.DataFrame,
+    full_eval_c1: str, full_eval_c2: str, full_eval_c3: str,
+    full_eval_partial: bool, full_eval_missing: List[int],
     emb_cv: pd.DataFrame, emb_chart_cv: str,
     vlm_metric_cv: pd.DataFrame,
     vlm_metric_chart_cv: str,
@@ -1213,6 +1371,27 @@ def build_html(
   {_table_html(exp4_table)}
 </div>""")
 
+    # --- Full Eval ---
+    sections.append(f"""
+<div class="section">
+  <h2>3c. Avaliação Completa LA-CDIP — Sprint3b (Full Eval) {partial_badge(full_eval_partial)}</h2>
+  <p class="desc">
+    Resultados da avaliação nos CSVs de validação completos (sem subset de 1036 pares),
+    usando <code>eval_lacdip_full.py</code>. Estes são os números comparáveis com os baselines
+    de embedding e VLM. Mesma estrutura do Sprint3b mas com EER calculado sobre todos os pares.
+  </p>
+  {missing_note(full_eval_missing)}
+  <h3>Estágio 1 — Fase 1 (pares completos)</h3>
+  {_chart_html(full_eval_c1)}
+  {_table_html(full_eval_t1)}
+  <h3>Estágio 2 — Efeito do Professor (pares completos)</h3>
+  {_chart_html(full_eval_c2)}
+  {_table_html(full_eval_t2)}
+  <h3>Melhor EER acumulado — Full Eval</h3>
+  {_chart_html(full_eval_c3)}
+  {_table_html(full_eval_t3)}
+</div>""")
+
     # --- Baselines: Embeddings ---
     sections.append(f"""
 <div class="section">
@@ -1275,6 +1454,7 @@ def main() -> None:
     runs3b         = _fetch_runs(PROJECTS["exp3b"])
     runs4          = _fetch_runs(PROJECTS["exp4"])
     runs_emb       = _fetch_runs(PROJECTS["emb_baseline"])
+    runs_full_eval = _fetch_runs(PROJECTS["full_eval"])
     runs_jina_lora = _fetch_runs(PROJECTS["jina_lora"])
     runs_vlm_met   = _fetch_runs(PROJECTS["vlm_metric"])
 
@@ -1284,6 +1464,7 @@ def main() -> None:
     exp3_t1, exp3_t2, exp3_t3, exp3_c1, exp3_c2, exp3_c3, exp3_partial, exp3_missing   = _build_exp3(runs3)
     exp3b_t1, exp3b_t2, exp3b_t3, exp3b_c1, exp3b_c2, exp3b_c3, exp3b_partial, exp3b_missing = _build_exp3(runs3b, run_prefix="Sprint3b_")
     exp4_table, exp4_chart, exp4_partial, exp4_missing                 = _build_exp4(runs4)
+    full_eval_t1, full_eval_t2, full_eval_t3, full_eval_c1, full_eval_c2, full_eval_c3, full_eval_partial, full_eval_missing = _build_full_eval(runs_full_eval)
     emb_cv, _, emb_chart_cv, _                                        = _build_baselines_embedding(runs_emb, extra_runs=runs_jina_lora)
     vlm_metric_cv, _, vlm_metric_chart_cv, _                          = _build_baselines_vlm(
         runs_vlm_met, "Baselines VLM (Métrica)")
@@ -1301,6 +1482,7 @@ def main() -> None:
         exp3_t1, exp3_t2, exp3_t3, exp3_c1, exp3_c2, exp3_c3, exp3_partial, exp3_missing,
         exp3b_t1, exp3b_t2, exp3b_t3, exp3b_c1, exp3b_c2, exp3b_c3, exp3b_partial, exp3b_missing,
         exp4_table, exp4_chart, exp4_partial, exp4_missing,
+        full_eval_t1, full_eval_t2, full_eval_t3, full_eval_c1, full_eval_c2, full_eval_c3, full_eval_partial, full_eval_missing,
         emb_cv, emb_chart_cv,
         vlm_metric_cv, vlm_metric_chart_cv,
     )

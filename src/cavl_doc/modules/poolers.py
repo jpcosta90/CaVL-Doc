@@ -190,22 +190,140 @@ class MeanPooling(nn.Module):
             pooled = sum_tokens / sum_mask
         return self.ln(pooled)
 
+class PromptGuidedPooler(nn.Module):
+    """
+    Cross-modal pooler that uses text tokens as queries over visual tokens.
+
+    Motivation
+    ----------
+    In causal VLMs (InternVL3, Qwen2-VL), visual tokens appear BEFORE text in
+    the sequence. Because of the causal mask, visual hidden states at Layer -1
+    have NEVER attended to the prompt — they are prompt-blind.
+    Text tokens, however, have attended to all visual patches AND the full
+    prompt, making them naturally cross-modal.
+
+    This pooler exploits that asymmetry:
+      1. text_pool  = mean(text hidden states)   ← already vision+prompt conditioned
+      2. v_attended = CrossAttn(Q=text_pool, K=visual, V=visual)
+                      ← visual summary *guided by what the prompt asked*
+      3. output = α * v_attended + (1-α) * text_pool
+
+    α is a learnable scalar (sigmoid-gated) that the model adjusts based on
+    how much visual spatial detail vs. prompt semantics matters for the task.
+
+    Args
+    ----
+    hidden_dim   : token dimension (1536 for InternVL3-2B)
+    num_heads    : heads in the cross-attention MHA
+    dropout      : dropout in cross-attention
+    fixed_alpha  : if not None, fix the visual/text blend instead of learning it
+    """
+
+    # sigmoid(1.386) ≈ 0.80 — visual side gets 80% by default.
+    # The text mean is the same vector used as cross-attention query, so it
+    # already influences v_attended; its direct contribution in the blend
+    # should be a smaller complementary signal, not equal weight.
+    _ALPHA_INIT = 1.386
+
+    def __init__(
+        self,
+        hidden_dim: int = 1536,
+        num_heads: int = 8,
+        dropout: float = 0.0,
+        fixed_alpha: Optional[float] = None,
+    ):
+        super().__init__()
+        assert hidden_dim % num_heads == 0
+
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.ln_v = nn.LayerNorm(hidden_dim, eps=1e-6)
+        self.ln_t = nn.LayerNorm(hidden_dim, eps=1e-6)
+
+        if fixed_alpha is None:
+            # Learnable blend. Initialised at ~0.80 (visual-heavy) because:
+            #   - v_attended is the truly prompt-guided output
+            #   - t_pool is the query reused as a direct signal — double-counting
+            #     at equal weight would over-represent the text side
+            self._alpha_logit = nn.Parameter(torch.full((1,), self._ALPHA_INIT))
+            self._fixed_alpha = None
+        else:
+            self._alpha_logit = None
+            self._fixed_alpha = fixed_alpha
+
+    @property
+    def alpha(self) -> torch.Tensor:
+        if self._fixed_alpha is not None:
+            return torch.tensor(self._fixed_alpha)
+        return torch.sigmoid(self._alpha_logit)
+
+    def forward(
+        self,
+        tokens: torch.Tensor,                        # [B, seq, D]
+        mask: Optional[torch.Tensor] = None,         # [B, seq] 1=valid 0=pad  (attention mask)
+        visual_mask: Optional[torch.Tensor] = None,  # [B, seq] True=visual token (<IMG_CONTEXT>)
+    ) -> torch.Tensor:                               # [B, D]
+        """
+        Unified interface identical to the other poolers, with one extra argument.
+
+        visual_mask is mandatory for meaningful cross-modal behaviour.
+        When absent (e.g. text-only forward), the pooler degrades gracefully
+        to a plain mean pool so it never crashes existing code paths.
+        """
+        target_dtype = self.ln_v.weight.dtype
+        if tokens.dtype != target_dtype:
+            tokens = tokens.to(dtype=target_dtype)
+
+        if visual_mask is None:
+            # Graceful fallback: no modality information available
+            pooled = tokens.mean(dim=1) if mask is None else (
+                (tokens * mask.unsqueeze(-1).float()).sum(1)
+                / mask.float().sum(1, keepdim=True).clamp(min=1e-9)
+            )
+            return self.ln_t(pooled)
+
+        visual_mask = visual_mask.bool()
+
+        # --- text mean: valid text positions (not visual, not padding) ---
+        text_valid = ~visual_mask
+        if mask is not None:
+            text_valid = text_valid & mask.bool()
+        txt_w = text_valid.unsqueeze(-1).float()
+        t_pool = (tokens * txt_w).sum(1) / txt_w.sum(1).clamp(min=1e-9)  # [B, D]
+
+        # --- cross-attention: t_pool as query, visual tokens as K/V ---
+        # key_padding_mask: True = ignore → pass ~visual_mask (ignore non-visual positions)
+        q = t_pool.unsqueeze(1)                                # [B, 1, D]
+        v_attended, _ = self.cross_attn(
+            query=q,
+            key=tokens,
+            value=tokens,
+            key_padding_mask=~visual_mask,                     # ignore text+pad as K/V
+        )
+        v_attended = v_attended.squeeze(1)                     # [B, D]
+
+        a = self.alpha.to(v_attended.device)
+        return a * self.ln_v(v_attended) + (1 - a) * self.ln_t(t_pool)
+
+
 # --- REGISTRO ---
 POOLER_REGISTRY = {
     "attention": AttentionPooling,
     "positional_attention": PositionalAttentionPooling,
     "mean": MeanPooling,
+    "prompt_guided": PromptGuidedPooler,
 }
 
 def build_pooler(pooler_type: str, **kwargs):
     if pooler_type not in POOLER_REGISTRY:
         raise ValueError(f"Pooler '{pooler_type}' não encontrado.")
-    
-    # Configuração inteligente de num_queries
+
     valid_args = kwargs.copy()
     if pooler_type == "attention":
-        # Se não passado, assume 1 (comportamento padrão)
-        # Se quiser testar o "turbo", passe num_queries=4 no script de treino
-        valid_args.setdefault('num_queries', 1) 
-        
+        valid_args.setdefault('num_queries', 1)
+
     return POOLER_REGISTRY[pooler_type](**valid_args)
