@@ -453,112 +453,169 @@ flat = attn_out.transpose(<span class="num">0</span>,<span class="num">1</span>)
   <div class="card" id="prompt-guided-pooler" style="border-color: #7c6af5;">
     <div class="tags">
       <span class="tag registry">registry: "prompt_guided"</span>
-      <span class="tag mixed">modality: cross-modal — prompt-conditioned</span>
-      <span class="tag" style="background:rgba(124,106,245,.2);color:#c4b5fd;border:1px solid rgba(124,106,245,.35);">novo</span>
+      <span class="tag mixed">modality: cross-modal — texto guia visual</span>
+      <span class="tag agnostic">requires_visual_mask = True</span>
     </div>
-    <h3>PromptGuidedPooler <span style="color:var(--muted); font-weight:400; font-size:13px;">(solução para sensibilidade ao prompt)</span></h3>
+    <h3>PromptGuidedPooler</h3>
 
-    <!-- Diagnóstico -->
-    <div style="background:rgba(239,68,68,.07); border-left:3px solid #ef4444; border-radius:0 6px 6px 0; padding:.8rem 1.1rem; margin-bottom:1rem; font-size:13.5px; color:#fca5a5;">
-      <strong>Problema que resolve:</strong> em VLMs causais (InternVL3, Qwen2-VL), os tokens visuais
-      aparecem <em>antes</em> do texto na sequência. A máscara causal bloqueia que eles vejam o prompt —
-      seus hidden states na Layer&nbsp;-1 são <strong>completamente invariantes ao texto</strong>.
-      Um pooler sobre tokens visuais produz o mesmo embedding para qualquer prompt na mesma imagem.
-    </div>
-
-    <!-- Diagrama de atenção causal -->
     <div class="modal-box" style="margin-bottom:1rem;">
-      <h4>Direção da atenção causal</h4>
-      <pre style="border:none; background:none; padding:0; margin:0; font-size:12.5px;"><code>Sequência:  [BOS] [v₁][v₂]···[v₁₅₃₆]  [t₁][t₂]···[t₂₀]
-                    ←── visuais ──→      ←── prompt ──→
+      <h4>Atenção causal — por que tokens textuais são cross-modal</h4>
+      <pre style="border:none; background:none; padding:0; margin:0; font-size:12.5px;"><code>Sequência: [&lt;s&gt;] [&lt;img&gt;] [v₁···v₁₇₉₂] [&lt;/img&gt;] [▁Analyze] [▁document]
 
-Token vₖ  pode atender a: BOS, v₁..vₖ          ✓
-Token vₖ  NÃO vê: t₁..t₂₀                       ✗  ← bloqueado pela máscara causal
-
-Token tₗ  pode atender a: TODOS os vₖ + t₁..tₗ  ✓  ← cross-modal por natureza</code></pre>
-      <p style="font-size:12.5px; color:var(--muted); margin-top:.6rem;">
-        Consequência: <code>hidden_states[-1][img_pos]</code> é cego ao prompt.
-        <code>hidden_states[-1][text_pos]</code> já integrou visão + texto.
-      </p>
+Token vₖ → atende a: apenas tokens anteriores (pré-visuais + visuais)  ← cego ao texto
+Token tₗ → atende a: TUDO — todos os patches + texto anterior           ← cross-modal</code></pre>
     </div>
 
     <p style="color:var(--muted); margin-bottom:.8rem;">
-      Usa os tokens textuais como <strong>queries</strong> para fazer cross-attention sobre os tokens visuais,
-      produzindo um resumo visual condicionado no que o prompt perguntou. Combina o resultado com o
-      pool textual (já cross-modal pelo LLM) via um escalar α aprendível.
+      Usa a <strong>média dos tokens textuais</strong> como query única para cross-attention sobre os patches visuais.
+      O resultado é um resumo visual condicionado no que o texto representa na camada <code>cut_layer</code>.
+      Blend com o <code>t_pool</code> direto via α aprendível iniciando em <strong>0.80 visual / 0.20 texto</strong>.
     </p>
 
     <table>
       <tr><th>Parâmetro</th><th>Tipo</th><th>Padrão</th><th>Descrição</th></tr>
-      <tr><td>hidden_dim</td><td><code>int</code></td><td><code>1536</code></td><td>Dimensão dos tokens (InternVL3-2B)</td></tr>
-      <tr><td>num_heads</td><td><code>int</code></td><td><code>8</code></td><td>Cabeças no cross-attention MHA</td></tr>
+      <tr><td>hidden_dim</td><td><code>int</code></td><td><code>1536</code></td><td>Dimensão dos tokens</td></tr>
+      <tr><td>num_heads</td><td><code>int</code></td><td><code>8</code></td><td>Cabeças no MHA cross-attention</td></tr>
       <tr><td>dropout</td><td><code>float</code></td><td><code>0.0</code></td><td>Dropout no MHA</td></tr>
-      <tr><td>fixed_alpha</td><td><code>float|None</code></td><td><code>None</code></td><td>Se None, α é aprendível via sigmoid; caso contrário, fixo (ex: 0.5)</td></tr>
+      <tr><td>fixed_alpha</td><td><code>float|None</code></td><td><code>None</code></td><td>Se None, α aprendível; caso contrário fixo</td></tr>
     </table>
 
     <div class="modal-box">
       <h4>Análise de Modalidade</h4>
       <div class="modal-row">
         <span class="modal-label v">Tokens Visuais</span>
-        <span>Atuam como <strong>keys e values</strong> no cross-attention. Não precisam ser sensíveis ao prompt — a seleção é feita pelas queries textuais. O resultado <code>v_attended</code> é um resumo dos patches mais relevantes para o que o texto pergunta.</span>
+        <span>Keys e values no cross-attention. A query textual seleciona os patches mais relevantes. Com prompt fixo ("Analyze this document"), a query é constante — a variação vem do documento.</span>
       </div>
       <div class="modal-row">
         <span class="modal-label t">Tokens Textuais</span>
-        <span>A sua média, <code>t_pool</code>, serve como <strong>query única</strong> no cross-attention E como componente direto do embedding final. Por serem naturalmente cross-modais (viram toda a imagem via atenção causal), carregam a fusão visual+textual de graça.</span>
+        <span>Mean pool dos 5 tokens textuais serve de query <strong>e</strong> de componente direto no blend. Os tokens pós-visuais (<code>&lt;/img&gt;</code>, <code>▁document</code>) dominam a média por terem representações ricas de documento; os pré-visuais (<code>&lt;s&gt;</code>, <code>&lt;img&gt;</code>) contribuem com ruído mínimo.</span>
       </div>
       <div class="modal-row">
         <span class="modal-label m">α (blend)</span>
-        <span>Parâmetro <code>sigmoid(_alpha_logit)</code> treinável. Controla quanto do embedding final vem da seleção visual (<code>v_attended</code>) vs. do resumo textual (<code>t_pool</code>). Inicializa em 0.5 (logit=0). Pode ser fixado via <code>fixed_alpha=0.5</code>.</span>
+        <span>Inicia em <code>sigmoid(1.386) ≈ 0.80</code> favorecendo o lado visual. O <code>t_pool</code> já influencia <code>v_attended</code> como query — dar-lhe peso igual direto seria dupla contagem.</span>
       </div>
       <div class="modal-row">
         <span class="modal-label n">Interface</span>
-        <span>Diferente dos outros poolers, este recebe <strong>dois tensores separados</strong>: <code>visual_tokens [B,V,D]</code> e <code>text_tokens [B,T,D]</code>. Use <code>InternVLExtractor.extract_tokens()</code> para obtê-los do VLM.</span>
+        <span>Mesma assinatura dos outros poolers: <code>forward(tokens, mask, visual_mask)</code>. O <code>CaVLModel</code> computa e passa <code>visual_mask</code> automaticamente quando <code>pooler_type="prompt_guided"</code>.</span>
       </div>
     </div>
 
-    <pre><code><span class="cmt"># t_pool: mean dos text tokens — já vision+prompt conditioned</span>
-t_pool = text_tokens.mean(dim=<span class="num">1</span>)               <span class="cmt"># [B, D]</span>
+    <pre><code><span class="cmt"># t_pool: média dos tokens textuais (cross-modal via atenção causal do LLM)</span>
+t_pool = masked_mean(<span class="tt">tokens</span>, ~visual_mask)         <span class="cmt"># [B, D]</span>
 
-<span class="cmt"># cross-attention: text como query, visual como K/V</span>
-q = t_pool.unsqueeze(<span class="num">1</span>)                          <span class="cmt"># [B, 1, D]</span>
+<span class="cmt"># cross-attention: t_pool como query, visual como K/V</span>
 v_attended, _ = self.cross_attn(
-    query=q,                                      <span class="cmt"># ← o prompt guia a seleção</span>
-    key=<span class="vt">visual_tokens</span>, value=<span class="vt">visual_tokens</span>
+    query=t_pool.unsqueeze(<span class="num">1</span>),
+    key=<span class="vt">tokens</span>, value=<span class="vt">tokens</span>,
+    key_padding_mask=~visual_mask                  <span class="cmt"># ignora posições não-visuais</span>
 )
-v_attended = v_attended.squeeze(<span class="num">1</span>)              <span class="cmt"># [B, D]</span>
+v_attended = v_attended.squeeze(<span class="num">1</span>)               <span class="cmt"># [B, D]</span>
 
-<span class="cmt"># blend aprendível: α * visual_guiado + (1-α) * texto</span>
-a = torch.sigmoid(self._alpha_logit)
-output = a * self.ln_v(v_attended) + (<span class="num">1</span> - a) * self.ln_t(t_pool)</code></pre>
+a = torch.sigmoid(self._alpha_logit)               <span class="cmt"># ≈ 0.80 inicial</span>
+output = a * self.ln_v(v_attended) + (<span class="num">1</span>-a) * self.ln_t(t_pool)</code></pre>
+  </div>
 
-    <div class="note info" style="margin-top:.8rem;">
-      <strong>Uso com extractor:</strong>
-      <pre style="margin-top:.5rem; background:transparent; border:none; padding:0;"><code>tokens = extractor.extract_tokens(image, prompt, layer=-<span class="num">1</span>)
-emb = pooler(
-    visual_tokens=tokens[<span class="str">"visual"</span>],
-    text_tokens=tokens[<span class="str">"text"</span>],
-)</code></pre>
+  <!-- ─── ModalPooler ─── -->
+  <div class="card" id="modal-pooler" style="border-color: #22c55e;">
+    <div class="tags">
+      <span class="tag registry">registry: "modal"</span>
+      <span class="tag mixed">modality: assimétrico — visual mean + text attention</span>
+      <span class="tag agnostic">requires_visual_mask = True</span>
+      <span class="tag" style="background:rgba(34,197,94,.2);color:#86efac;border:1px solid rgba(34,197,94,.35);">novo</span>
     </div>
+    <h3>ModalPooler <span style="color:var(--muted); font-weight:400; font-size:13px;">(assimétrico por design)</span></h3>
+
+    <p style="color:var(--muted); margin-bottom:.8rem;">
+      Inverte a lógica do <code>PromptGuidedPooler</code>: aplica <strong>mean pooling nos tokens visuais</strong>
+      (cujas ativações já codificam distribuição espacial semântica) e
+      <strong>atenção aprendida nos tokens textuais</strong> (para filtrar os pré-visuais e enfatizar os pós-visuais).
+    </p>
+
+    <div class="modal-box" style="margin-bottom:1rem;">
+      <h4>Motivação: heterogeneidade dos tokens textuais</h4>
+      <pre style="border:none; background:none; padding:0; margin:0; font-size:12.5px;"><code>Token      Posição   Atendeu à imagem?   Valor para embedding
+─────────────────────────────────────────────────────────────
+&lt;s&gt;        0         Não (antes)         ★☆☆☆  ruído
+&lt;img&gt;      1         Não (antes)         ★☆☆☆  ruído
+v₁···v₁₇₉₂ 2-1793   —  (são visuais)    —
+&lt;/img&gt;     1794      Sim (todos os patches) ★★★★  rico
+▁Analyze   1795      Sim                 ★★★☆  rico
+▁this      1796      Sim                 ★★☆☆  médio
+▁document  1797      Sim (mais contexto) ★★★★  mais rico</code></pre>
+      <p style="font-size:12.5px; color:var(--muted); margin-top:.6rem;">
+        Mean pooling trata todos igualmente. A query aprendida aprende a dar peso ≈0 para <code>&lt;s&gt;</code>
+        e <code>&lt;img&gt;</code> e peso alto para <code>&lt;/img&gt;</code> e <code>▁document</code> — sem supervisão explícita.
+      </p>
+    </div>
+
+    <table>
+      <tr><th>Parâmetro</th><th>Tipo</th><th>Padrão</th><th>Descrição</th></tr>
+      <tr><td>hidden_dim</td><td><code>int</code></td><td><code>1536</code></td><td>Dimensão dos tokens</td></tr>
+      <tr><td>num_heads</td><td><code>int</code></td><td><code>8</code></td><td>Cabeças no MHA de atenção textual</td></tr>
+      <tr><td>dropout</td><td><code>float</code></td><td><code>0.0</code></td><td>Dropout no MHA</td></tr>
+      <tr><td>fixed_alpha</td><td><code>float|None</code></td><td><code>None</code></td><td>Se None, α aprendível iniciando em 0.50</td></tr>
+    </table>
+
+    <div class="modal-box">
+      <h4>Análise de Modalidade</h4>
+      <div class="modal-row">
+        <span class="modal-label v">Tokens Visuais</span>
+        <span><strong>Mean pool uniforme.</strong> As ativações dos ~1792 tokens visuais na <code>cut_layer</code> já têm distribuição espacial que funciona como soft-attention — a média captura esse sinal sem parâmetros extras.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label t">Tokens Textuais</span>
+        <span><strong>Query aprendida (<code>text_query</code>) atende sobre os 5 tokens textuais.</strong> O MHA com <code>key_padding_mask=~text_valid</code> ignora tokens visuais e padding. Aprende a ponderar <code>&lt;/img&gt;</code> e <code>▁document</code> (pós-visuais, ricos) sobre <code>&lt;s&gt;</code> e <code>&lt;img&gt;</code> (pré-visuais, vazios).</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label m">α (blend)</span>
+        <span>Inicia em <code>sigmoid(0) = 0.50</code> — neutral. Sem o problema de dupla contagem do <code>PromptGuidedPooler</code>: os dois lados são independentes.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label n">Interface</span>
+        <span>Mesma assinatura: <code>forward(tokens, mask, visual_mask)</code>. <code>CaVLModel</code> passa <code>visual_mask</code> automaticamente quando <code>pooler_type="modal"</code>.</span>
+      </div>
+    </div>
+
+    <pre><code><span class="cmt"># visual: mean pool uniforme</span>
+vis_w  = <span class="vt">visual_mask</span>.unsqueeze(<span class="num">-1</span>).float()
+v_pool = (<span class="vt">tokens</span> * vis_w).sum(<span class="num">1</span>) / vis_w.sum(<span class="num">1</span>).clamp(min=<span class="num">1e-9</span>)   <span class="cmt"># [B, D]</span>
+
+<span class="cmt"># texto: query aprendida atende só nos tokens textuais</span>
+text_valid = ~<span class="vt">visual_mask</span>
+q = self.text_query.expand(B, <span class="num">-1</span>, <span class="num">-1</span>)              <span class="cmt"># [B, 1, D] — aprendida</span>
+t_attended, _ = self.text_attn(
+    query=q,
+    key=<span class="tt">tokens</span>, value=<span class="tt">tokens</span>,
+    key_padding_mask=~text_valid                    <span class="cmt"># ignora visuais e padding</span>
+)
+t_attended = t_attended.squeeze(<span class="num">1</span>)                <span class="cmt"># [B, D]</span>
+
+a = torch.sigmoid(self._alpha_logit)               <span class="cmt"># ≈ 0.50 inicial</span>
+output = a * self.ln_v(v_pool) + (<span class="num">1</span>-a) * self.ln_t(t_attended)</code></pre>
   </div>
 
   <!-- Comparativo -->
   <h3 style="margin-top:2rem;">Comparativo dos Poolers</h3>
-  <div class="cmp-grid" style="grid-template-columns: repeat(4, 1fr);">
+  <div class="cmp-grid" style="grid-template-columns: repeat(5, 1fr);">
     <div class="cmp-item">
       <h5>AttentionPooling</h5>
-      <p style="font-size:13px; color:var(--muted);">Balanço <strong>aprendido</strong> entre modalidades. Pode, em teoria, equilibrar visual e textual, mas não tem garantia de sensibilidade ao prompt sem inductive bias explícito.</p>
+      <p style="font-size:12px; color:var(--muted);">Query aprendida sobre <em>toda</em> a sequência. Sem distinção de modalidade — o balanço visual/texto é inteiramente emergente.</p>
     </div>
     <div class="cmp-item">
       <h5>PositionalAttentionPooling</h5>
-      <p style="font-size:13px; color:var(--muted);">Mesma lógica + encoding posicional sequencial. Não distingue estruturalmente posição na grade visual de posição no texto.</p>
+      <p style="font-size:12px; color:var(--muted);">Igual ao anterior + encoding posicional sequencial. Não distingue grade visual de posição textual.</p>
     </div>
     <div class="cmp-item">
       <h5>MeanPooling</h5>
-      <p style="font-size:13px; color:var(--muted);">Sem parâmetros. Exige filtro externo via <code>mask</code>. Com <code>mask=text</code>, é o Tier&nbsp;1 de sensibilidade ao prompt — simples e eficaz.</p>
+      <p style="font-size:12px; color:var(--muted);">Média uniforme. Sem parâmetros. Dominado pelos ~1792 tokens visuais a menos que <code>mask</code> restrinja a modalidade.</p>
     </div>
     <div class="cmp-item" style="border-color:#7c6af5;">
-      <h5 style="color:#c4b5fd;">PromptGuidedPooler ★</h5>
-      <p style="font-size:13px; color:var(--muted);">Usa texto como query sobre visual. Resolve o viés causal estruturalmente. É o único pooler aqui cujo output muda semanticamente com o prompt para a <em>mesma imagem</em>.</p>
+      <h5 style="color:#c4b5fd;">PromptGuidedPooler</h5>
+      <p style="font-size:12px; color:var(--muted);">Mean text → query cross-attention sobre visual. Visual side como atenção. Text side como mean pool. α inicia em 0.80 visual.</p>
+    </div>
+    <div class="cmp-item" style="border-color:#22c55e;">
+      <h5 style="color:#86efac;">ModalPooler ★</h5>
+      <p style="font-size:12px; color:var(--muted);">Mean pool no visual (ativações já funcionam como atenção). Query aprendida no texto (filtra pré-visuais). Design assimétrico por observação empírica.</p>
     </div>
   </div>
 
@@ -910,10 +967,13 @@ emb_iso = embeddings - cone_comp   <span class="cmt"># projeção no complemento
 <span class="kw">from</span> cavl_doc.modules.heads   <span class="kw">import</span> build_head
 <span class="kw">from</span> cavl_doc.modules.losses  <span class="kw">import</span> build_loss
 
-<span class="cmt"># Pooler sensível ao prompt (recomendado)</span>
+<span class="cmt"># Assimétrico: mean visual + atenção aprendida no texto (recomendado)</span>
+pooler = <span class="fn">build_pooler</span>(<span class="str">"modal"</span>, hidden_dim=<span class="num">1536</span>, num_heads=<span class="num">8</span>)
+
+<span class="cmt"># Cross-attention: mean texto como query sobre visual</span>
 pooler = <span class="fn">build_pooler</span>(<span class="str">"prompt_guided"</span>, hidden_dim=<span class="num">1536</span>, num_heads=<span class="num">8</span>)
 
-<span class="cmt"># Pooler com atenção balanceada (legado)</span>
+<span class="cmt"># Atenção sobre toda a sequência (baseline)</span>
 pooler = <span class="fn">build_pooler</span>(<span class="str">"attention"</span>, hidden_dim=<span class="num">1536</span>, num_heads=<span class="num">8</span>, num_queries=<span class="num">4</span>)
 
 <span class="cmt"># Head residual para ArcFace</span>

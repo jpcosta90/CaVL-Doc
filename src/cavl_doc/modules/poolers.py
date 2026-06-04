@@ -410,6 +410,119 @@ class PromptGuidedPooler(nn.Module):
         return a * self.ln_v(v_attended) + (1 - a) * self.ln_t(t_pool)
 
 
+class CrossModalPooler(nn.Module):
+    """
+    Bidirectional cross-modal attention pooler with learned queries.
+
+    Two learned query vectors — one per direction — attend over opposite modalities:
+
+      query_for_visual  (learned)  →  attends visual tokens  →  from_visual [B, D]
+      query_for_text    (learned)  →  attends text tokens    →  from_text   [B, D]
+
+      output = α · ln_v(from_visual) + (1-α) · ln_t(from_text)
+
+    No mean pooling is used as a query anywhere. Each query is shaped end-to-end
+    by the metric learning loss (CosFace/SubCenterCosFace) to extract the most
+    discriminative features from each modality for document comparison.
+
+    Why learned queries instead of modality-derived means:
+      - mean(visual): uniform over ~3328 patches — doesn't isolate discriminative regions
+      - mean(text): 5 tokens of which 2 (<s>, <img>) precede the image and carry
+        no document information — corrupts the query before attention even runs
+
+    The two directions are complementary:
+      - query_for_visual learns "which patches matter to compare documents"
+      - query_for_text   learns "which text tokens encode the most document identity"
+        (converges to weight </img>, ▁Analyze, ▁document heavily — post-visual tokens)
+    """
+
+    requires_visual_mask = True
+
+    def __init__(
+        self,
+        hidden_dim: int = 1536,
+        num_heads: int = 8,
+        dropout: float = 0.0,
+        fixed_alpha: Optional[float] = None,
+    ):
+        super().__init__()
+        assert hidden_dim % num_heads == 0
+
+        self.attn_t2v = nn.MultiheadAttention(
+            embed_dim=hidden_dim, num_heads=num_heads,
+            dropout=dropout, batch_first=True,
+        )
+        self.attn_v2t = nn.MultiheadAttention(
+            embed_dim=hidden_dim, num_heads=num_heads,
+            dropout=dropout, batch_first=True,
+        )
+
+        # Learned queries — no dependence on input means
+        self.query_for_visual = nn.Parameter(torch.randn(1, 1, hidden_dim) * 0.02)
+        self.query_for_text   = nn.Parameter(torch.randn(1, 1, hidden_dim) * 0.02)
+
+        self.ln_v = nn.LayerNorm(hidden_dim, eps=1e-6)
+        self.ln_t = nn.LayerNorm(hidden_dim, eps=1e-6)
+
+        if fixed_alpha is None:
+            self._alpha_logit = nn.Parameter(torch.zeros(1))
+            self._fixed_alpha = None
+        else:
+            self._alpha_logit = None
+            self._fixed_alpha = fixed_alpha
+
+    @property
+    def alpha(self) -> torch.Tensor:
+        if self._fixed_alpha is not None:
+            return torch.tensor(self._fixed_alpha)
+        return torch.sigmoid(self._alpha_logit)
+
+    def forward(
+        self,
+        tokens: torch.Tensor,                        # [B, seq, D]
+        mask: Optional[torch.Tensor] = None,         # [B, seq] 1=valid 0=pad
+        visual_mask: Optional[torch.Tensor] = None,  # [B, seq] True=visual token
+    ) -> torch.Tensor:                               # [B, D]
+        target_dtype = self.ln_v.weight.dtype
+        if tokens.dtype != target_dtype:
+            tokens = tokens.to(dtype=target_dtype)
+
+        if visual_mask is None:
+            pooled = tokens.mean(1) if mask is None else (
+                (tokens * mask.unsqueeze(-1).float()).sum(1)
+                / mask.float().sum(1, keepdim=True).clamp(min=1e-9)
+            )
+            return self.ln_v(pooled)
+
+        visual_mask = visual_mask.bool()
+        B = tokens.shape[0]
+
+        text_valid = ~visual_mask
+        if mask is not None:
+            text_valid = text_valid & mask.bool()
+
+        # --- learned query → visual tokens ---
+        q_v = self.query_for_visual.expand(B, -1, -1)    # [B, 1, D]
+        from_visual, _ = self.attn_t2v(
+            query=q_v,
+            key=tokens, value=tokens,
+            key_padding_mask=~visual_mask,               # attend only to visual tokens
+        )
+        from_visual = from_visual.squeeze(1)             # [B, D]
+
+        # --- learned query → text tokens ---
+        q_t = self.query_for_text.expand(B, -1, -1)      # [B, 1, D]
+        from_text, _ = self.attn_v2t(
+            query=q_t,
+            key=tokens, value=tokens,
+            key_padding_mask=~text_valid,                # attend only to text tokens
+        )
+        from_text = from_text.squeeze(1)                 # [B, D]
+
+        a = self.alpha.to(tokens.device)
+        return a * self.ln_v(from_visual) + (1 - a) * self.ln_t(from_text)
+
+
 # --- REGISTRO ---
 POOLER_REGISTRY = {
     "attention": AttentionPooling,
@@ -417,6 +530,7 @@ POOLER_REGISTRY = {
     "mean": MeanPooling,
     "modal": ModalPooler,
     "prompt_guided": PromptGuidedPooler,
+    "cross_modal": CrossModalPooler,
 }
 
 def build_pooler(pooler_type: str, **kwargs):

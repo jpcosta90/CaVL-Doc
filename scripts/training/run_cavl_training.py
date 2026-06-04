@@ -485,7 +485,7 @@ def parse_args():
     p.add_argument("--loss-type", type=str, default="contrastive", 
                    choices=["contrastive", "triplet", "arcface", "elastic_arcface", "cosface", "elastic_cosface", "expface", "elastic_expface", "subcenter_arcface", "subcenter_cosface", "circle", "elastic_circle", "subcenter_circle", "angular", "iso_arcface", "iso_cosface", "iso_circle"],
                    help="Type of loss function")
-    p.add_argument("--pooler-type", type=str, default="attention", choices=["attention", "mean", "gem", "netvlad", "prompt_guided", "modal"])
+    p.add_argument("--pooler-type", type=str, default="attention", choices=["attention", "mean", "gem", "netvlad", "prompt_guided", "modal", "cross_modal"])
     p.add_argument("--head-type", type=str, default="mlp", choices=["mlp", "simple_mlp", "residual"])
     p.add_argument("--num-queries", type=int, default=1, help="Number of attention queries for pooling")
     p.add_argument("--num-classes", type=int, default=16, help="Number of classes (fallback if not detected)")
