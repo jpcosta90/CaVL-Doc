@@ -322,8 +322,12 @@ def build_pooler(pooler_type: str, **kwargs):
     if pooler_type not in POOLER_REGISTRY:
         raise ValueError(f"Pooler '{pooler_type}' não encontrado.")
 
-    valid_args = kwargs.copy()
+    import inspect
+    cls = POOLER_REGISTRY[pooler_type]
+    accepted = inspect.signature(cls.__init__).parameters
+    valid_args = {k: v for k, v in kwargs.items() if k in accepted}
+
     if pooler_type == "attention":
         valid_args.setdefault('num_queries', 1)
 
-    return POOLER_REGISTRY[pooler_type](**valid_args)
+    return cls(**valid_args)
