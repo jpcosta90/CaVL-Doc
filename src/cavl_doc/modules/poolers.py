@@ -190,6 +190,107 @@ class MeanPooling(nn.Module):
             pooled = sum_tokens / sum_mask
         return self.ln(pooled)
 
+class ModalPooler(nn.Module):
+    """
+    Asymmetric pooler: mean pool on visual, learned attention on text.
+
+    Motivation
+    ----------
+    Visual tokens at cut_layer are many (~1792) and their activation distribution
+    already encodes spatial semantics — mean pooling aggregates this well and
+    behaves like soft attention over the activation map.
+
+    Text tokens are few (5) and heterogeneous:
+      - <s>, <img>  : precede the visual sequence, never attended to any patch
+                      → hidden states carry almost no document information
+      - </img>, ▁Analyze, ▁document : post-visual, rich cross-modal representations
+                      → should dominate the text embedding
+
+    A learned query attending over the text tokens naturally learns to weight
+    the post-visual tokens heavily and suppress the pre-visual structural ones,
+    without any explicit supervision.
+
+    Interface
+    ---------
+    Same as other poolers + requires visual_mask to split modalities.
+    Set via CaVLModel when pooler_type="modal".
+    """
+
+    requires_visual_mask = True
+
+    def __init__(
+        self,
+        hidden_dim: int = 1536,
+        num_heads: int = 8,
+        dropout: float = 0.0,
+        fixed_alpha: Optional[float] = None,
+    ):
+        super().__init__()
+        assert hidden_dim % num_heads == 0
+
+        self.text_attn = nn.MultiheadAttention(
+            embed_dim=hidden_dim, num_heads=num_heads,
+            dropout=dropout, batch_first=True,
+        )
+        self.text_query = nn.Parameter(torch.randn(1, 1, hidden_dim) * 0.02)
+        self.ln_v = nn.LayerNorm(hidden_dim, eps=1e-6)
+        self.ln_t = nn.LayerNorm(hidden_dim, eps=1e-6)
+
+        if fixed_alpha is None:
+            self._alpha_logit = nn.Parameter(torch.zeros(1))
+            self._fixed_alpha = None
+        else:
+            self._alpha_logit = None
+            self._fixed_alpha = fixed_alpha
+
+    @property
+    def alpha(self) -> torch.Tensor:
+        if self._fixed_alpha is not None:
+            return torch.tensor(self._fixed_alpha)
+        return torch.sigmoid(self._alpha_logit)
+
+    def forward(
+        self,
+        tokens: torch.Tensor,                        # [B, seq, D]
+        mask: Optional[torch.Tensor] = None,         # [B, seq] 1=valid 0=pad
+        visual_mask: Optional[torch.Tensor] = None,  # [B, seq] True=visual token
+    ) -> torch.Tensor:                               # [B, D]
+        target_dtype = self.ln_v.weight.dtype
+        if tokens.dtype != target_dtype:
+            tokens = tokens.to(dtype=target_dtype)
+
+        if visual_mask is None:
+            pooled = tokens.mean(1) if mask is None else (
+                (tokens * mask.unsqueeze(-1).float()).sum(1)
+                / mask.float().sum(1, keepdim=True).clamp(min=1e-9)
+            )
+            return self.ln_v(pooled)
+
+        visual_mask = visual_mask.bool()
+        B = tokens.shape[0]
+
+        # --- visual: mean pool ---
+        vis_w = visual_mask.unsqueeze(-1).float()
+        v_pool = (tokens * vis_w).sum(1) / vis_w.sum(1).clamp(min=1e-9)  # [B, D]
+
+        # --- text: learned attention ---
+        text_valid = ~visual_mask
+        if mask is not None:
+            text_valid = text_valid & mask.bool()
+
+        q = self.text_query.expand(B, -1, -1)              # [B, 1, D]
+        t_attended, _ = self.text_attn(
+            query=q,
+            key=tokens,
+            value=tokens,
+            key_padding_mask=~text_valid,                  # attend only to text tokens
+        )
+        t_attended = t_attended.squeeze(1)                 # [B, D]
+
+        a = self.alpha.to(tokens.device)
+        return a * self.ln_v(v_pool) + (1 - a) * self.ln_t(t_attended)
+
+
 class PromptGuidedPooler(nn.Module):
     """
     Cross-modal pooler that uses text tokens as queries over visual tokens.
@@ -219,10 +320,9 @@ class PromptGuidedPooler(nn.Module):
     fixed_alpha  : if not None, fix the visual/text blend instead of learning it
     """
 
+    requires_visual_mask = True
+
     # sigmoid(1.386) ≈ 0.80 — visual side gets 80% by default.
-    # The text mean is the same vector used as cross-attention query, so it
-    # already influences v_attended; its direct contribution in the blend
-    # should be a smaller complementary signal, not equal weight.
     _ALPHA_INIT = 1.386
 
     def __init__(
@@ -315,6 +415,7 @@ POOLER_REGISTRY = {
     "attention": AttentionPooling,
     "positional_attention": PositionalAttentionPooling,
     "mean": MeanPooling,
+    "modal": ModalPooler,
     "prompt_guided": PromptGuidedPooler,
 }
 

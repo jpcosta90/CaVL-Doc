@@ -567,7 +567,7 @@ def main() -> None:
     parser.add_argument("--lr-reduce-factor", type=float, default=0.5)
     parser.add_argument("--num-queries", type=int, default=1)
     parser.add_argument("--pooler-type", default="attention",
-                        choices=["attention", "mean", "prompt_guided"],
+                        choices=["attention", "mean", "prompt_guided", "modal"],
                         help="Tipo de pooler: attention (MQAP), mean (ablação) ou prompt_guided (cross-modal)")
     parser.add_argument("--max-num-image-tokens", type=int, default=12)
     parser.add_argument("--cut-layer", type=int, default=27)

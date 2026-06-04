@@ -6,7 +6,7 @@ from transformers import PreTrainedModel, AutoModel, AutoTokenizer
 
 # Imports internos
 from cavl_doc.models.configuration_cavl import CaVLConfig
-from cavl_doc.modules.poolers import build_pooler, PromptGuidedPooler
+from cavl_doc.modules.poolers import build_pooler
 from cavl_doc.modules.heads import build_head
 
 class CaVLModel(PreTrainedModel):
@@ -194,7 +194,7 @@ class CaVLModel(PreTrainedModel):
             tokens, mask = self._extract_tokens_via_hidden_states(input_ids=input_ids, attention_mask=attention_mask, device=device, **(encode_kwargs or {}))
             extra_ids = input_ids  # already available in this path
 
-        if isinstance(self.pool, PromptGuidedPooler) and self.img_ctx_id is not None and extra_ids is not None:
+        if getattr(self.pool, 'requires_visual_mask', False) and self.img_ctx_id is not None and extra_ids is not None:
             visual_mask = self._compute_visual_mask(extra_ids.to(tokens.device))
             pooled = self.pool(tokens, mask=mask, visual_mask=visual_mask)
         else:

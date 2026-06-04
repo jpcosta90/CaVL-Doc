@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Token Breakdown — PromptGuidedPooler</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #181b24; --card: #1e2130; --border: #2a2f45;
+    --text: #e2e8f0; --muted: #8892a4;
+    --visual: #3b82f6; --visual-dim: rgba(59,130,246,.15);
+    --struct: #f59e0b; --struct-dim: rgba(245,158,11,.15);
+    --sem:    #22c55e; --sem-dim:    rgba(34,197,94,.15);
+    --danger: #ef4444; --danger-dim: rgba(239,68,68,.12);
+    --accent: #7c6af5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text);
+         line-height: 1.6; font-size: 15px; padding: 2.5rem 2rem 5rem; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+
+  h1 { font-size: 1.6rem; font-weight: 800; margin-bottom: .3rem; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 2.5rem; }
+  h2 { font-size: 1.1rem; font-weight: 700; margin: 2.5rem 0 1rem;
+       padding-bottom: .4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: .95rem; font-weight: 600; margin-bottom: .6rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+
+  /* ── Token strip ── */
+  .strip { display: flex; flex-wrap: wrap; gap: 4px; margin: 1rem 0; align-items: center; }
+  .tok {
+    font-family: monospace; font-size: 11.5px; padding: 3px 7px;
+    border-radius: 5px; border: 1px solid transparent; white-space: nowrap;
+  }
+  .tok.vis  { background: var(--visual-dim); border-color: var(--visual); color: #93c5fd; }
+  .tok.str  { background: var(--struct-dim); border-color: var(--struct); color: #fcd34d; }
+  .tok.sem  { background: var(--sem-dim);    border-color: var(--sem);    color: #86efac; }
+  .tok.ellipsis { color: var(--muted); font-size: 18px; padding: 0 4px; border: none; background: none; }
+
+  /* ── Proportion bar ── */
+  .propbar { display: flex; height: 32px; border-radius: 8px; overflow: hidden; margin: 1rem 0; width: 100%; }
+  .propbar div { display: flex; align-items: center; justify-content: center;
+                 font-size: 11.5px; font-weight: 700; transition: width .3s; }
+
+  /* ── Cards ── */
+  .card { background: var(--card); border: 1px solid var(--border);
+          border-radius: 10px; padding: 1.4rem 1.6rem; margin-bottom: 1.2rem; }
+  .card.warn { border-color: var(--danger); background: var(--danger-dim); }
+  .card.ok   { border-color: var(--sem);    background: var(--sem-dim); }
+  .card.accent { border-left: 3px solid var(--accent); }
+
+  /* ── Mean pool viz ── */
+  .mean-pool { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: .8rem 0; }
+  .mp-tok { font-family: monospace; font-size: 12px; padding: 4px 9px;
+            border-radius: 6px; border: 1px solid; }
+  .mp-plus { color: var(--muted); font-size: 16px; font-weight: 300; }
+  .mp-arrow { color: var(--muted); font-size: 20px; }
+  .mp-result { font-weight: 700; padding: 5px 12px; border-radius: 6px;
+               font-family: monospace; font-size: 13px; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: .8rem 0; }
+  th { text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase;
+       letter-spacing: .06em; padding: .4rem .7rem; border-bottom: 1px solid var(--border); font-weight: 600; }
+  td { padding: .5rem .7rem; border-bottom: 1px solid rgba(42,47,69,.6); }
+  td:first-child { font-family: monospace; font-size: 12px; }
+
+  /* ── Legend ── */
+  .legend { display: flex; gap: 1.2rem; flex-wrap: wrap; margin: .6rem 0 1.2rem; font-size: 13px; }
+  .legend-item { display: flex; align-items: center; gap: .4rem; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+  /* ── Alert ── */
+  .alert { padding: .8rem 1.1rem; border-radius: 8px; font-size: 13.5px; margin: .8rem 0; }
+  .alert.danger { background: var(--danger-dim); border: 1px solid var(--danger); color: #fca5a5; }
+  .alert.info   { background: rgba(124,106,245,.1); border: 1px solid var(--accent); color: #c4b5fd; }
+  .alert.ok     { background: var(--sem-dim); border: 1px solid var(--sem); color: #86efac; }
+
+  pre { background: #141720; border: 1px solid #2e344f; border-radius: 8px;
+        padding: .9rem 1.1rem; font-size: 12px; overflow-x: auto; }
+  code { font-family: 'JetBrains Mono', monospace; }
+
+  .big-num { font-size: 2.2rem; font-weight: 800; line-height: 1; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+  @media (max-width: 600px) { .grid2 { grid-template-columns: 1fr; } }
+
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 7px;
+         border-radius: 4px; text-transform: uppercase; letter-spacing: .04em; margin-right: 4px; }
+  .tag.v { background: var(--visual-dim); color: #93c5fd; border: 1px solid var(--visual); }
+  .tag.s { background: var(--struct-dim); color: #fcd34d; border: 1px solid var(--struct); }
+  .tag.m { background: var(--sem-dim);    color: #86efac; border: 1px solid var(--sem); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Breakdown dos Tokens — PromptGuidedPooler</h1>
+  <p class="sub">Prompt fixo: <code>"&lt;image&gt; Analyze this document"</code> · InternVL3-2B · MAX_NUM=6</p>
+
+  <!-- ══ SEÇÃO 1: SEQUÊNCIA COMPLETA ══ -->
+  <h2>1. Sequência completa de tokens</h2>
+
+  <div class="legend">
+    <span class="legend-item"><span class="dot" style="background:var(--visual)"></span> Visual <code>&lt;IMG_CONTEXT&gt;</code></span>
+    <span class="legend-item"><span class="dot" style="background:var(--struct)"></span> Estrutural (tags, BOS)</span>
+    <span class="legend-item"><span class="dot" style="background:var(--sem)"></span> Semântico (palavras do prompt)</span>
+  </div>
+
+  <div class="strip">
+    <span class="tok str">&lt;s&gt;</span>
+    <span class="tok str">&lt;img&gt;</span>
+    <span class="tok vis">&lt;IMG_CONTEXT&gt;</span>
+    <span class="tok vis">&lt;IMG_CONTEXT&gt;</span>
+    <span class="tok vis">&lt;IMG_CONTEXT&gt;</span>
+    <span class="tok ellipsis">···</span>
+    <span style="font-size:11px; color:var(--muted); padding: 0 4px;">×1792</span>
+    <span class="tok ellipsis">···</span>
+    <span class="tok vis">&lt;IMG_CONTEXT&gt;</span>
+    <span class="tok str">&lt;/img&gt;</span>
+    <span class="tok sem">▁Analyze</span>
+    <span class="tok sem">▁this</span>
+    <span class="tok sem">▁document</span>
+  </div>
+
+  <div class="propbar">
+    <div style="width:99.6%; background:var(--visual); color:#1e3a5f;">visuais: ~1792</div>
+    <div style="width:.4%; background:var(--struct); color:#78350f; font-size:9px;">str</div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Tokens visuais</h3>
+      <div class="big-num" style="color:var(--visual)">1 792</div>
+      <p style="color:var(--muted); font-size:13px; margin-top:.4rem;">
+        7 blocos × 256 tokens por bloco<br>
+        (6 tiles + 1 thumbnail, MAX_NUM=6)
+      </p>
+    </div>
+    <div class="card">
+      <h3>Tokens textuais</h3>
+      <div class="big-num" style="color:var(--sem)">5</div>
+      <p style="color:var(--muted); font-size:13px; margin-top:.4rem;">
+        <span class="tag s">estrutural</span> <code>&lt;s&gt; &lt;img&gt; &lt;/img&gt;</code><br>
+        <span class="tag m">semântico</span> <code>▁Analyze ▁this ▁document</code>
+      </p>
+    </div>
+  </div>
+
+  <!-- ══ SEÇÃO 2: O QUE O MEAN POOL FAZ ══ -->
+  <h2>2. O que o mean pool dos tokens textuais produz</h2>
+
+  <p style="color:var(--muted); margin-bottom:1rem; font-size:14px;">
+    O <code>t_pool</code> no <code>PromptGuidedPooler</code> é a média aritmética dos 5 tokens textuais:
+  </p>
+
+  <div class="mean-pool">
+    <span class="mp-tok" style="background:var(--struct-dim); border-color:var(--struct); color:#fcd34d">h[&lt;s&gt;]</span>
+    <span class="mp-plus">+</span>
+    <span class="mp-tok" style="background:var(--struct-dim); border-color:var(--struct); color:#fcd34d">h[&lt;img&gt;]</span>
+    <span class="mp-plus">+</span>
+    <span class="mp-tok" style="background:var(--struct-dim); border-color:var(--struct); color:#fcd34d">h[&lt;/img&gt;]</span>
+    <span class="mp-plus">+</span>
+    <span class="mp-tok" style="background:var(--sem-dim); border-color:var(--sem); color:#86efac">h[Analyze]</span>
+    <span class="mp-plus">+</span>
+    <span class="mp-tok" style="background:var(--sem-dim); border-color:var(--sem); color:#86efac">h[document]</span>
+    <span class="mp-arrow">÷ 5 →</span>
+    <span class="mp-result" style="background:rgba(245,158,11,.2); border:1px solid var(--struct); color:#fcd34d">t_pool</span>
+  </div>
+
+  <div class="alert danger">
+    <strong>Problema:</strong> 3 dos 5 tokens são estruturais (<code>&lt;s&gt;</code>, <code>&lt;img&gt;</code>, <code>&lt;/img&gt;</code>).
+    A média é dominada por tokens que não carregam semântica do prompt — o <code>t_pool</code>
+    é mais um artefato de formatação do que uma representação do que foi pedido.
+  </div>
+
+  <!-- ══ SEÇÃO 3: CONSEQUÊNCIA NO CROSS-ATTENTION ══ -->
+  <h2>3. Consequência no cross-attention</h2>
+
+  <p style="color:var(--muted); margin-bottom:1rem; font-size:14px;">
+    Essa <code>t_pool</code> corrompida é usada como <strong>query</strong> para selecionar os patches visuais:
+  </p>
+
+  <pre><code>q = t_pool.unsqueeze(1)           # [B, 1, D] ← média de (struct + semântico)
+
+attn_weights = softmax(q @ K^T / √d)   # K = hidden states dos 1792 patches
+v_attended   = attn_weights @ V        # soma ponderada dos patches</code></pre>
+
+  <div class="alert info">
+    Se o <code>t_pool</code> for dominado por tokens estruturais, a query não representa "o que o prompt pede"
+    — representa "como o InternVL3 formata a entrada". A seleção de patches visuais
+    será guiada por um artefato de template, não pela semântica do prompt.
+  </div>
+
+  <!-- ══ SEÇÃO 4: INVARIÂNCIA AO PROMPT ══ -->
+  <h2>4. Agravante: o prompt é fixo</h2>
+
+  <div class="card warn">
+    <p style="font-size:14px;">
+      O <code>EMBEDDING_PROMPT = "&lt;image&gt; Analyze this document"</code> é <strong>sempre o mesmo</strong>
+      para qualquer imagem, em qualquer batch, em qualquer época de treino.
+      <br><br>
+      Isso significa que o <code>t_pool</code> produz <strong>o mesmo vetor</strong> para todas as imagens —
+      não há variação de prompt que o cross-attention possa aprender a explorar.
+      O pooler é chamado de "prompt-guided" mas na prática o "prompt" é uma constante.
+    </p>
+  </div>
+
+  <table>
+    <tr><th>Imagem</th><th>Prompt</th><th>t_pool</th><th>Guia visual diferente?</th></tr>
+    <tr><td>invoice_001.tif</td><td>"Analyze this document"</td><td style="color:#fcd34d">vetor X</td><td style="color:#ef4444">Não — t_pool é constante</td></tr>
+    <tr><td>letter_042.tif</td><td>"Analyze this document"</td><td style="color:#fcd34d">vetor X</td><td style="color:#ef4444">Não — mesmo t_pool</td></tr>
+    <tr><td>report_007.tif</td><td>"Analyze this document"</td><td style="color:#fcd34d">vetor X</td><td style="color:#ef4444">Não — mesmo t_pool</td></tr>
+  </table>
+
+  <!-- ══ SEÇÃO 5: O QUE FUNCIONARIA ══ -->
+  <h2>5. O que tornaria o cross-attention genuinamente útil</h2>
+
+  <div class="grid2">
+
+    <div class="card accent">
+      <h3 style="color:#c4b5fd;">Opção A — Último token textual</h3>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:.7rem;">
+        Em LMs causais, o último token da sequência é o que tem mais contexto acumulado
+        — viu todos os tokens anteriores, inclusive toda a imagem.
+      </p>
+      <pre style="font-size:11.5px;"><code># Ao invés de mean:
+t_pool = tokens[b, last_text_idx, :]
+# = h[▁document] — viu tudo antes</code></pre>
+      <p style="font-size:12px; color:var(--muted); margin-top:.5rem;">
+        Menos ruído de tokens estruturais. Já é uma prática comum em embedding de LMs causais (ex: E5-Mistral).
+      </p>
+    </div>
+
+    <div class="card accent">
+      <h3 style="color:#c4b5fd;">Opção B — Prompt variável por tarefa</h3>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:.7rem;">
+        Usar prompts diferentes por tipo de consulta dá ao cross-attention informação
+        real para discriminar.
+      </p>
+      <pre style="font-size:11.5px;"><code># Exemplos:
+"What type of document is this?"
+"Extract the invoice values."
+"Identify the sender of this letter."</code></pre>
+      <p style="font-size:12px; color:var(--muted); margin-top:.5rem;">
+        Nesse caso o t_pool varia por amostra → o cross-attention tem sinal real para aprender.
+      </p>
+    </div>
+
+    <div class="card accent">
+      <h3 style="color:#c4b5fd;">Opção C — Filtrar tokens estruturais</h3>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:.7rem;">
+        Mean pool apenas sobre tokens com conteúdo semântico, excluindo BOS, tags de imagem e pontuação.
+      </p>
+      <pre style="font-size:11.5px;"><code>sem_mask = text_valid & ~is_special_token
+t_pool = masked_mean(tokens, sem_mask)</code></pre>
+      <p style="font-size:12px; color:var(--muted); margin-top:.5rem;">
+        Com prompt fixo, reduz de 5→2 tokens (Analyze + document), menos ruído estrutural.
+      </p>
+    </div>
+
+    <div class="card accent">
+      <h3 style="color:#c4b5fd;">Opção D — Query aprendida (AttentionPooling)</h3>
+      <p style="font-size:13px; color:var(--muted); margin-bottom:.7rem;">
+        Voltar para uma query aprendida, mas aplicada apenas sobre os tokens visuais
+        (em vez de toda a sequência). Sem depender do prompt.
+      </p>
+      <pre style="font-size:11.5px;"><code>q = self.query.expand(b, -1)     # aprendida
+v_attended = CrossAttn(q, visual, visual)</code></pre>
+      <p style="font-size:12px; color:var(--muted); margin-top:.5rem;">
+        Equivale ao AttentionPooling com máscara visual — sem o problema do t_pool corrompido.
+      </p>
+    </div>
+
+  </div>
+
+  <div class="alert ok" style="margin-top:1.5rem;">
+    <strong>Resumo:</strong> Com prompt fixo + mean pooling de 5 tokens (3 estruturais), o
+    <code>PromptGuidedPooler</code> atual se comporta na prática como um cross-attention com query constante —
+    o que é equivalente a um <strong>attention pooling sem query aprendida</strong>.
+    A opção mais imediata é usar o <strong>último token textual</strong> como query (Opção A),
+    que não exige mudança de prompt nem filtro de tokens.
+  </div>
+
+</div>
+</body>
+</html>
