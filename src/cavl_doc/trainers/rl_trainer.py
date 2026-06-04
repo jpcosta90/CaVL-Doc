@@ -58,6 +58,28 @@ except ImportError:
 logger = logging.getLogger(__name__)
 EMBEDDING_PROMPT = "<image> Analyze this document"
 
+
+def _pooler_metrics(pool) -> dict:
+    """
+    Returns monitoring metrics for poolers that have learnable queries/alpha.
+    Safe to call on any pooler — returns {} if the pooler has no such params.
+    """
+    metrics = {}
+    if hasattr(pool, 'query_for_visual'):
+        metrics['pool/query_visual_norm'] = pool.query_for_visual.data.norm().item()
+    if hasattr(pool, 'query_for_text'):
+        metrics['pool/query_text_norm'] = pool.query_for_text.data.norm().item()
+    if hasattr(pool, 'query_for_visual') and hasattr(pool, 'query_for_text'):
+        vn = metrics['pool/query_visual_norm']
+        tn = metrics['pool/query_text_norm']
+        metrics['pool/query_norm_ratio'] = vn / (tn + 1e-8)
+    if hasattr(pool, 'alpha'):
+        try:
+            metrics['pool/alpha'] = pool.alpha.item()
+        except Exception:
+            pass
+    return metrics
+
 class AverageMeter:
     def __init__(self): self.reset()
     def reset(self): self.val = 0; self.avg = 0; self.sum = 0; self.count = 0
@@ -936,16 +958,29 @@ def run_rl_siamese_loop(
             if use_wandb and wandb:
                 log_dict = {
                     "train/loss": actual_loss, "train/reward": avg_r, "train/prof_loss": ploss_val,
-                    "train/baseline": baseline, 
+                    "train/baseline": baseline,
                     "train/entropy": dist.entropy().mean().item() if not is_warmup else 0.0,
                     "step": global_batch_step,
                     "professor_active": 0 if is_warmup else 1
                 }
-                # Se 'batch_recall' existir no escopo local (definido anteriormente), adiciona a média móvel
                 if 'batch_recall' in locals():
-                     log_dict["train/batch_recall"] = avg_batch_recall.avg
-                
+                    log_dict["train/batch_recall"] = avg_batch_recall.avg
+                log_dict.update(_pooler_metrics(siam.pool))
                 wandb.log(log_dict)
+
+            # Print periódico dos pesos do pooler (a cada 50 steps)
+            pm = _pooler_metrics(siam.pool)
+            if pm and global_batch_step % 50 == 0:
+                parts = []
+                if 'pool/query_visual_norm' in pm:
+                    parts.append(f"q_vis={pm['pool/query_visual_norm']:.3f}")
+                if 'pool/query_text_norm' in pm:
+                    parts.append(f"q_txt={pm['pool/query_text_norm']:.3f}")
+                if 'pool/query_norm_ratio' in pm:
+                    parts.append(f"ratio={pm['pool/query_norm_ratio']:.2f}")
+                if 'pool/alpha' in pm:
+                    parts.append(f"α={pm['pool/alpha']:.3f}")
+                print(f"  [pooler step {global_batch_step}] {' | '.join(parts)}", flush=True)
 
             log_writer.writerow([epoch+1, global_batch_step, f"{loss.item():.4f}", f"{ploss_val:.4f}", f"{avg_r:.4f}", f"{status_str}", "", "", "", ""])
 
