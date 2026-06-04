@@ -381,9 +381,13 @@ def run_rl_siamese_loop(
         init_ckpt = torch.load(init_checkpoint_path, map_location=device)
 
         if 'siam_pool' in init_ckpt:
-            siam.pool.load_state_dict(init_ckpt['siam_pool'])
+            missing, unexpected = siam.pool.load_state_dict(init_ckpt['siam_pool'], strict=False)
+            if missing or unexpected:
+                print(f"   -> Pool: {len(missing)} chaves faltando, {len(unexpected)} inesperadas (arquitetura diferente — pesos incompatíveis ignorados).")
         if 'siam_head' in init_ckpt:
-            siam.head.load_state_dict(init_ckpt['siam_head'])
+            missing, unexpected = siam.head.load_state_dict(init_ckpt['siam_head'], strict=False)
+            if missing or unexpected:
+                print(f"   -> Head: {len(missing)} chaves faltando, {len(unexpected)} inesperadas.")
         if 'backbone_trainable' in init_ckpt and init_ckpt['backbone_trainable']:
             siam.backbone.load_state_dict(init_ckpt['backbone_trainable'], strict=False)
 
