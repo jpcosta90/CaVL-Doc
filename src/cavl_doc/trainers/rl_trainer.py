@@ -59,9 +59,18 @@ logger = logging.getLogger(__name__)
 EMBEDDING_PROMPT = "<image> Analyze this document"
 
 
+def _attn_entropy(attn: "torch.Tensor") -> float:
+    """Shannon entropy of an attention distribution [B, 1, N] averaged over heads."""
+    import math
+    p = attn.squeeze(1).float().clamp(min=1e-9)   # [B, N]
+    H = -(p * torch.log(p)).sum(-1).mean().item()  # nats
+    return H
+
+
 def _pooler_metrics(pool) -> dict:
     """
     Returns monitoring metrics for poolers that have learnable queries/alpha.
+    Includes attention entropy when the pooler exposes _last_attn_visual/text.
     Safe to call on any pooler — returns {} if the pooler has no such params.
     """
     metrics = {}
@@ -78,6 +87,10 @@ def _pooler_metrics(pool) -> dict:
             metrics['pool/alpha'] = pool.alpha.item()
         except Exception:
             pass
+    if hasattr(pool, '_last_attn_visual') and pool._last_attn_visual is not None:
+        metrics['pool/entropy_visual'] = _attn_entropy(pool._last_attn_visual)
+    if hasattr(pool, '_last_attn_text') and pool._last_attn_text is not None:
+        metrics['pool/entropy_text'] = _attn_entropy(pool._last_attn_text)
     return metrics
 
 class AverageMeter:
@@ -980,6 +993,10 @@ def run_rl_siamese_loop(
                     parts.append(f"ratio={pm['pool/query_norm_ratio']:.2f}")
                 if 'pool/alpha' in pm:
                     parts.append(f"α={pm['pool/alpha']:.3f}")
+                if 'pool/entropy_visual' in pm:
+                    parts.append(f"H_vis={pm['pool/entropy_visual']:.3f}")
+                if 'pool/entropy_text' in pm:
+                    parts.append(f"H_txt={pm['pool/entropy_text']:.3f}")
                 print(f"  [pooler step {global_batch_step}] {' | '.join(parts)}", flush=True)
 
             log_writer.writerow([epoch+1, global_batch_step, f"{loss.item():.4f}", f"{ploss_val:.4f}", f"{avg_r:.4f}", f"{status_str}", "", "", "", ""])

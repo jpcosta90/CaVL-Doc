@@ -503,21 +503,28 @@ class CrossModalPooler(nn.Module):
 
         # --- learned query → visual tokens ---
         q_v = self.query_for_visual.expand(B, -1, -1)    # [B, 1, D]
-        from_visual, _ = self.attn_t2v(
+        from_visual, attn_v = self.attn_t2v(
             query=q_v,
             key=tokens, value=tokens,
             key_padding_mask=~visual_mask,               # attend only to visual tokens
+            need_weights=True, average_attn_weights=True,
         )
         from_visual = from_visual.squeeze(1)             # [B, D]
 
         # --- learned query → text tokens ---
         q_t = self.query_for_text.expand(B, -1, -1)      # [B, 1, D]
-        from_text, _ = self.attn_v2t(
+        from_text, attn_t = self.attn_v2t(
             query=q_t,
             key=tokens, value=tokens,
             key_padding_mask=~text_valid,                # attend only to text tokens
+            need_weights=True, average_attn_weights=True,
         )
         from_text = from_text.squeeze(1)                 # [B, D]
+
+        # Store attention weights for external monitoring (detached — no memory leak)
+        # Shape: [B, 1, seq] averaged over heads
+        self._last_attn_visual = attn_v.detach() if attn_v is not None else None
+        self._last_attn_text   = attn_t.detach() if attn_t is not None else None
 
         a = self.alpha.to(tokens.device)
         return a * self.ln_v(from_visual) + (1 - a) * self.ln_t(from_text)
