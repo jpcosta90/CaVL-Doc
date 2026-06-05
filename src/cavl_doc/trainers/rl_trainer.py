@@ -983,11 +983,6 @@ def run_rl_siamese_loop(
 
             # Print periódico dos pesos do pooler (a cada 50 steps)
             pm = _pooler_metrics(siam.pool)
-            if pm and global_batch_step == 1:
-                # Diagnóstico único no primeiro step
-                has_entropy = 'pool/entropy_visual' in pm
-                has_vm = hasattr(siam.pool, '_last_entropy_visual')
-                print(f"  [pooler diag] entropy_attr={has_vm} | entropy_in_metrics={has_entropy} | img_ctx_id={getattr(siam, 'img_ctx_id', 'N/A')}", flush=True)
             if pm and global_batch_step % 50 == 0:
                 parts = []
                 if 'pool/query_visual_norm' in pm:
@@ -1002,7 +997,9 @@ def run_rl_siamese_loop(
                     parts.append(f"H_vis={pm['pool/entropy_visual']:.3f}")
                 if 'pool/entropy_text' in pm:
                     parts.append(f"H_txt={pm['pool/entropy_text']:.3f}")
-                print(f"  [pooler step {global_batch_step}] {' | '.join(parts)}", flush=True)
+                # Diagnóstico inline: mostra o que o pooler sabe sobre si mesmo
+                diag = f"vm_attr={'Y' if hasattr(siam.pool,'_last_entropy_visual') else 'N'} img_ctx={getattr(siam,'img_ctx_id','?')}"
+                print(f"  [pooler step {global_batch_step}] {' | '.join(parts)} [{diag}]", flush=True)
 
             log_writer.writerow([epoch+1, global_batch_step, f"{loss.item():.4f}", f"{ploss_val:.4f}", f"{avg_r:.4f}", f"{status_str}", "", "", "", ""])
 
