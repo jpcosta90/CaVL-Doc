@@ -983,6 +983,11 @@ def run_rl_siamese_loop(
 
             # Print periódico dos pesos do pooler (a cada 50 steps)
             pm = _pooler_metrics(siam.pool)
+            if pm and global_batch_step == 1:
+                # Diagnóstico único no primeiro step
+                has_entropy = 'pool/entropy_visual' in pm
+                has_vm = hasattr(siam.pool, '_last_entropy_visual')
+                print(f"  [pooler diag] entropy_attr={has_vm} | entropy_in_metrics={has_entropy} | img_ctx_id={getattr(siam, 'img_ctx_id', 'N/A')}", flush=True)
             if pm and global_batch_step % 50 == 0:
                 parts = []
                 if 'pool/query_visual_norm' in pm:

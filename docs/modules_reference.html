@@ -532,16 +532,17 @@ output = a * self.ln_v(v_attended) + (<span class="num">1</span>-a) * self.ln_t(
     </p>
 
     <div class="modal-box" style="margin-bottom:1rem;">
-      <h4>Motivação: heterogeneidade dos tokens textuais</h4>
-      <pre style="border:none; background:none; padding:0; margin:0; font-size:12.5px;"><code>Token      Posição   Atendeu à imagem?   Valor para embedding
-─────────────────────────────────────────────────────────────
-&lt;s&gt;        0         Não (antes)         ★☆☆☆  ruído
-&lt;img&gt;      1         Não (antes)         ★☆☆☆  ruído
-v₁···v₁₇₉₂ 2-1793   —  (são visuais)    —
-&lt;/img&gt;     1794      Sim (todos os patches) ★★★★  rico
-▁Analyze   1795      Sim                 ★★★☆  rico
-▁this      1796      Sim                 ★★☆☆  médio
-▁document  1797      Sim (mais contexto) ★★★★  mais rico</code></pre>
+      <h4>Motivação: heterogeneidade dos tokens textuais (CaVL-Doc · MAX_NUM=12)</h4>
+      <pre style="border:none; background:none; padding:0; margin:0; font-size:12.5px;"><code>Token         Posição      Atendeu à imagem?      Valor para embedding
+──────────────────────────────────────────────────────────────────────
+&lt;s&gt;           0            Não (antes)            ★☆☆☆  ruído
+&lt;img&gt;         1            Não (antes)            ★☆☆☆  ruído
+v₁···v₃₃₂₈   2–3329       —  (são visuais)        —
+               13 patches × 256 tokens = 3328 tokens visuais
+&lt;/img&gt;        3330         Sim (todos os patches) ★★★★  rico
+▁Analyze      3331         Sim                    ★★★☆  rico
+▁this         3332         Sim                    ★★☆☆  médio
+▁document     3333         Sim (mais contexto)    ★★★★  mais rico</code></pre>
       <p style="font-size:12.5px; color:var(--muted); margin-top:.6rem;">
         Mean pooling trata todos igualmente. A query aprendida aprende a dar peso ≈0 para <code>&lt;s&gt;</code>
         e <code>&lt;img&gt;</code> e peso alto para <code>&lt;/img&gt;</code> e <code>▁document</code> — sem supervisão explícita.
@@ -560,7 +561,7 @@ v₁···v₁₇₉₂ 2-1793   —  (são visuais)    —
       <h4>Análise de Modalidade</h4>
       <div class="modal-row">
         <span class="modal-label v">Tokens Visuais</span>
-        <span><strong>Mean pool uniforme.</strong> As ativações dos ~1792 tokens visuais na <code>cut_layer</code> já têm distribuição espacial que funciona como soft-attention — a média captura esse sinal sem parâmetros extras.</span>
+        <span><strong>Mean pool uniforme.</strong> As ativações dos 3328 tokens visuais na <code>cut_layer</code> já têm distribuição espacial que funciona como soft-attention — a média captura esse sinal sem parâmetros extras.</span>
       </div>
       <div class="modal-row">
         <span class="modal-label t">Tokens Textuais</span>
@@ -594,28 +595,135 @@ a = torch.sigmoid(self._alpha_logit)               <span class="cmt"># ≈ 0.50 
 output = a * self.ln_v(v_pool) + (<span class="num">1</span>-a) * self.ln_t(t_attended)</code></pre>
   </div>
 
+  <!-- ─── CrossModalPooler ─── -->
+  <div class="card" id="cross-modal-pooler" style="border-color: #a855f7;">
+    <div class="tags">
+      <span class="tag registry">registry: "cross_modal"</span>
+      <span class="tag mixed">modality: bidirecional — queries aprendidas em cada direção</span>
+      <span class="tag agnostic">requires_visual_mask = True</span>
+      <span class="tag" style="background:rgba(168,85,247,.2);color:#d8b4fe;border:1px solid rgba(168,85,247,.35);">novo</span>
+    </div>
+    <h3>CrossModalPooler <span style="color:var(--muted); font-weight:400; font-size:13px;">(co-atenção com queries aprendidas)</span></h3>
+
+    <p style="color:var(--muted); margin-bottom:1rem;">
+      Duas queries aprendidas independentes — uma por direção — atendem sobre modalidades opostas.
+      Nenhuma média é usada como query. O sinal da loss (CosFace/SubCenterCosFace) molda cada
+      query para extrair os tokens mais discriminativos da modalidade que ela consulta.
+    </p>
+
+    <!-- Fluxo de Dimensões -->
+    <div class="modal-box" style="margin-bottom:1rem;">
+      <h4>Fluxo completo de dimensões — CrossModalPooler (CaVL-Doc · sprint3b)</h4>
+      <pre style="border:none;background:none;padding:0;margin:0;font-size:12px;line-height:1.75;"><code><span style="color:#94a3b8">─── Entrada (hidden states da cut_layer=27 do InternVL3-2B) ─────────────────</span>
+tokens           <span class="vt">[B, 3333, 1536]</span>   ← 3328 visuais + 5 textuais
+visual_mask      <span class="vt">[B, 3333]</span>  bool   ← True nas posições &lt;IMG_CONTEXT&gt;
+
+<span style="color:#94a3b8">─── Queries (parâmetros aprendidos) ─────────────────────────────────────────</span>
+query_for_visual <span style="color:#c4b5fd">[1, 1, 1536]</span>  → expand → <span style="color:#c4b5fd">[B, 1, 1536]</span>
+query_for_text   <span style="color:#c4b5fd">[1, 1, 1536]</span>  → expand → <span style="color:#c4b5fd">[B, 1, 1536]</span>
+
+<span style="color:#94a3b8">─── MHA (num_heads=8, head_dim=192) ─────────────────────────────────────────</span>
+attn_t2v:  Q=<span style="color:#c4b5fd">[B,1,1536]</span>  K/V=<span class="vt">tokens[visual]</span>=<span class="vt">[B,3328,1536]</span>
+           W_Q,W_K,W_V cada <span style="color:#fcd34d">[1536,1536]</span>  (in_proj_weight [4608,1536])
+           scores: <span style="color:#c4b5fd">[B,8,1,192]</span> · <span class="vt">[B,8,192,3328]</span> → <span style="color:#f59e0b">[B,8,1,3328]</span>
+           softmax + V → <span style="color:#f59e0b">[B,8,1,192]</span> → concat → <span class="vt">[B,1,1536]</span> → squeeze
+
+attn_v2t:  Q=<span style="color:#c4b5fd">[B,1,1536]</span>  K/V=<span class="tt">tokens[text]</span>=<span class="tt">[B,5,1536]</span>
+           scores: <span style="color:#c4b5fd">[B,8,1,192]</span> · <span class="tt">[B,8,192,5]</span> → <span style="color:#f59e0b">[B,8,1,5]</span>
+           softmax + V → <span class="tt">[B,1,1536]</span> → squeeze
+
+<span style="color:#94a3b8">─── Blend ───────────────────────────────────────────────────────────────────</span>
+from_visual  <span class="vt">[B, 1536]</span>  →  ln_v  →  α · x
+from_text    <span class="tt">[B, 1536]</span>  →  ln_t  →  (1-α) · x
+             α = sigmoid(_alpha_logit)  ∈ (0,1)  aprendível
+pooler out   <span style="color:#f59e0b">[B, 1536]</span>
+
+<span style="color:#94a3b8">─── ProjectionHead (sprint3b: proj_hidden=4096, proj_out=1536) ──────────────</span>
+LayerNorm    <span style="color:#f59e0b">[B, 1536]</span>
+Linear       <span style="color:#f59e0b">[B, 1536]</span>  →  <span style="color:#f59e0b">[B, 4096]</span>    W: [4096, 1536]
+GELU
+Linear       <span style="color:#f59e0b">[B, 4096]</span>  →  <span style="color:#f59e0b">[B, 1536]</span>    W: [1536, 4096]
+L2 norm      <span style="color:#f59e0b">[B, 1536]</span>  ‖e‖₂ = 1  ← projeção na hiper-esfera
+
+<span style="color:#94a3b8">─── SubCenterCosFace ────────────────────────────────────────────────────────</span>
+weight       <span style="color:#f59e0b">[num_classes×k, 1536]</span>  L2-norm por linha
+cosine sim   embedding · weight.T  →  <span style="color:#f59e0b">[B, num_classes×k]</span>
+loss         CosFace margin aplicada sobre a classe correta</code></pre>
+    </div>
+
+    <div class="modal-box">
+      <h4>Por que queries aprendidas em vez de médias</h4>
+      <div class="modal-row">
+        <span class="modal-label v">query_for_visual</span>
+        <span>Inicializa como ruído <code>[1,1,1536]</code>. Aprende, via gradiente do CosFace, a "perguntar" aos 3328 patches o que é mais discriminativo entre classes de documentos. Não depende de nenhum dado de entrada — é um parâmetro fixo treinável, como um centróide de atenção.</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label t">query_for_text</span>
+        <span>Mesma forma <code>[1,1,1536]</code>. Aprende a selecionar entre os 5 tokens textuais — deverá convergir para ignorar <code>&lt;s&gt;</code> e <code>&lt;img&gt;</code> (pré-visuais, norma inicial baixa de informação) e focar em <code>&lt;/img&gt;</code> e <code>▁document</code> (pós-visuais, ricos).</span>
+      </div>
+      <div class="modal-row">
+        <span class="modal-label m">W_Q absorve o aprendizado</span>
+        <span>Na prática, a norma da query muda pouco durante o treino — o <code>W_Q</code> interno do MHA (<code>[1536,1536]</code> = 2.36M parâmetros) absorve a adaptação. A query constante funciona como "semente" e W_Q aprende a mapeá-la para o padrão de atenção correto. Monitorar a <strong>entropia das atenções</strong> (não a norma da query) é o indicador real de aprendizado.</span>
+      </div>
+    </div>
+
+    <table>
+      <tr><th>Parâmetro</th><th>Shape</th><th>Parâmetros</th><th>Descrição</th></tr>
+      <tr><td>query_for_visual</td><td><code>[1, 1, 1536]</code></td><td>1 536</td><td>Query treinável → visual tokens como K/V</td></tr>
+      <tr><td>query_for_text</td><td><code>[1, 1, 1536]</code></td><td>1 536</td><td>Query treinável → text tokens como K/V</td></tr>
+      <tr><td>attn_t2v (MHA)</td><td>in_proj <code>[4608, 1536]</code></td><td>7.08M</td><td>W_Q, W_K, W_V para direção visual</td></tr>
+      <tr><td>attn_v2t (MHA)</td><td>in_proj <code>[4608, 1536]</code></td><td>7.08M</td><td>W_Q, W_K, W_V para direção textual</td></tr>
+      <tr><td>ln_v + ln_t</td><td><code>[1536]</code> × 2</td><td>6 144</td><td>LayerNorm por modalidade</td></tr>
+      <tr><td>_alpha_logit</td><td>escalar</td><td>1</td><td>Blend aprendível — sigmoid(0)=0.50 inicial</td></tr>
+    </table>
+
+    <pre><code><span class="cmt"># query_for_visual [1,1,1536] → expande para batch → atende visual tokens</span>
+q_v = self.query_for_visual.expand(B, <span class="num">-1</span>, <span class="num">-1</span>)     <span class="cmt"># [B, 1, 1536]</span>
+from_visual, _ = self.attn_t2v(
+    query=q_v, key=<span class="vt">tokens</span>, value=<span class="vt">tokens</span>,
+    key_padding_mask=~visual_mask,                 <span class="cmt"># atenção só em [B, 3328, 1536]</span>
+)                                                  <span class="cmt"># saída: [B, 1, 1536]</span>
+from_visual = from_visual.squeeze(<span class="num">1</span>)              <span class="cmt"># [B, 1536]</span>
+
+<span class="cmt"># query_for_text [1,1,1536] → expande para batch → atende text tokens</span>
+q_t = self.query_for_text.expand(B, <span class="num">-1</span>, <span class="num">-1</span>)       <span class="cmt"># [B, 1, 1536]</span>
+from_text, _ = self.attn_v2t(
+    query=q_t, key=<span class="tt">tokens</span>, value=<span class="tt">tokens</span>,
+    key_padding_mask=~text_valid,                  <span class="cmt"># atenção só em [B, 5, 1536]</span>
+)                                                  <span class="cmt"># saída: [B, 1, 1536]</span>
+from_text = from_text.squeeze(<span class="num">1</span>)                  <span class="cmt"># [B, 1536]</span>
+
+<span class="cmt"># blend → pooler output [B, 1536] → ProjectionHead → L2 norm → CosFace</span>
+a = torch.sigmoid(self._alpha_logit)
+output = a * self.ln_v(from_visual) + (<span class="num">1</span>-a) * self.ln_t(from_text)  <span class="cmt"># [B, 1536]</span></code></pre>
+  </div>
+
   <!-- Comparativo -->
   <h3 style="margin-top:2rem;">Comparativo dos Poolers</h3>
-  <div class="cmp-grid" style="grid-template-columns: repeat(5, 1fr);">
+  <div class="cmp-grid" style="grid-template-columns: repeat(3, 1fr); gap:.8rem;">
     <div class="cmp-item">
       <h5>AttentionPooling</h5>
-      <p style="font-size:12px; color:var(--muted);">Query aprendida sobre <em>toda</em> a sequência. Sem distinção de modalidade — o balanço visual/texto é inteiramente emergente.</p>
+      <p style="font-size:12px; color:var(--muted);">Query aprendida <code>[1,1536]</code> sobre toda a sequência <code>[B,3333,1536]</code>. Sem distinção de modalidade — balanço visual/texto emergente.</p>
     </div>
     <div class="cmp-item">
       <h5>PositionalAttentionPooling</h5>
-      <p style="font-size:12px; color:var(--muted);">Igual ao anterior + encoding posicional sequencial. Não distingue grade visual de posição textual.</p>
+      <p style="font-size:12px; color:var(--muted);">Igual ao anterior + pos_embed <code>[1,4096,1536]</code> somado aos tokens antes da atenção. Não distingue posição visual de textual.</p>
     </div>
     <div class="cmp-item">
       <h5>MeanPooling</h5>
-      <p style="font-size:12px; color:var(--muted);">Média uniforme. Sem parâmetros. Dominado pelos ~1792 tokens visuais a menos que <code>mask</code> restrinja a modalidade.</p>
+      <p style="font-size:12px; color:var(--muted);">Média uniforme. Sem parâmetros. Dominado pelos 3328 tokens visuais (99.8%) a menos que <code>mask</code> restrinja a modalidade.</p>
     </div>
     <div class="cmp-item" style="border-color:#7c6af5;">
       <h5 style="color:#c4b5fd;">PromptGuidedPooler</h5>
-      <p style="font-size:12px; color:var(--muted);">Mean text → query cross-attention sobre visual. Visual side como atenção. Text side como mean pool. α inicia em 0.80 visual.</p>
+      <p style="font-size:12px; color:var(--muted);">mean(texto) <code>[B,1536]</code> como query → cross-attn sobre 3328 visuais. Blend α≈0.80 visual. Query derivada de média — sujeita a ruído dos tokens pré-visuais.</p>
     </div>
     <div class="cmp-item" style="border-color:#22c55e;">
-      <h5 style="color:#86efac;">ModalPooler ★</h5>
-      <p style="font-size:12px; color:var(--muted);">Mean pool no visual (ativações já funcionam como atenção). Query aprendida no texto (filtra pré-visuais). Design assimétrico por observação empírica.</p>
+      <h5 style="color:#86efac;">ModalPooler</h5>
+      <p style="font-size:12px; color:var(--muted);">Mean pool 3328 visuais → <code>[B,1536]</code>. Query aprendida <code>[1,1,1536]</code> → atende 5 textuais. Sem interação cruzada entre modalidades.</p>
+    </div>
+    <div class="cmp-item" style="border-color:#a855f7;">
+      <h5 style="color:#d8b4fe;">CrossModalPooler ★</h5>
+      <p style="font-size:12px; color:var(--muted);">Duas queries aprendidas <code>[1,1,1536]</code>: uma consulta 3328 visuais, outra consulta 5 textuais. W_Q <code>[1536,1536]</code> por direção absorve o aprendizado. Bidirecional, sem médias como queries.</p>
     </div>
   </div>
 

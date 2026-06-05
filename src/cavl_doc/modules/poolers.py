@@ -504,6 +504,10 @@ class CrossModalPooler(nn.Module):
         D = tokens.shape[-1]
         head_dim = D // self.attn_t2v.num_heads
 
+        # Sentinel: confirma que este caminho foi executado (visual_mask presente)
+        self._last_entropy_visual = None
+        self._last_entropy_text   = None
+
         # --- learned query → visual tokens ---
         q_v = self.query_for_visual.expand(B, -1, -1)    # [B, 1, D]
         from_visual, _ = self.attn_t2v(
