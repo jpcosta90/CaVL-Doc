@@ -501,30 +501,54 @@ class CrossModalPooler(nn.Module):
         if mask is not None:
             text_valid = text_valid & mask.bool()
 
+        D = tokens.shape[-1]
+        head_dim = D // self.attn_t2v.num_heads
+
         # --- learned query → visual tokens ---
         q_v = self.query_for_visual.expand(B, -1, -1)    # [B, 1, D]
-        from_visual, attn_v = self.attn_t2v(
+        from_visual, _ = self.attn_t2v(
             query=q_v,
             key=tokens, value=tokens,
-            key_padding_mask=~visual_mask,               # attend only to visual tokens
-            need_weights=True, average_attn_weights=True,
+            key_padding_mask=~visual_mask,
         )
         from_visual = from_visual.squeeze(1)             # [B, D]
 
         # --- learned query → text tokens ---
         q_t = self.query_for_text.expand(B, -1, -1)      # [B, 1, D]
-        from_text, attn_t = self.attn_v2t(
+        from_text, _ = self.attn_v2t(
             query=q_t,
             key=tokens, value=tokens,
-            key_padding_mask=~text_valid,                # attend only to text tokens
-            need_weights=True, average_attn_weights=True,
+            key_padding_mask=~text_valid,
         )
         from_text = from_text.squeeze(1)                 # [B, D]
 
-        # Store attention weights for external monitoring (detached — no memory leak)
-        # Shape: [B, 1, seq] averaged over heads
-        self._last_attn_visual = attn_v.detach() if attn_v is not None else None
-        self._last_attn_text   = attn_t.detach() if attn_t is not None else None
+        # --- compute attention entropy manually (independent of MHA fast path) ---
+        # Uses only W_Q projection from each MHA to reconstruct logits
+        with torch.no_grad():
+            # visual side: q_v projected through W_Q, compared with visual K tokens
+            wq_v = self.attn_t2v.in_proj_weight[:D]          # W_Q: [D, D]
+            q_v_proj = (q_v @ wq_v.T)                         # [B, 1, D]
+            wk_v = self.attn_t2v.in_proj_weight[D:2*D]        # W_K: [D, D]
+            k_v = tokens @ wk_v.T                              # [B, seq, D]
+            scores_v = (q_v_proj @ k_v.transpose(1, 2)) / (head_dim ** 0.5)  # [B, 1, seq]
+            scores_v = scores_v.squeeze(1)                     # [B, seq]
+            scores_v = scores_v.masked_fill(~visual_mask, float('-inf'))
+            p_v = torch.softmax(scores_v.float(), dim=-1)
+            H_v = -(p_v * torch.log(p_v + 1e-9)).sum(-1).mean()
+
+            # text side
+            wq_t = self.attn_v2t.in_proj_weight[:D]
+            q_t_proj = (q_t @ wq_t.T)                         # [B, 1, D]
+            wk_t = self.attn_v2t.in_proj_weight[D:2*D]
+            k_t = tokens @ wk_t.T                              # [B, seq, D]
+            scores_t = (q_t_proj @ k_t.transpose(1, 2)) / (head_dim ** 0.5)  # [B, 1, seq]
+            scores_t = scores_t.squeeze(1)
+            scores_t = scores_t.masked_fill(~text_valid, float('-inf'))
+            p_t = torch.softmax(scores_t.float(), dim=-1)
+            H_t = -(p_t * torch.log(p_t + 1e-9)).sum(-1).mean()
+
+        self._last_entropy_visual = H_v.item()
+        self._last_entropy_text   = H_t.item()
 
         a = self.alpha.to(tokens.device)
         return a * self.ln_v(from_visual) + (1 - a) * self.ln_t(from_text)

@@ -87,10 +87,10 @@ def _pooler_metrics(pool) -> dict:
             metrics['pool/alpha'] = pool.alpha.item()
         except Exception:
             pass
-    if hasattr(pool, '_last_attn_visual') and pool._last_attn_visual is not None:
-        metrics['pool/entropy_visual'] = _attn_entropy(pool._last_attn_visual)
-    if hasattr(pool, '_last_attn_text') and pool._last_attn_text is not None:
-        metrics['pool/entropy_text'] = _attn_entropy(pool._last_attn_text)
+    if hasattr(pool, '_last_entropy_visual'):
+        metrics['pool/entropy_visual'] = pool._last_entropy_visual
+    if hasattr(pool, '_last_entropy_text'):
+        metrics['pool/entropy_text'] = pool._last_entropy_text
     return metrics
 
 class AverageMeter:
