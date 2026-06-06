@@ -56,7 +56,8 @@ except ImportError:
         raise ImportError("prepare_inputs_for_multimodal_embedding não encontrado.")
 
 logger = logging.getLogger(__name__)
-EMBEDDING_PROMPT = "<image> Analyze this document"
+DEFAULT_EMBEDDING_PROMPT = "<image> Analyze this document"
+EMBEDDING_PROMPT = os.getenv("EMBEDDING_PROMPT", DEFAULT_EMBEDDING_PROMPT)
 
 
 def _attn_entropy(attn: "torch.Tensor") -> float:
@@ -297,6 +298,8 @@ def run_rl_siamese_loop(
     global _SHUTDOWN_REQUESTED
     _SHUTDOWN_REQUESTED = False
     signal.signal(signal.SIGTERM, _handle_sigterm)
+
+    print(f"[PROMPT] EMBEDDING_PROMPT={EMBEDDING_PROMPT}")
 
     torch.manual_seed(seed)
     np.random.seed(seed)

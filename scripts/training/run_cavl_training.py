@@ -39,7 +39,8 @@ from cavl_doc.models.modeling_cavl import build_cavl_model
 from cavl_doc.utils.embedding_utils import prepare_inputs_for_multimodal_embedding
 from torch.utils.data import DataLoader, Subset
 
-EMBEDDING_PROMPT = "<image> Analyze this document"
+DEFAULT_EMBEDDING_PROMPT = "<image> Analyze this document"
+EMBEDDING_PROMPT = os.getenv("EMBEDDING_PROMPT", DEFAULT_EMBEDDING_PROMPT)
 
 def rl_full_collate_fn(batch):
     img_a_list = [item['image_a'] for item in batch]
@@ -126,6 +127,8 @@ def prepare_experiment(args):
 
 def main(args):
     outdir, resume_wandb_id = prepare_experiment(args)
+
+    print(f"[PROMPT] EMBEDDING_PROMPT={EMBEDDING_PROMPT}")
     
     # Prioridade: Argumento CLI > Config do Checkpoint
     final_wandb_id = args.wandb_id if args.wandb_id else resume_wandb_id
