@@ -325,14 +325,22 @@ def _run_eval(siam, val_csv: Path, base_image_dir: str,
 # W&B
 # ---------------------------------------------------------------------------
 
+def _variant_tag(run_name: str) -> str:
+    """Extrai a variante do nome do run (entre '_noinit_' e '_fase')."""
+    m = re.search(r"_noinit_(.+?)_fase", run_name.lower())
+    return m.group(1) if m else ""
+
+
 def _log_wandb(run_info: dict, metrics: dict,
                wandb_entity: str, wandb_project: str) -> None:
     try:
         import wandb
+        variant = _variant_tag(run_info.get("name", ""))
         run_name = (
             f"FullEval_{run_info['sprint']}"
             f"_S{run_info['split']}"
             f"_{run_info['loss']}"
+            f"_{variant}"
             f"_{run_info['phase']}"
         )
         run = wandb.init(
