@@ -226,19 +226,31 @@ def _build_siam(backbone, tokenizer, device: str, cfg: dict):
     ).to(device)
 
 
+def _nq_from_name(run_name: str) -> int:
+    """Extrai num_queries do nome do run (ex: 'nq2' → 2). Default 1."""
+    m = re.search(r"_nq(\d+)_", run_name.lower())
+    return int(m.group(1)) if m else 1
+
+
 def _load_weights(siam, ckpt_path: Path, device: str) -> dict:
     ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
     cfg  = ckpt.get("config", {})
 
-    # Reconstrói o pool se o tipo do checkpoint diferir do siam atual
-    ckpt_pooler = cfg.get("pooler_type", POOLER_TYPE)
-    if "siam_pool" in ckpt and ckpt_pooler != getattr(siam.pool, "_pooler_type_tag", POOLER_TYPE):
+    ckpt_pooler  = cfg.get("pooler_type", POOLER_TYPE)
+    proj_out     = cfg.get("projection_output_dim", PROJ_OUT_DIM)
+    # num_queries: prefere config salvo; fallback: extrai do nome do diretório
+    ckpt_nq      = cfg.get("num_queries") or _nq_from_name(ckpt_path.parent.name)
+
+    cur_pooler = getattr(siam.pool, "_pooler_type_tag", POOLER_TYPE)
+    cur_nq     = getattr(siam.pool, "num_queries", NUM_QUERIES)
+
+    # Reconstrói o pool se o tipo OU o num_queries do checkpoint diferir do siam atual
+    if "siam_pool" in ckpt and (ckpt_pooler != cur_pooler or ckpt_nq != cur_nq):
         from cavl_doc.modules.poolers import build_pooler
-        proj_out = cfg.get("projection_output_dim", PROJ_OUT_DIM)
-        new_pool = build_pooler(ckpt_pooler, hidden_dim=proj_out).to(device)
+        new_pool = build_pooler(ckpt_pooler, hidden_dim=proj_out, num_queries=ckpt_nq).to(device)
         siam.pool = new_pool
         siam.pool._pooler_type_tag = ckpt_pooler
-        print(f"  ⚙️  Pool reconstruído: {ckpt_pooler}")
+        print(f"  ⚙️  Pool reconstruído: {ckpt_pooler} nq={ckpt_nq}")
 
     if "siam_pool" in ckpt:
         siam.pool.load_state_dict(ckpt["siam_pool"])
