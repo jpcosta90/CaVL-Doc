@@ -152,15 +152,44 @@ def _build_backbone(device: str):
     return backbone, tokenizer
 
 
+RICHPROMPT_COR = (
+    "<image> Analyze the provided document image and give me its visual description"
+    " based on: Shapes and Elements: presence of graphical components, tables,"
+    " sections, headers, and any other visual elements. Layout Consistency: Evaluate"
+    " the spatial arrangement of text blocks, margins, and alignments. Content Type:"
+    " Ensure the document types of content (e.g., tables, forms, paragraphs),"
+    " regardless of specific wording."
+)
+
+# Maps substring in run name → prompt override (for old checkpoints without saved prompt)
+_PROMPT_OVERRIDES: dict[str, str] = {
+    "richprompt_cor": RICHPROMPT_COR,
+}
+
+
+def _prompt_for_run(run_name: str, cfg: dict) -> str:
+    """Returns the embedding prompt for a given run, using cfg if available."""
+    if "embedding_prompt" in cfg:
+        return cfg["embedding_prompt"]
+    name_lower = run_name.lower()
+    for key, prompt in _PROMPT_OVERRIDES.items():
+        if key in name_lower:
+            return prompt
+    return EMBEDDING_PROMPT
+
+
 def _build_siam(backbone, tokenizer, device: str, cfg: dict):
     from cavl_doc.models.modeling_cavl import build_cavl_model
     from cavl_doc.utils.embedding_utils import prepare_inputs_for_multimodal_embedding
 
-    cut_layer   = cfg.get("cut_layer",   CUT_LAYER)
-    pooler_type = cfg.get("pooler_type", POOLER_TYPE)
-    head_type   = cfg.get("head_type",   HEAD_TYPE)
-    num_queries = cfg.get("num_queries", NUM_QUERIES)
-    proj_out    = cfg.get("projection_output_dim", PROJ_OUT_DIM)
+    cut_layer    = cfg.get("cut_layer",   CUT_LAYER)
+    pooler_type  = cfg.get("pooler_type", POOLER_TYPE)
+    head_type    = cfg.get("head_type",   HEAD_TYPE)
+    num_queries  = cfg.get("num_queries", NUM_QUERIES)
+    proj_out     = cfg.get("projection_output_dim", PROJ_OUT_DIM)
+
+    # Mutable holder so the prompt can be updated per-checkpoint without rebuilding siam
+    _prompt_holder = [cfg.get("embedding_prompt", EMBEDDING_PROMPT)]
 
     def _encode_fn(backbone, images, cut_layer=cut_layer, **kwargs):
         from cavl_doc.utils.embedding_utils import prepare_inputs_for_multimodal_embedding
@@ -174,7 +203,7 @@ def _build_siam(backbone, tokenizer, device: str, cfg: dict):
         input_ids_list, pixel_values_list, image_flags_list = [], [], []
         for img in images_list:
             out = prepare_inputs_for_multimodal_embedding(
-                backbone, tokenizer, img, EMBEDDING_PROMPT
+                backbone, tokenizer, img, _prompt_holder[0]
             )
             input_ids_list.append(out["input_ids"][0])
             pixel_values_list.append(out["pixel_values"])
@@ -211,7 +240,7 @@ def _build_siam(backbone, tokenizer, device: str, cfg: dict):
         idx = cut_layer + 1 if len(hidden) == len(lm.layers) + 1 else cut_layer
         return hidden[idx], batch_attn_mask, batch_input_ids
 
-    return build_cavl_model(
+    siam = build_cavl_model(
         backbone=backbone,
         cut_layer=cut_layer,
         encode_fn=_encode_fn,
@@ -224,6 +253,8 @@ def _build_siam(backbone, tokenizer, device: str, cfg: dict):
         head_type=head_type,
         num_queries=num_queries,
     ).to(device)
+    siam._prompt_holder = _prompt_holder
+    return siam
 
 
 def _nq_from_name(run_name: str) -> int:
@@ -556,6 +587,11 @@ def main() -> None:
                            ["cut_layer", "pooler_type", "head_type", "num_queries",
                             "projection_output_dim", "margin", "scale"]
                            if k in cfg}}
+
+        # Atualiza prompt sem reconstruir o siam (richprompt_cor e futuros checkpoints)
+        prompt = _prompt_for_run(ckpt_path.parent.name, cfg)
+        siam._prompt_holder[0] = prompt
+        print(f"  Prompt     : {prompt[:80]}{'...' if len(prompt) > 80 else ''}")
 
         t0 = time.time()
         try:

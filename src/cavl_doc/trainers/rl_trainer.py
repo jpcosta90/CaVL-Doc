@@ -315,11 +315,11 @@ def run_rl_siamese_loop(
         'head_type': head_type,
         'pooler_type': pooler_type,
         'num_queries': num_queries,
-        # Use as variáveis diretamente, pois elas são argumentos da função
-        'margin': margin,  
+        'margin': margin,
         'scale': scale,
         'num_sub_centers': num_sub_centers,
-        'std': std
+        'std': std,
+        'embedding_prompt': EMBEDDING_PROMPT,
     }
 
     # Define encode_fn (COM CORREÇÃO DE FLATTENING 5D E SUPORTE A LISTAS)
