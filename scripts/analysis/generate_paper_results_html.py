@@ -152,6 +152,39 @@ def _loss_from_name(name: str) -> str:
     return "unknown"
 
 
+# Pooler ablation variants present in W&B run names (between loss and phase)
+POOLER_VARIANT_LABELS: dict[str, str] = {
+    "":                           "Attention nq=1 (baseline)",
+    "nq2":                        "Attention nq=2",
+    "cross_modal":                "Cross-Modal",
+    "cross_modal_richprompt_cor": "Cross-Modal + Rich Prompt",
+}
+# Variants that are NOT the baseline — used to split ablation from main full_eval
+ABLATION_VARIANTS: set[str] = {"nq2", "cross_modal", "cross_modal_richprompt_cor"}
+
+
+def _pooler_variant_from_wandb_name(name: str) -> Optional[str]:
+    """
+    Extracts pooler variant from a FullEval W&B run name.
+    Returns the variant string (may be empty for baseline), or None if pattern
+    doesn't match (e.g. old-format runs without a variant field).
+
+    Examples:
+      FullEval_Sprint3b_S0_subcenter_cosface_nq2_fase1            → "nq2"
+      FullEval_Sprint3b_S0_subcenter_cosface_cross_modal_fase1    → "cross_modal"
+      FullEval_Sprint3b_S0_subcenter_cosface__fase1               → ""   (new baseline)
+      FullEval_Sprint3b_S0_subcenter_cosface_fase1                → None (old format)
+    """
+    m = re.match(
+        r"FullEval_Sprint3b_S\d+_subcenter_cosface_(.+)_fase\d",
+        name, re.IGNORECASE,
+    )
+    if not m:
+        return None
+    variant = m.group(1).strip("_")
+    return variant  # "" when double-underscore baseline
+
+
 def _epoch_count_from_name(name: str) -> int:
     m = re.search(r"_E(\d+)$", name)
     return int(m.group(1)) if m else -1
@@ -940,6 +973,10 @@ def _build_full_eval(runs: List):
         name = r.name or ""
         if not name.startswith("FullEval_"):
             continue
+        # Exclude pooler ablation variants — they go to _build_pooler_ablation
+        v = _pooler_variant_from_wandb_name(name)
+        if v is not None and v in ABLATION_VARIANTS:
+            continue
         s   = _summary(r)
         eer = _scalar(s.get("val/eer"))
         if eer is None:
@@ -1076,6 +1113,117 @@ def _build_full_eval(runs: List):
         "Full Eval — Melhor EER acumulado (pares completos)")
 
     return table_p1, table_p2, table_p3, chart_p1, chart_p2, chart_p3, is_partial, missing
+
+
+# ---------------------------------------------------------------------------
+# Pooler ablation
+# ---------------------------------------------------------------------------
+
+def _build_pooler_ablation(runs: List):
+    """
+    Ablation: compares pooler variants for subcenter_cosface across all phases.
+    Returns (table_p1, chart_p1, table_best, chart_best, is_partial, missing_splits).
+    """
+    records = []
+    for r in runs:
+        name = r.name or ""
+        if not name.startswith("FullEval_"):
+            continue
+
+        s   = _summary(r)
+        eer = _scalar(s.get("val/eer"))
+        if eer is None:
+            continue
+
+        cfg  = dict(r.config) if hasattr(r, "config") else {}
+        loss = cfg.get("loss") or _loss_from_name(name)
+        if loss != "subcenter_cosface":
+            continue
+
+        split = cfg.get("split")
+        if split is None:
+            m = re.search(r"_S(\d+)_", name)
+            split = int(m.group(1)) if m else None
+
+        v = _pooler_variant_from_wandb_name(name)
+        if v is None:
+            variant = ""        # old-format → baseline
+        elif v in ABLATION_VARIANTS or v == "":
+            variant = v
+        else:
+            continue
+
+        nl = name.lower()
+        if "fase2_profon" in nl:
+            phase = "phase2_on"
+        elif "fase2_profoff" in nl:
+            phase = "phase2_off"
+        else:
+            phase = "phase1"
+
+        records.append({"variant": variant, "split": split, "phase": phase, "eer": eer})
+
+    empty = pd.DataFrame()
+    if not records:
+        return empty, "", empty, "", False, list(ALL_SPLITS)
+
+    df = pd.DataFrame(records)
+    completed  = sorted(df["split"].dropna().unique().astype(int).tolist())
+    missing    = sorted(set(ALL_SPLITS) - set(completed))
+    is_partial = bool(missing)
+
+    all_variants = [v for v in POOLER_VARIANT_LABELS if v in df["variant"].values]
+
+    def _stats_rows(subset_df, col_name):
+        rows, chart_data = [], {}
+        for v in all_variants:
+            label  = POOLER_VARIANT_LABELS[v]
+            s = subset_df[subset_df["variant"] == v]["eer"]
+            if s.empty:
+                continue
+            rows.append({
+                "Pooler Variant": label,
+                "Média":   _fmt_eer(s.mean()),
+                "Std":     f"{s.std()*100:.2f} pp" if len(s) > 1 else "—",
+                "Mediana": _fmt_eer(s.median()),
+                "Mín":     _fmt_eer(s.min()),
+                "Máx":     _fmt_eer(s.max()),
+                "N splits": len(s),
+            })
+            chart_data[label] = s.mean()
+        chart = _grouped_bar_chart(
+            list(chart_data.keys()),
+            {col_name: list(chart_data.values())},
+            f"Pooler Ablation — {col_name} (LA-CDIP full pairs)",
+        )
+        return pd.DataFrame(rows), chart
+
+    # Part A — fase1
+    table_p1, chart_p1 = _stats_rows(df[df["phase"] == "phase1"], "EER médio (fase1)")
+
+    # Part B — melhor acumulado: min(fase1, fase2_on, fase2_off) por (variant, split)
+    df1   = df[df["phase"] == "phase1"].set_index(["variant", "split"])["eer"]
+    df2on = df[df["phase"] == "phase2_on"].set_index(["variant", "split"])["eer"]
+    df2of = df[df["phase"] == "phase2_off"].set_index(["variant", "split"])["eer"]
+
+    best_records = []
+    for v in all_variants:
+        for sp in sorted(df["split"].dropna().unique().astype(int)):
+            idx = (v, sp)
+            p1e  = _to_scalar(df1.get(idx))
+            on_e = _to_scalar(df2on.get(idx))
+            of_e = _to_scalar(df2of.get(idx))
+            candidates = [x for x in [p1e, on_e, of_e] if x is not None]
+            if candidates:
+                best_records.append({"variant": v, "split": sp, "eer": min(candidates)})
+
+    if best_records:
+        df_best = pd.DataFrame(best_records)
+        table_best, chart_best = _stats_rows(df_best, "EER médio (melhor fase)")
+    else:
+        table_best, chart_best = table_p1, chart_p1
+
+    return table_p1, chart_p1, table_best, chart_best, is_partial, missing
 
 
 # ---------------------------------------------------------------------------
@@ -1251,6 +1399,9 @@ def build_html(
     full_eval_t1: pd.DataFrame, full_eval_t2: pd.DataFrame, full_eval_t3: pd.DataFrame,
     full_eval_c1: str, full_eval_c2: str, full_eval_c3: str,
     full_eval_partial: bool, full_eval_missing: List[int],
+    pooler_abl_t1: pd.DataFrame, pooler_abl_c1: str,
+    pooler_abl_tbest: pd.DataFrame, pooler_abl_cbest: str,
+    pooler_abl_partial: bool, pooler_abl_missing: List[int],
     emb_cv: pd.DataFrame, emb_chart_cv: str,
     vlm_metric_cv: pd.DataFrame,
     vlm_metric_chart_cv: str,
@@ -1392,6 +1543,24 @@ def build_html(
   {_table_html(full_eval_t3)}
 </div>""")
 
+    # --- Pooler Ablation ---
+    sections.append(f"""
+<div class="section">
+  <h2>3d. Pooler Ablation — subcenter_cosface (Full Eval) {partial_badge(pooler_abl_partial)}</h2>
+  <p class="desc">
+    Comparação de variantes de pooler usando <code>subcenter_cosface</code> (fase 1, pares completos).
+    Baseline = attention pooler padrão (nq=1). Variantes: attention nq=2, cross-modal pooler,
+    cross-modal + rich prompt.
+  </p>
+  {missing_note(pooler_abl_missing)}
+  <h3>Fase 1</h3>
+  {_chart_html(pooler_abl_c1)}
+  {_table_html(pooler_abl_t1)}
+  <h3>Melhor EER acumulado (todas as fases)</h3>
+  {_chart_html(pooler_abl_cbest)}
+  {_table_html(pooler_abl_tbest)}
+</div>""")
+
     # --- Baselines: Embeddings ---
     sections.append(f"""
 <div class="section">
@@ -1465,6 +1634,7 @@ def main() -> None:
     exp3b_t1, exp3b_t2, exp3b_t3, exp3b_c1, exp3b_c2, exp3b_c3, exp3b_partial, exp3b_missing = _build_exp3(runs3b, run_prefix="Sprint3b_")
     exp4_table, exp4_chart, exp4_partial, exp4_missing                 = _build_exp4(runs4)
     full_eval_t1, full_eval_t2, full_eval_t3, full_eval_c1, full_eval_c2, full_eval_c3, full_eval_partial, full_eval_missing = _build_full_eval(runs_full_eval)
+    pooler_abl_t1, pooler_abl_c1, pooler_abl_tbest, pooler_abl_cbest, pooler_abl_partial, pooler_abl_missing = _build_pooler_ablation(runs_full_eval)
     emb_cv, _, emb_chart_cv, _                                        = _build_baselines_embedding(runs_emb, extra_runs=runs_jina_lora)
     vlm_metric_cv, _, vlm_metric_chart_cv, _                          = _build_baselines_vlm(
         runs_vlm_met, "Baselines VLM (Métrica)")
@@ -1483,6 +1653,7 @@ def main() -> None:
         exp3b_t1, exp3b_t2, exp3b_t3, exp3b_c1, exp3b_c2, exp3b_c3, exp3b_partial, exp3b_missing,
         exp4_table, exp4_chart, exp4_partial, exp4_missing,
         full_eval_t1, full_eval_t2, full_eval_t3, full_eval_c1, full_eval_c2, full_eval_c3, full_eval_partial, full_eval_missing,
+        pooler_abl_t1, pooler_abl_c1, pooler_abl_tbest, pooler_abl_cbest, pooler_abl_partial, pooler_abl_missing,
         emb_cv, emb_chart_cv,
         vlm_metric_cv, vlm_metric_chart_cv,
     )

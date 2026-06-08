@@ -24,7 +24,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
 from generate_paper_results_html import (
     ENTITY, PROJECTS, CSS,
-    _fetch_runs, _build_exp3, _build_full_eval,
+    _fetch_runs, _build_exp3, _build_full_eval, _build_pooler_ablation,
     _build_baselines_embedding, _build_baselines_vlm,
     _table_html, _chart_html,
     _fmt_eer,
@@ -40,6 +40,8 @@ def build_final_html(
     full_eval_t1, full_eval_t2, full_eval_t3,
     full_eval_c1, full_eval_c2, full_eval_c3,
     full_eval_partial, full_eval_missing,
+    pooler_abl_t1, pooler_abl_c1, pooler_abl_tbest, pooler_abl_cbest,
+    pooler_abl_partial, pooler_abl_missing,
     emb_cv, emb_chart_cv,
     vlm_cv, vlm_chart_cv,
 ) -> str:
@@ -94,10 +96,28 @@ def build_final_html(
   {_table_html(full_eval_t3)}
 </div>""")
 
+    # --- Pooler Ablation ---
+    sections.append(f"""
+<div class="section">
+  <h2>3. Pooler Ablation — Sub-Center CosFace {partial_badge(pooler_abl_partial)}</h2>
+  <p class="desc">
+    Comparação de variantes de pooler com <code>subcenter_cosface</code> (pares completos).
+    Baseline = attention pooler padrão (nq=1). Variantes testadas: attention nq=2,
+    cross-modal pooler e cross-modal com rich prompt.
+  </p>
+  {missing_note(pooler_abl_missing)}
+  <h3>Fase 1</h3>
+  {_chart_html(pooler_abl_c1)}
+  {_table_html(pooler_abl_t1)}
+  <h3>Melhor EER Acumulado (todas as fases)</h3>
+  {_chart_html(pooler_abl_cbest)}
+  {_table_html(pooler_abl_tbest)}
+</div>""")
+
     # --- Baselines Embedding ---
     sections.append(f"""
 <div class="section">
-  <h2>3. Baselines — Similaridade por Embedding</h2>
+  <h2>4. Baselines — Similaridade por Embedding</h2>
   <p class="desc">
     Pixel bruto, Jina-v4 (unadapted), InternVL3-2B e Jina-v4 finetuned (LoRA r=48, InfoNCE).
     Validação cruzada splits 0–4.
@@ -109,7 +129,7 @@ def build_final_html(
     # --- Baselines VLM ---
     sections.append(f"""
 <div class="section">
-  <h2>4. Baselines — VLM com Métrica Numérica</h2>
+  <h2>5. Baselines — VLM com Métrica Numérica</h2>
   <p class="desc">
     Modelos VLM solicitados a retornar similaridade 0–100. Splits 0–4.
   </p>
@@ -153,6 +173,8 @@ def main() -> None:
         _build_exp3(runs3b, run_prefix="Sprint3b_")
     full_eval_t1, full_eval_t2, full_eval_t3, full_eval_c1, full_eval_c2, full_eval_c3, full_eval_partial, full_eval_missing = \
         _build_full_eval(runs_full_eval)
+    pooler_abl_t1, pooler_abl_c1, pooler_abl_tbest, pooler_abl_cbest, pooler_abl_partial, pooler_abl_missing = \
+        _build_pooler_ablation(runs_full_eval)
     emb_cv, _, emb_chart_cv, _ = _build_baselines_embedding(runs_emb, extra_runs=runs_jina_lora)
     vlm_cv, _, vlm_chart_cv, _ = _build_baselines_vlm(runs_vlm, "Baselines VLM")
 
@@ -162,6 +184,8 @@ def main() -> None:
         full_eval_t1, full_eval_t2, full_eval_t3,
         full_eval_c1, full_eval_c2, full_eval_c3,
         full_eval_partial, full_eval_missing,
+        pooler_abl_t1, pooler_abl_c1, pooler_abl_tbest, pooler_abl_cbest,
+        pooler_abl_partial, pooler_abl_missing,
         emb_cv, emb_chart_cv,
         vlm_cv, vlm_chart_cv,
     )
