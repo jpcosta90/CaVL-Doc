@@ -37,33 +37,48 @@ import torch
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 
+DEFAULT_PROMPT = "<image> Analyze this document"
+
+RICHPROMPT_COR = (
+    "<image> Analyze the provided document image and give me its visual description"
+    " based on: Shapes and Elements: presence of graphical components, tables,"
+    " sections, headers, and any other visual elements. Layout Consistency: Evaluate"
+    " the spatial arrangement of text blocks, margins, and alignments. Content Type:"
+    " Ensure the document types of content (e.g., tables, forms, paragraphs),"
+    " regardless of specific wording."
+)
+
 # ---------------------------------------------------------------------------
 # Variant config
 # ---------------------------------------------------------------------------
 
 VARIANT_META: dict[str, dict] = {
     "": {
-        "repo_suffix":  "cosdoc",
-        "label":        "Attention nq=1 (baseline)",
-        "description":  "Standard attention pooler, num_queries=1.",
+        "repo_suffix":     "cosdoc",
+        "label":           "Attention nq=1 (baseline)",
+        "description":     "Standard attention pooler, num_queries=1.",
+        "embedding_prompt": DEFAULT_PROMPT,
     },
     "nq2": {
-        "repo_suffix":  "cosdoc-nq2",
-        "label":        "Attention nq=2",
-        "description":  "Multi-query attention pooler, num_queries=2.",
+        "repo_suffix":     "cosdoc-nq2",
+        "label":           "Attention nq=2",
+        "description":     "Multi-query attention pooler, num_queries=2.",
+        "embedding_prompt": DEFAULT_PROMPT,
     },
     "cross_modal": {
-        "repo_suffix":  "cosdoc-cross-modal",
-        "label":        "Cross-Modal Pooler",
-        "description":  "Bidirectional cross-modal attention pooler (visual ↔ text).",
+        "repo_suffix":     "cosdoc-cross-modal",
+        "label":           "Cross-Modal Pooler",
+        "description":     "Bidirectional cross-modal attention pooler (visual ↔ text).",
+        "embedding_prompt": DEFAULT_PROMPT,
     },
     "cross_modal_richprompt_cor": {
-        "repo_suffix":  "cosdoc-cross-modal-richprompt",
-        "label":        "Cross-Modal + Rich Prompt",
-        "description":  (
+        "repo_suffix":     "cosdoc-cross-modal-richprompt",
+        "label":           "Cross-Modal + Rich Prompt",
+        "description":     (
             "Bidirectional cross-modal pooler trained with a rich visual-description prompt "
             "describing shapes, layout consistency and content type."
         ),
+        "embedding_prompt": RICHPROMPT_COR,
     },
 }
 
@@ -282,6 +297,12 @@ def upload_variant(
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
+
+        # Inject correct embedding_prompt into config (old checkpoints may not have it)
+        correct_prompt = VARIANT_META[variant]["embedding_prompt"]
+        if config.get("embedding_prompt") != correct_prompt:
+            print(f"  Injetando embedding_prompt no config ({correct_prompt[:60]}...)")
+            config = {**config, "embedding_prompt": correct_prompt}
 
         # Weights (inference only — no optimizer/professor)
         inference_ckpt = {
