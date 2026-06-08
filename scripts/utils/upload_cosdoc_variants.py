@@ -82,10 +82,11 @@ def _variant_from_run_name(run_name: str) -> str | None:
 # Best checkpoint selection
 # ---------------------------------------------------------------------------
 
-def _best_per_variant(cache_path: Path) -> dict[str, dict]:
+def _best_per_variant(cache_path: Path, split: int | None = None) -> dict[str, dict]:
     """
-    Reads eval cache CSV and returns the row with min EER per pooler variant.
-    Returns {variant: {"checkpoint_path": ..., "eer": ..., "run_name": ...}}
+    Reads eval cache CSV and returns the row with min EER per pooler variant,
+    selecting the best phase for each (variant, split) — i.e. melhor acumulado.
+    If split is given, restricts to that split only.
     """
     df = pd.read_csv(cache_path)
     required = {"checkpoint_path", "run_name", "eer"}
@@ -94,6 +95,11 @@ def _best_per_variant(cache_path: Path) -> dict[str, dict]:
         raise ValueError(f"Cache CSV missing columns: {missing}")
 
     df = df.dropna(subset=["checkpoint_path", "eer"])
+
+    if split is not None and "split" in df.columns:
+        df = df[df["split"].astype(str) == str(split)]
+        if df.empty:
+            raise ValueError(f"Nenhum resultado no cache para split={split}.")
 
     best: dict[str, dict] = {}
     for _, row in df.iterrows():
@@ -106,6 +112,7 @@ def _best_per_variant(cache_path: Path) -> dict[str, dict]:
         if variant not in VARIANT_META:
             continue
         eer = float(row["eer"])
+        # Keep best (minimum) EER across all phases for this variant
         if variant not in best or eer < best[variant]["eer"]:
             best[variant] = {
                 "checkpoint_path": Path(row["checkpoint_path"]),
@@ -314,6 +321,57 @@ def upload_variant(
 
 
 # ---------------------------------------------------------------------------
+# Fallback: scan checkpoint directory directly
+# ---------------------------------------------------------------------------
+
+def _best_per_variant_from_disk(checkpoint_root: Path, split: int | None = None) -> dict[str, dict]:
+    """
+    Scans checkpoint_root for best_model.pt / best_siam.pt matching
+    subcenter_cosface + known variants. Reads EER from checkpoint metadata.
+    Selects best phase per variant (min EER across fase1/fase2_*).
+    If split is given, restricts to _S{split}_ in the run name.
+    """
+    best: dict[str, dict] = {}
+    seen_dirs: set = set()
+    split_tag = f"_S{split}_" if split is not None else None
+
+    for ckpt_name in ["best_model.pt", "best_siam.pt"]:
+        for ckpt_path in checkpoint_root.rglob(ckpt_name):
+            if ckpt_path.parent in seen_dirs:
+                continue
+            run_name = ckpt_path.parent.name
+            if "subcenter_cosface" not in run_name.lower():
+                continue
+            if split_tag and split_tag not in run_name:
+                continue
+
+            variant = _variant_from_run_name(run_name)
+            if variant is None or variant not in VARIANT_META:
+                continue
+
+            try:
+                ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+                eer = ckpt.get("metrics", {}).get("eer")
+                if eer is None:
+                    continue
+                eer = float(eer)
+                seen_dirs.add(ckpt_path.parent)
+                # Keep best (min) EER across all phases for this variant
+                if variant not in best or eer < best[variant]["eer"]:
+                    best[variant] = {
+                        "checkpoint_path": ckpt_path,
+                        "eer":             eer,
+                        "run_name":        run_name,
+                        "phase":           "disk",
+                        "split":           split,
+                    }
+            except Exception as e:
+                print(f"  [SKIP] {run_name}: {e}")
+
+    return best
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -322,7 +380,11 @@ def main() -> None:
         description="Upload das 4 variantes CosDoc (subcenter_cosface) para o HF Hub."
     )
     p.add_argument("--cache", default="data/eval_lacdip_cache.csv",
-                   help="Caminho para o CSV de cache do eval_lacdip_full.py.")
+                   help="CSV de cache do eval_lacdip_full.py (preferido sobre --checkpoint-root).")
+    p.add_argument("--checkpoint-root", default=None,
+                   help="Fallback: raiz dos checkpoints quando o cache não existe.")
+    p.add_argument("--split", type=int, default=0,
+                   help="Split a usar (default: 0). Seleciona o melhor checkpoint desse split.")
     p.add_argument("--hf-user", default="Jpcosta90",
                    help="Username do Hugging Face (default: Jpcosta90).")
     p.add_argument("--variants", default=",".join(VARIANT_META.keys()),
@@ -332,14 +394,19 @@ def main() -> None:
     args = p.parse_args()
 
     cache_path = Path(args.cache)
-    if not cache_path.exists():
-        print(f"❌ Cache não encontrado: {cache_path}")
-        sys.exit(1)
-
     wanted_variants = {v.strip() for v in args.variants.split(",") if v.strip() in VARIANT_META}
 
-    print(f"Lendo cache: {cache_path}")
-    best = _best_per_variant(cache_path)
+    if cache_path.exists():
+        print(f"Lendo cache: {cache_path}  (split={args.split})")
+        best = _best_per_variant(cache_path, split=args.split)
+    elif args.checkpoint_root:
+        ckpt_root = Path(args.checkpoint_root)
+        print(f"Cache não encontrado — varrendo checkpoints em: {ckpt_root}  (split={args.split})")
+        best = _best_per_variant_from_disk(ckpt_root, split=args.split)
+    else:
+        print(f"❌ Cache não encontrado: {cache_path}")
+        print("   Passe --checkpoint-root <dir> para usar fallback por disco.")
+        sys.exit(1)
 
     if not best:
         print("❌ Nenhum checkpoint encontrado no cache para subcenter_cosface.")
