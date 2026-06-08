@@ -209,7 +209,7 @@ def _build_siam(backbone, tokenizer, device: str, cfg: dict):
         hidden = out.hidden_states
         lm  = backbone.language_model.model
         idx = cut_layer + 1 if len(hidden) == len(lm.layers) + 1 else cut_layer
-        return hidden[idx], None
+        return hidden[idx], batch_attn_mask, batch_input_ids
 
     return build_cavl_model(
         backbone=backbone,
