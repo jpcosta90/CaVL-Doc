@@ -459,6 +459,32 @@ def _scalar(v):
 
 
 # ---------------------------------------------------------------------------
+# Results cache (skip already-evaluated checkpoints)
+# ---------------------------------------------------------------------------
+
+def _load_cache(cache_path: Path) -> set[str]:
+    """Returns set of checkpoint_path strings already evaluated."""
+    if not cache_path.exists():
+        return set()
+    import pandas as pd
+    try:
+        df = pd.read_csv(cache_path)
+        if "checkpoint_path" in df.columns:
+            return set(df["checkpoint_path"].dropna().tolist())
+    except Exception:
+        pass
+    return set()
+
+
+def _append_cache(cache_path: Path, row: dict) -> None:
+    """Appends one result row to the cache CSV immediately."""
+    import pandas as pd
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    df = pd.DataFrame([row])
+    df.to_csv(cache_path, mode="a", header=not cache_path.exists(), index=False)
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -501,6 +527,8 @@ def main() -> None:
                    help="Splits a avaliar (default: 0,1,2,3,4).")
     p.add_argument("--gpu-id",          type=int, default=None)
     p.add_argument("--batch-size",      type=int, default=4)
+    p.add_argument("--results-cache",   default="data/eval_lacdip_cache.csv",
+                   help="CSV onde os resultados são acumulados; checkpoints já presentes são pulados.")
     p.add_argument("--wandb-project",   default=WANDB_PROJECT)
     p.add_argument("--wandb-entity",    default=WANDB_ENTITY)
     p.add_argument("--no-wandb",        action="store_true")
@@ -555,6 +583,12 @@ def main() -> None:
     if args.dry_run:
         return
 
+    # --- Cache de resultados já processados ---
+    cache_path = Path(args.results_cache)
+    done_paths = _load_cache(cache_path)
+    if done_paths:
+        print(f"\nCache: {len(done_paths)} checkpoint(s) já avaliados em '{cache_path}' — serão pulados.")
+
     # --- Load backbone (uma vez) ---
     print("\nCarregando backbone (uma vez para todos os checkpoints)...")
     backbone, tokenizer = _build_backbone(device)
@@ -571,9 +605,14 @@ def main() -> None:
         split = info["split"]
         loss  = info["loss"] or "unknown"
 
+        # Pula se já avaliado
+        if str(ckpt_path) in done_paths:
+            print(f"\n  ⏭️  Pulando (já avaliado): {ckpt_path.parent.name}")
+            continue
+
         val_csv = _get_val_csv(split, splits_base)
         if val_csv is None:
-            print(f"\n⚠️  CSV não encontrado para split {split}. Pulando {run_name}.")
+            print(f"\n⚠️  CSV não encontrado para split {split}. Pulando {ckpt_path.parent.name}.")
             continue
 
         print(f"\n{'='*70}")
@@ -608,6 +647,18 @@ def main() -> None:
             f"pairs={metrics['n_pairs']}  "
             f"({elapsed/60:.1f} min)"
         )
+
+        row = {
+            "checkpoint_path": str(ckpt_path),
+            "run_name":        ckpt_path.parent.name,
+            "sprint":          info["sprint"],
+            "loss":            loss,
+            "split":           split,
+            "phase":           info["phase"],
+            **metrics,
+        }
+        _append_cache(cache_path, row)
+        done_paths.add(str(ckpt_path))
 
         results.append({
             "sprint": info["sprint"],
