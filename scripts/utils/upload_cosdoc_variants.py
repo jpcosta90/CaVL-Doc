@@ -367,7 +367,9 @@ def _best_per_variant_from_disk(checkpoint_root: Path, split: int | None = None)
                 continue
 
             variant = _variant_from_run_name(run_name)
-            if variant is None or variant not in VARIANT_META:
+            if variant is None:
+                variant = ""  # no tag between noinit and fase → baseline
+            if variant not in VARIANT_META:
                 continue
 
             try:
