@@ -64,6 +64,14 @@ WANDB_ENTITY  = "jpcosta1990-university-of-brasilia"
 WANDB_PROJECT = "CaVL-Doc_LA-CDIP_Embedding_Baseline"
 
 EMBEDDING_PROMPT = "<image> Analyze this document"
+RICHPROMPT = (
+    "<image> Analyze the provided document image and give me its visual description"
+    " based on: Shapes and Elements: presence of graphical components, tables,"
+    " sections, headers, and any other visual elements. Layout Consistency: Evaluate"
+    " the spatial arrangement of text blocks, margins, and alignments. Content Type:"
+    " Ensure the document types of content (e.g., tables, forms, paragraphs),"
+    " regardless of specific wording."
+)
 CUT_LAYER        = 27
 MODEL_NAME       = "InternVL3-2B"
 PROJ_OUT_DIM     = 1536
@@ -222,7 +230,7 @@ class _JinaV4Embedder:
 class _InternVL3Embedder:
     MODEL_ID = f"OpenGVLab/{MODEL_NAME}"
 
-    def __init__(self, device: str, layer: str):
+    def __init__(self, device: str, layer: str, prompt: str = EMBEDDING_PROMPT):
         """layer: 'input' (layer 0) or 'output' (cut_layer 27)"""
         from cavl_doc.models.backbone_loader import load_model, warm_up_model
         print(f"Carregando {self.MODEL_ID} (layer={layer})...")
@@ -238,6 +246,7 @@ class _InternVL3Embedder:
         self.tokenizer = tokenizer
         self.device    = device
         self.layer     = layer
+        self.prompt    = prompt
 
     @torch.no_grad()
     def embed(self, img: Image.Image) -> np.ndarray:
@@ -253,7 +262,7 @@ class _InternVL3Embedder:
         pixel_values = torch.stack([tfm(t) for t in tiles]).to(torch.bfloat16)
 
         out = prepare_inputs_for_multimodal_embedding(
-            self.backbone, self.tokenizer, pixel_values, EMBEDDING_PROMPT
+            self.backbone, self.tokenizer, pixel_values, self.prompt
         )
         input_ids    = out["input_ids"].to(self.device)
         pixel_values = out["pixel_values"].to(self.device, dtype=torch.bfloat16)
@@ -431,6 +440,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Baseline de embeddings para documentos.")
     p.add_argument("--method", required=True,
                    choices=["jina-v4", "internvl3-in", "internvl3-out",
+                            "internvl3-out-richprompt",
                             "mm-embed", "pixel-cosine", "pixel-l2"],
                    help="Método de embedding a avaliar")
     p.add_argument("--data-root",      default=None,
@@ -481,6 +491,8 @@ def main() -> None:
             embedder = _InternVL3Embedder(device, layer="input")
         elif args.method == "internvl3-out":
             embedder = _InternVL3Embedder(device, layer="output")
+        elif args.method == "internvl3-out-richprompt":
+            embedder = _InternVL3Embedder(device, layer="output", prompt=RICHPROMPT)
         elif args.method == "mm-embed":
             embedder = _MMEmbedEmbedder(device)
 

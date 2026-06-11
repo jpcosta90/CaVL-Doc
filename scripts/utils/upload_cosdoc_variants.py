@@ -10,6 +10,7 @@ Variantes e repositórios:
   "nq2"                        → Jpcosta90/cosdoc-nq2
   "cross_modal"                → Jpcosta90/cosdoc-cross-modal
   "cross_modal_richprompt_cor" → Jpcosta90/cosdoc-cross-modal-richprompt
+  "richprompt_cor"             → Jpcosta90/cosdoc-richprompt
 
 Uso (servidor gpds2, na raiz do projeto):
     python scripts/utils/upload_cosdoc_variants.py \\
@@ -77,6 +78,30 @@ VARIANT_META: dict[str, dict] = {
         "description":     (
             "Bidirectional cross-modal pooler trained with a rich visual-description prompt "
             "describing shapes, layout consistency and content type."
+        ),
+        "embedding_prompt": RICHPROMPT_COR,
+    },
+    "richprompt_cor": {
+        "repo_suffix":     "cosdoc-richprompt",
+        "label":           "Attention nq=1 + Rich Prompt",
+        "description":     (
+            "Standard attention pooler (nq=1) trained with a rich visual-description prompt "
+            "describing shapes, layout consistency and content type."
+        ),
+        "embedding_prompt": RICHPROMPT_COR,
+    },
+    "mean": {
+        "repo_suffix":     "cosdoc-mean",
+        "label":           "Mean Pooler",
+        "description":     "Mean pooler (average over visual tokens) with default prompt.",
+        "embedding_prompt": DEFAULT_PROMPT,
+    },
+    "mean_richprompt_cor": {
+        "repo_suffix":     "cosdoc-mean-richprompt",
+        "label":           "Mean Pooler + Rich Prompt",
+        "description":     (
+            "Mean pooler (average over visual tokens) trained with a rich visual-description "
+            "prompt describing shapes, layout consistency and content type."
         ),
         "embedding_prompt": RICHPROMPT_COR,
     },

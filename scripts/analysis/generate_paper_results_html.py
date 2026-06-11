@@ -158,9 +158,15 @@ POOLER_VARIANT_LABELS: dict[str, str] = {
     "nq2":                        "Attention nq=2",
     "cross_modal":                "Cross-Modal",
     "cross_modal_richprompt_cor": "Cross-Modal + Rich Prompt",
+    "richprompt_cor":             "Attention nq=1 + Rich Prompt",
+    "mean":                       "Mean Pooler",
+    "mean_richprompt_cor":        "Mean Pooler + Rich Prompt",
 }
 # Variants that are NOT the baseline — used to split ablation from main full_eval
-ABLATION_VARIANTS: set[str] = {"nq2", "cross_modal", "cross_modal_richprompt_cor"}
+ABLATION_VARIANTS: set[str] = {
+    "nq2", "cross_modal", "cross_modal_richprompt_cor",
+    "richprompt_cor", "mean", "mean_richprompt_cor",
+}
 
 
 def _pooler_variant_from_wandb_name(name: str) -> Optional[str]:
@@ -798,6 +804,17 @@ def _build_exp4(runs: List) -> Tuple[pd.DataFrame, str, bool, List[int]]:
 # Baselines — Embedding
 # ---------------------------------------------------------------------------
 
+EMB_METHOD_LABELS: dict[str, str] = {
+    "internvl3-in":              "InternVL3-2B (input layer)",
+    "internvl3-out":             "InternVL3-2B (output layer)",
+    "internvl3-out-richprompt":  "InternVL3-2B (output, rich prompt)",
+    "jina-v4":                   "Jina-v4",
+    "mm-embed":                  "MM-Embed",
+    "pixel-cosine":              "Pixel cosine",
+    "pixel-l2":                  "Pixel L2",
+}
+
+
 def _build_baselines_embedding(
     runs: List,
     extra_runs: Optional[List] = None,
@@ -813,7 +830,7 @@ def _build_baselines_embedding(
         m = re.match(r"Emb_(.+)_split(\d+)$", name)
         if not m:
             continue
-        method    = m.group(1)
+        method    = EMB_METHOD_LABELS.get(m.group(1), m.group(1))
         split_idx = int(m.group(2))
         s   = _summary(r)
         eer = _scalar(s.get("test/eer"))
