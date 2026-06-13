@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Gera paper_results_final.html — versão limpa para o paper.
+Gera paper_results_final.html — versão curada para o paper.
 
 Seções:
-  1. Sprint3b — ArcDoc (UnB): ablação de losses (treino, subset de validação)
-  2. Full Eval — Sprint3b: mesmas métricas nos CSVs completos (comparável com baselines)
-  3. Baselines — Embedding (incluindo Jina-v4 finetuned)
-  4. Baselines — VLM (métrica numérica)
+  1. Full Eval — Comparação de Losses (Sprint3b, attention q=1, pares completos)
+  2. Pooler Query Ablation (q=1 vs q=2)
+  3. Prompt Effect Ablation (mean pool / q=1 / cross-modal × P₀ / Pᵣ)
+  4. Baselines — Embedding
+  5. Baselines — VLM
 
 Uso:
     python scripts/analysis/generate_final_paper_results.py
@@ -16,32 +17,646 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import re
 from datetime import datetime
 from pathlib import Path
+from typing import List, Optional
 
-# Reutiliza tudo do script principal
+import numpy as np
+import pandas as pd
+
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[0]))
 from generate_paper_results_html import (
-    ENTITY, PROJECTS, CSS,
-    _fetch_runs, _build_exp3, _build_full_eval, _build_pooler_ablation,
+    ENTITY, PROJECTS, CSS, ALL_SPLITS,
+    POOLER_VARIANT_LABELS, LOSS_LABELS,
+    _fetch_runs,
     _build_baselines_embedding, _build_baselines_vlm,
-    _table_html, _chart_html,
-    _fmt_eer,
+    _pooler_variant_from_wandb_name,
+    _summary, _scalar,
+    _grouped_bar_chart,
+    _table_html, _chart_html, _fmt_eer, _fmt_delta,
+    _loss_from_name, _to_scalar,
 )
 
-WORKSPACE_ROOT  = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT  = WORKSPACE_ROOT / "results" / "paper_results_final.html"
+WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_OUTPUT = WORKSPACE_ROOT / "results" / "paper_results_final.html"
+
+# Variants excluded from the loss comparison (handled in other sections)
+from generate_paper_results_html import ABLATION_VARIANTS
+
+# All known losses — longest first so regex matches greedily correct
+_KNOWN_LOSSES_RE = sorted(
+    ["subcenter_cosface", "subcenter_arcface", "contrastive",
+     "cosface", "arcface", "triplet", "circle"],
+    key=len, reverse=True,
+)
+
+def _variant_from_any_loss_run(name: str) -> Optional[str]:
+    """Extracts pooler variant from a FullEval run name for ANY loss.
+    Returns variant string ("" for baseline, e.g. "mean" for mean pooler) or None.
+
+    _pooler_variant_from_wandb_name only handles subcenter_cosface; this version
+    covers all losses so ArcFace/triplet/etc. ablation runs are also filtered.
+    """
+    nl = name.lower()
+    for loss in _KNOWN_LOSSES_RE:
+        m = re.match(
+            rf"fulleval_sprint3b_s\d+_{re.escape(loss)}_(.+)_fase\d",
+            nl,
+        )
+        if m:
+            return m.group(1).strip("_")
+    return None  # baseline (old format or no variant tag)
+
+# ---------------------------------------------------------------------------
+# Loss comparison (replaces _build_full_eval with tighter Part C)
+# ---------------------------------------------------------------------------
+
+def _build_loss_comparison(runs: List):
+    """Like _build_full_eval but Part C (Melhor EER Acumulado) is restricted to
+    (loss, split) pairs that have runs in BOTH fase1 AND fase2.
+    This prevents orphan fase1-only or fase2-only runs from contaminating Part C.
+    Returns (table_p1, table_p2, table_p3, chart_p1, chart_p2, chart_p3,
+             is_partial, missing, run_infos).
+    """
+    records: list[dict] = []
+    run_infos: list[dict] = []
+
+    for r in runs:
+        name = r.name or ""
+        if not name.startswith("FullEval_"):
+            continue
+        # Use general variant detector (not cosface-only) so ArcFace/triplet
+        # ablation runs (e.g. mean pooler trained with arcface) are also excluded.
+        v = _variant_from_any_loss_run(name)
+        if v is not None and v in ABLATION_VARIANTS:
+            continue
+        s   = _summary(r)
+        eer = _scalar(s.get("val/eer"))
+        if eer is None:
+            continue
+        cfg   = dict(r.config) if hasattr(r, "config") else {}
+        loss  = cfg.get("loss") or _loss_from_name(name)
+        split = cfg.get("split")
+        if split is None:
+            m2 = re.search(r"_S(\d+)_", name)
+            split = int(m2.group(1)) if m2 else None
+        else:
+            try:
+                split = int(split)
+            except (TypeError, ValueError):
+                split = None
+        nl = name.lower()
+        raw_phase = cfg.get("phase", "")
+        if "fase2_profon" in nl or raw_phase == "fase2_profON":
+            phase = "phase2_on"
+        elif "fase2_profoff" in nl or raw_phase == "fase2_profOFF":
+            phase = "phase2_off"
+        else:
+            phase = "phase1"
+        records.append({"loss": loss, "split": split, "phase": phase, "eer": eer})
+        run_infos.append({
+            "name": name, "url": _run_url(r),
+            "split": split, "phase": phase, "eer": eer,
+            "variant": loss,
+        })
+
+    if not records:
+        empty = pd.DataFrame()
+        return empty, empty, empty, "", "", "", False, list(ALL_SPLITS), [], [], [], []
+
+    df = pd.DataFrame(records)
+    completed  = sorted(df["split"].dropna().unique().astype(int).tolist())
+    missing    = sorted(set(ALL_SPLITS) - set(completed))
+    is_partial = bool(missing)
+
+    def _stats_row(label, series):
+        if series.empty:
+            return {"Loss Function": label, "Média": "—", "Std": "—", "Mediana": "—", "Mín": "—", "Máx": "—"}
+        return {
+            "Loss Function": label,
+            "Média":   _fmt_eer(series.mean()),
+            "Std":     f"{series.std()*100:.2f} pp" if len(series) > 1 else "—",
+            "Mediana": _fmt_eer(series.median()),
+            "Mín":     _fmt_eer(series.min()),
+            "Máx":     _fmt_eer(series.max()),
+        }
+
+    # Part A — fase1
+    p1_df  = df[df["phase"] == "phase1"]
+    p1_grp = p1_df.groupby("loss")["eer"].mean().sort_values()
+    table_p1 = pd.DataFrame([
+        _stats_row(LOSS_LABELS.get(l, l), p1_df[p1_df["loss"] == l]["eer"])
+        for l in p1_grp.index
+    ])
+    chart_p1 = _grouped_bar_chart(
+        [LOSS_LABELS.get(l, l) for l in p1_grp.index],
+        {"EER médio": list(p1_grp.values)},
+        "Full Eval — Fase 1 (pares completos)",
+    )
+
+    # Part B — fase2 profON vs profOFF
+    p2on_df  = df[df["phase"] == "phase2_on"]
+    p2off_df = df[df["phase"] == "phase2_off"]
+    losses_b = sorted(set(p2on_df["loss"]) | set(p2off_df["loss"]))
+    rows_b = []
+    for l in losses_b:
+        on_s  = p2on_df[p2on_df["loss"] == l]["eer"]
+        off_s = p2off_df[p2off_df["loss"] == l]["eer"]
+        on_m  = on_s.mean()  if not on_s.empty  else None
+        off_m = off_s.mean() if not off_s.empty else None
+        rows_b.append({
+            "Loss Function": LOSS_LABELS.get(l, l),
+            "Com Min. Média": _fmt_eer(on_m),  "Com Min. Std": f"{on_s.std()*100:.2f} pp" if len(on_s) > 1 else "—",
+            "Sem Min. Média": _fmt_eer(off_m), "Sem Min. Std": f"{off_s.std()*100:.2f} pp" if len(off_s) > 1 else "—",
+            "Δ média (pp)": _fmt_delta(on_m, off_m) if on_m and off_m else "—",
+        })
+    table_p2 = pd.DataFrame(rows_b)
+    chart_p2 = _grouped_bar_chart(
+        [LOSS_LABELS.get(l, l) for l in losses_b],
+        {"Com Mineração": [p2on_df[p2on_df["loss"] == l]["eer"].mean() if l in set(p2on_df["loss"]) else None for l in losses_b],
+         "Sem Mineração": [p2off_df[p2off_df["loss"] == l]["eer"].mean() if l in set(p2off_df["loss"]) else None for l in losses_b]},
+        "Full Eval — Fase 2 efeito do professor (pares completos)",
+    )
+
+    # Part C — Melhor EER Acumulado
+    # RESTRICTED: only (loss, split) pairs present in BOTH fase1 AND fase2.
+    # This prevents orphan runs (only fase1 or only fase2) from appearing here.
+    df_p1   = df[df["phase"] == "phase1"].set_index(["loss", "split"])["eer"]
+    df_p2on = df[df["phase"] == "phase2_on"].set_index(["loss", "split"])["eer"]
+    df_p2off= df[df["phase"] == "phase2_off"].set_index(["loss", "split"])["eer"]
+
+    # Only losses that have BOTH fase1 entries AND fase2 entries
+    losses_with_p1   = set(df[df["phase"] == "phase1"]["loss"].dropna())
+    losses_with_p2   = set(df[df["phase"].isin(["phase2_on", "phase2_off"])]["loss"].dropna())
+    losses_c = sorted(losses_with_p1 & losses_with_p2)
+
+    all_splits_c = sorted(df["split"].dropna().unique().astype(int))
+    best_on: dict[str, list] = {}
+    best_off: dict[str, list] = {}
+    for loss in losses_c:
+        on_v, off_v = [], []
+        for sp in all_splits_c:
+            idx  = (loss, sp)
+            p1e  = _to_scalar(df_p1.get(idx))
+            one  = _to_scalar(df_p2on.get(idx))
+            offe = _to_scalar(df_p2off.get(idx))
+            if one  is not None: on_v.append(min(p1e, one)  if p1e is not None else one)
+            if offe is not None: off_v.append(min(p1e, offe) if p1e is not None else offe)
+            if one is None and offe is None and p1e is not None:
+                on_v.append(p1e); off_v.append(p1e)
+        best_on[loss]  = on_v
+        best_off[loss] = off_v
+
+    rows_c = []
+    for loss in losses_c:
+        on_s  = pd.Series(best_on[loss],  dtype=float)
+        off_s = pd.Series(best_off[loss], dtype=float)
+        on_m  = on_s.mean()  if not on_s.empty  else None
+        off_m = off_s.mean() if not off_s.empty else None
+        rows_c.append({
+            "Loss Function": LOSS_LABELS.get(loss, loss),
+            "Com Min. Média": _fmt_eer(on_m),  "Com Min. Std": f"{on_s.std()*100:.2f} pp" if len(on_s) > 1 else "—",
+            "Sem Min. Média": _fmt_eer(off_m), "Sem Min. Std": f"{off_s.std()*100:.2f} pp" if len(off_s) > 1 else "—",
+            "Δ média (pp)": _fmt_delta(on_m, off_m) if on_m and off_m else "—",
+        })
+    table_p3 = pd.DataFrame(rows_c)
+
+    sort_key_c = {l: (np.mean(best_on[l]) if best_on[l] else 1.0) for l in losses_c}
+    losses_c_sorted = sorted(losses_c, key=lambda l: sort_key_c[l])
+    chart_p3 = _grouped_bar_chart(
+        [LOSS_LABELS.get(l, l) for l in losses_c_sorted],
+        {"Com Mineração": [np.mean(best_on[l])  if best_on[l]  else None for l in losses_c_sorted],
+         "Sem Mineração": [np.mean(best_off[l]) if best_off[l] else None for l in losses_c_sorted]},
+        "Full Eval — Melhor EER Acumulado (fase1 + fase2, pares completos)",
+    )
+
+    # Per-split rows for highlight tables ----------------------------------------
+    # 1A — Fase 1: one row per loss
+    split_rows_p1: list[dict] = []
+    for l in p1_grp.index:
+        rd: dict = {"Loss": LOSS_LABELS.get(l, l)}
+        for sp in ALL_SPLITS:
+            v_ = p1_df[(p1_df["loss"] == l) & (p1_df["split"] == sp)]["eer"]
+            rd[f"S{sp}"] = float(v_.iloc[0]) if not v_.empty else None
+        rd["Média"] = float(p1_df[p1_df["loss"] == l]["eer"].mean()) if not p1_df[p1_df["loss"] == l].empty else None
+        split_rows_p1.append(rd)
+
+    # 1B — Fase 2: two rows per loss (Com / Sem Mineração)
+    split_rows_p2: list[dict] = []
+    for l in losses_b:
+        for tipo, ph_df in [("Com Mineração", p2on_df), ("Sem Mineração", p2off_df)]:
+            rd = {"Loss": LOSS_LABELS.get(l, l), "Tipo": tipo}
+            for sp in ALL_SPLITS:
+                v_ = ph_df[(ph_df["loss"] == l) & (ph_df["split"] == sp)]["eer"]
+                rd[f"S{sp}"] = float(v_.iloc[0]) if not v_.empty else None
+            sub = ph_df[ph_df["loss"] == l]["eer"]
+            rd["Média"] = float(sub.mean()) if not sub.empty else None
+            split_rows_p2.append(rd)
+
+    # 1C — Melhor Acumulado: two rows per loss (Com / Sem Mineração)
+    split_rows_p3: list[dict] = []
+    for l in losses_c_sorted:
+        for tipo, vals in [("Com Mineração", best_on[l]), ("Sem Mineração", best_off[l])]:
+            rd = {"Loss": LOSS_LABELS.get(l, l), "Tipo": tipo}
+            val_by_sp = {int(all_splits_c[i]): float(vals[i]) for i in range(len(vals))}
+            for sp in ALL_SPLITS:
+                rd[f"S{sp}"] = val_by_sp.get(sp)
+            rd["Média"] = float(np.mean(list(val_by_sp.values()))) if val_by_sp else None
+            split_rows_p3.append(rd)
+    # -------------------------------------------------------------------------
+
+    return table_p1, table_p2, table_p3, chart_p1, chart_p2, chart_p3, is_partial, missing, \
+           sorted(run_infos, key=lambda x: x["name"]), \
+           split_rows_p1, split_rows_p2, split_rows_p3
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _run_url(r) -> str:
+    try:
+        return f"https://wandb.ai/{ENTITY}/{r.project}/runs/{r.id}"
+    except Exception:
+        return "#"
+
+
+def _collect_full_eval_run_infos(runs: List) -> list[dict]:
+    """Returns sorted run info dicts for baseline-only Sprint3b runs (loss comparison)."""
+    infos = []
+    for r in runs:
+        name = r.name or ""
+        if not name.startswith("FullEval_Sprint3b_"):
+            continue
+        v = _variant_from_any_loss_run(name)
+        if v is not None and v in ABLATION_VARIANTS:
+            continue
+        s = _summary(r)
+        eer = _scalar(s.get("val/eer"))
+        if eer is None:
+            continue
+        m = re.search(r"_S(\d+)_", name)
+        split = int(m.group(1)) if m else None
+        nl = name.lower()
+        phase = "phase2_on" if "fase2_profon" in nl else ("phase2_off" if "fase2_profoff" in nl else "phase1")
+        infos.append({
+            "name": name, "url": _run_url(r),
+            "split": split, "phase": phase, "eer": eer,
+            "variant": "" if v is None else v,
+        })
+    return sorted(infos, key=lambda x: x["name"])
+
+
+def _parse_full_eval_run(r) -> Optional[dict]:
+    """Returns parsed dict for a FullEval Sprint3b subcenter_cosface run, or None."""
+    name = r.name or ""
+    if not name.startswith("FullEval_Sprint3b_"):
+        return None
+    if "subcenter_cosface" not in name.lower():
+        return None
+    s = _summary(r)
+    eer = _scalar(s.get("val/eer"))
+    if eer is None:
+        return None
+    m = re.search(r"_S(\d+)_", name)
+    split = int(m.group(1)) if m else None
+    nl = name.lower()
+    if "fase2_profon" in nl:
+        phase = "phase2_on"
+    elif "fase2_profoff" in nl:
+        phase = "phase2_off"
+    else:
+        phase = "phase1"
+    v = _pooler_variant_from_wandb_name(name)
+    # _pooler_variant_from_wandb_name returns None for baseline runs (both old
+    # format "...cosface_fase1" and new format "...cosface__fase1") — map to "".
+    variant = "" if v is None else v
+    return {
+        "variant": variant, "split": split, "phase": phase,
+        "eer": eer, "name": name, "url": _run_url(r),
+    }
+
+
+
+def _best_by_variant_split(records: list[dict]) -> pd.DataFrame:
+    """Returns DataFrame with best EER per (variant, split) across phases."""
+    df = pd.DataFrame(records)
+    return df.groupby(["variant", "split"])["eer"].min().reset_index()
+
+
+def _variant_stats_table(best: pd.DataFrame, variant_keys: list[str]) -> pd.DataFrame:
+    """Builds summary table: rows=variants, cols=split0..4 + mean + min."""
+    rows = []
+    for v in variant_keys:
+        label = POOLER_VARIANT_LABELS.get(v, v or "Baseline")
+        subset = best[best["variant"] == v]
+        if subset.empty:
+            continue
+        row: dict = {"Variante": label}
+        for sp in ALL_SPLITS:
+            sp_val = subset[subset["split"] == sp]["eer"]
+            row[f"S{sp}"] = _fmt_eer(sp_val.iloc[0]) if not sp_val.empty else "—"
+        row["Média"] = _fmt_eer(subset["eer"].mean())
+        row["Mín"]   = _fmt_eer(subset["eer"].min())
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _split_highlight_table_html(
+    rows: list[dict],
+    label_cols: list[str],
+    splits: list[int] | None = None,
+    extra_fmt_cols: list[str] | None = None,
+) -> str:
+    """Renders an HTML table with per-split EER columns.
+    Minimum (best) EER in each split column is highlighted in green.
+
+    rows: each dict has label_cols keys (str), "S0".."S4" (float|None),
+          "Média" (float|None), and optional extra_fmt_cols (pre-formatted str).
+    """
+    if not rows:
+        return '<p style="color:#888;font-style:italic;">Sem dados disponíveis.</p>'
+    sp_list   = splits if splits is not None else list(ALL_SPLITS)
+    data_cols = [f"S{sp}" for sp in sp_list] + ["Média"]
+    extra     = extra_fmt_cols or []
+
+    # Find best (min) row indices per data column — all ties are highlighted.
+    # Round to 2 decimal places in % (same as display) to avoid float precision issues.
+    def _eer_key(v: float) -> float:
+        return round(v * 100, 2)
+
+    best_idx: dict[str, set[int]] = {}
+    for col in data_cols:
+        col_vals = [(i, row[col]) for i, row in enumerate(rows) if row.get(col) is not None]
+        if col_vals:
+            best_val = min(_eer_key(v) for _, v in col_vals)
+            best_idx[col] = {i for i, v in col_vals if _eer_key(v) == best_val}
+
+    # Header
+    def th(text, align="center"):
+        return (f'<th style="padding:5px 10px;text-align:{align};'
+                f'border-bottom:2px solid #ccc;white-space:nowrap;">{text}</th>')
+
+    header = "".join(th(lc, "left") for lc in label_cols)
+    header += "".join(th(dc) for dc in data_cols)
+    header += "".join(th(ec) for ec in extra)
+
+    # Body
+    body = ""
+    for i, row in enumerate(rows):
+        bg = "#fafafa" if i % 2 == 0 else "#ffffff"
+        cells = ""
+        for lc in label_cols:
+            cells += (f'<td style="padding:5px 10px;font-weight:bold;'
+                      f'background:{bg};white-space:nowrap;">{row.get(lc, "—")}</td>')
+        for col in data_cols:
+            val = row.get(col)
+            if i in best_idx.get(col, set()):
+                style = "padding:5px 10px;text-align:center;background:#d4edda;font-weight:bold;color:#155724;"
+            else:
+                style = f"padding:5px 10px;text-align:center;background:{bg};"
+            text = _fmt_eer(val) if val is not None else "—"
+            cells += f'<td style="{style}">{text}</td>'
+        for ec in extra:
+            cells += (f'<td style="padding:5px 10px;text-align:center;background:{bg};">'
+                      f'{row.get(ec, "—")}</td>')
+        body += f"<tr>{cells}</tr>"
+
+    return (
+        '<div style="overflow-x:auto;margin-top:8px;margin-bottom:16px;">'
+        '<table style="border-collapse:collapse;width:100%;font-size:0.9em;">'
+        f'<thead><tr style="background:#f0f0f0;">{header}</tr></thead>'
+        f'<tbody>{body}</tbody>'
+        "</table></div>"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Section 2 — Pooler Query Ablation (q=1 vs q=2)
+# ---------------------------------------------------------------------------
+
+QUERY_VARIANTS = ["", "nq2"]
+
+def _build_query_ablation(runs: List) -> tuple[pd.DataFrame, str, bool, list[int], list[dict]]:
+    records = []
+    run_infos = []
+    for r in runs:
+        row = _parse_full_eval_run(r)
+        if row is None or row["variant"] not in QUERY_VARIANTS:
+            continue
+        records.append(row)
+        run_infos.append(row)
+
+    if not records:
+        return pd.DataFrame(), "", False, list(ALL_SPLITS), [], []
+
+    best = _best_by_variant_split(records)
+    completed = sorted(best["split"].dropna().unique().astype(int).tolist())
+    missing   = sorted(set(ALL_SPLITS) - set(completed))
+
+    table = _variant_stats_table(best, QUERY_VARIANTS)
+
+    # Consolidated chart: one bar per variant, mean EER across splits
+    chart = _grouped_bar_chart(
+        [POOLER_VARIANT_LABELS.get(v, v or "Baseline") for v in QUERY_VARIANTS],
+        {"EER médio": [
+            float(best[best["variant"] == v]["eer"].mean())
+            if not best[best["variant"] == v].empty else None
+            for v in QUERY_VARIANTS
+        ]},
+        "Query Ablation — nq=1 vs nq=2 (subcenter_cosface, full pairs)",
+    )
+
+    # Per-split rows for highlight table
+    split_rows: list[dict] = []
+    for v in QUERY_VARIANTS:
+        label = POOLER_VARIANT_LABELS.get(v, v or "Baseline")
+        rd: dict = {"Variante": label}
+        for sp in ALL_SPLITS:
+            v_ = best[(best["variant"] == v) & (best["split"] == sp)]["eer"]
+            rd[f"S{sp}"] = float(v_.iloc[0]) if not v_.empty else None
+        sub = best[best["variant"] == v]
+        rd["Média"] = float(sub["eer"].mean()) if not sub.empty else None
+        split_rows.append(rd)
+
+    return table, chart, bool(missing), missing, \
+           sorted(run_infos, key=lambda x: x["name"]), split_rows
+
+
+# ---------------------------------------------------------------------------
+# Section 3 — Prompt Effect Ablation
+# ---------------------------------------------------------------------------
+
+# (baseline_variant, richprompt_variant, pooler_label)
+PROMPT_EFFECT_GROUPS = [
+    ("",            "richprompt_cor",             "Attention q=1"),
+    ("cross_modal", "cross_modal_richprompt_cor",  "Cross-Modal"),
+    ("mean",        "mean_richprompt_cor",          "Mean Pool"),
+]
+PROMPT_EFFECT_VARIANTS = {v for grp in PROMPT_EFFECT_GROUPS for v in grp[:2]}
+
+PROMPT_LABELS = {
+    "default": "Prompt padrão (P₀)",
+    "rich":    "Rich Prompt (Pᵣ)",
+}
+
+
+def _build_prompt_effect_ablation(runs: List) -> tuple[pd.DataFrame, str, bool, list[int], list[dict]]:
+    records = []
+    run_infos = []
+    for r in runs:
+        row = _parse_full_eval_run(r)
+        if row is None or row["variant"] not in PROMPT_EFFECT_VARIANTS:
+            continue
+        records.append(row)
+        run_infos.append(row)
+
+    if not records:
+        return pd.DataFrame(), "", False, list(ALL_SPLITS), [], []
+
+    best = _best_by_variant_split(records)
+    completed = sorted(best["split"].dropna().unique().astype(int).tolist())
+    missing   = sorted(set(ALL_SPLITS) - set(completed))
+
+    # Table: one row per (pooler, prompt), cols = S0..S4 + Média + Δ
+    table_rows = []
+    for v_default, v_rich, pooler_label in PROMPT_EFFECT_GROUPS:
+        for prompt_key, variant_key in [("default", v_default), ("rich", v_rich)]:
+            subset = best[best["variant"] == variant_key]
+            if subset.empty:
+                continue
+            row: dict = {
+                "Pooler": pooler_label,
+                "Prompt": PROMPT_LABELS[prompt_key],
+            }
+            for sp in ALL_SPLITS:
+                sp_val = subset[subset["split"] == sp]["eer"]
+                row[f"S{sp}"] = _fmt_eer(sp_val.iloc[0]) if not sp_val.empty else "—"
+            row["Média"] = _fmt_eer(subset["eer"].mean())
+            table_rows.append({"pooler_label": pooler_label, "prompt_key": prompt_key,
+                                "mean_eer": subset["eer"].mean(), **row})
+
+    table_df = pd.DataFrame(table_rows)
+
+    # Δ column: rich − default (percentage points)
+    delta_rows = []
+    for _, _, pooler_label in PROMPT_EFFECT_GROUPS:
+        default_row = table_df[(table_df["pooler_label"] == pooler_label) & (table_df["prompt_key"] == "default")]
+        rich_row    = table_df[(table_df["pooler_label"] == pooler_label) & (table_df["prompt_key"] == "rich")]
+        if default_row.empty or rich_row.empty:
+            continue
+        d = default_row["mean_eer"].iloc[0]
+        r = rich_row["mean_eer"].iloc[0]
+        delta = (r - d) * 100
+        sign  = "+" if delta > 0 else ""
+        delta_rows.append((pooler_label, "default", "—"))
+        delta_rows.append((pooler_label, "rich",    f"{sign}{delta:.2f} pp"))
+
+    delta_map = {(pl, pk): dv for pl, pk, dv in delta_rows}
+    display_cols = ["Pooler", "Prompt"] + [f"S{sp}" for sp in ALL_SPLITS] + ["Média", "Δ vs P₀"]
+    table_df["Δ vs P₀"] = table_df.apply(
+        lambda row_: delta_map.get((row_["pooler_label"], row_["prompt_key"]), "—"), axis=1
+    )
+    display_df = table_df[display_cols].reset_index(drop=True)
+
+    # Chart: grouped bars — groups=poolers, series=P₀/Pᵣ
+    groups = [pl for _, _, pl in PROMPT_EFFECT_GROUPS]
+    series_default = [
+        table_df[(table_df["pooler_label"] == pl) & (table_df["prompt_key"] == "default")]["mean_eer"].iloc[0]
+        if not table_df[(table_df["pooler_label"] == pl) & (table_df["prompt_key"] == "default")].empty else None
+        for _, _, pl in PROMPT_EFFECT_GROUPS
+    ]
+    series_rich = [
+        table_df[(table_df["pooler_label"] == pl) & (table_df["prompt_key"] == "rich")]["mean_eer"].iloc[0]
+        if not table_df[(table_df["pooler_label"] == pl) & (table_df["prompt_key"] == "rich")].empty else None
+        for _, _, pl in PROMPT_EFFECT_GROUPS
+    ]
+    chart = _grouped_bar_chart(
+        groups,
+        {PROMPT_LABELS["default"]: series_default, PROMPT_LABELS["rich"]: series_rich},
+        "Prompt Effect — P₀ vs Pᵣ por pooler (subcenter_cosface, full pairs)",
+    )
+    # Per-split rows for highlight table (with Δ vs P₀)
+    split_rows: list[dict] = []
+    for v_default, v_rich, pooler_label in PROMPT_EFFECT_GROUPS:
+        for prompt_key, variant_key in [("default", v_default), ("rich", v_rich)]:
+            subset = best[best["variant"] == variant_key]
+            rd: dict = {
+                "Pooler": pooler_label,
+                "Prompt": PROMPT_LABELS[prompt_key],
+            }
+            for sp in ALL_SPLITS:
+                v_ = subset[subset["split"] == sp]["eer"]
+                rd[f"S{sp}"] = float(v_.iloc[0]) if not v_.empty else None
+            rd["Média"]   = float(subset["eer"].mean()) if not subset.empty else None
+            rd["Δ vs P₀"] = "—"
+            split_rows.append(rd)
+
+    # Fill Δ for rich rows
+    for i in range(0, len(split_rows), 2):
+        d_med = split_rows[i]["Média"]
+        r_med = split_rows[i + 1]["Média"] if i + 1 < len(split_rows) else None
+        if d_med is not None and r_med is not None:
+            delta = (r_med - d_med) * 100
+            split_rows[i + 1]["Δ vs P₀"] = f"{'+'if delta>0 else''}{delta:.2f} pp"
+
+    return display_df, chart, bool(missing), missing, \
+           sorted(run_infos, key=lambda x: x["name"]), split_rows
+
+
+# ---------------------------------------------------------------------------
+# HTML builder
+# ---------------------------------------------------------------------------
+
+def _runs_debug_html(run_infos: list[dict], section_label: str) -> str:
+    if not run_infos:
+        return (
+            f'<p class="missing-note">⚠ Nenhuma run encontrada para: <b>{section_label}</b></p>'
+        )
+    header = (
+        '<tr style="background:#f0f0f0;">'
+        '<th style="padding:3px 8px;text-align:left;">Run name</th>'
+        '<th style="padding:3px 8px;">Variant</th>'
+        '<th style="padding:3px 8px;">Split</th>'
+        '<th style="padding:3px 8px;">Phase</th>'
+        '<th style="padding:3px 8px;">EER</th>'
+        '</tr>'
+    )
+    rows = "".join(
+        f'<tr>'
+        f'<td style="padding:2px 8px;"><a href="{ri["url"]}" target="_blank">'
+        f'<code style="font-size:0.8em;">{ri["name"]}</code></a></td>'
+        f'<td style="padding:2px 8px;text-align:center;"><code>{ri.get("variant","?") or "baseline"}</code></td>'
+        f'<td style="padding:2px 8px;text-align:center;">{ri.get("split","?")}</td>'
+        f'<td style="padding:2px 8px;text-align:center;">{ri.get("phase","?")}</td>'
+        f'<td style="padding:2px 8px;text-align:center;">{ri.get("eer",float("nan"))*100:.2f}%</td>'
+        f'</tr>'
+        for ri in run_infos
+    )
+    table = (
+        f'<table style="border-collapse:collapse;width:100%;font-size:0.82em;">'
+        f'{header}{rows}</table>'
+    )
+    return (
+        f'<details style="margin-top:8px;margin-bottom:16px;">'
+        f'<summary style="cursor:pointer;color:#555;font-size:0.85em;">'
+        f'Runs consideradas ({len(run_infos)})</summary>'
+        f'<div style="overflow-x:auto;margin-top:6px;">{table}</div>'
+        f'</details>'
+    )
 
 
 def build_final_html(
-    exp3b_t1, exp3b_t2, exp3b_t3, exp3b_c1, exp3b_c2, exp3b_c3,
-    exp3b_partial, exp3b_missing,
     full_eval_t1, full_eval_t2, full_eval_t3,
     full_eval_c1, full_eval_c2, full_eval_c3,
-    full_eval_partial, full_eval_missing,
-    pooler_abl_t1, pooler_abl_c1, pooler_abl_tbest, pooler_abl_cbest,
-    pooler_abl_partial, pooler_abl_missing,
+    full_eval_partial, full_eval_missing, full_eval_run_names,
+    full_eval_sr1, full_eval_sr2, full_eval_sr3,
+    query_abl_t, query_abl_c, query_abl_partial, query_abl_missing, query_abl_run_names,
+    query_abl_sr,
+    prompt_abl_t, prompt_abl_c, prompt_abl_partial, prompt_abl_missing, prompt_abl_run_names,
+    prompt_abl_sr,
     emb_cv, emb_chart_cv,
     vlm_cv, vlm_chart_cv,
 ) -> str:
@@ -55,78 +670,70 @@ def build_final_html(
 
     sections = []
 
-    # --- Sprint3b (treino, subset) ---
+    # --- 1. Full Eval — Loss Comparison ---
     sections.append(f"""
 <div class="section">
-  <h2>1. Sprint3b — ArcDoc (UnB) {partial_badge(exp3b_partial)}</h2>
+  <h2>1. Comparação de Losses — Full Eval {partial_badge(full_eval_partial)}</h2>
   <p class="desc">
-    Treinamento em dois estágios com professor RL ativo. Loss Sub-Center (s=32, k=3),
-    inicialização aleatória (source-init-mode=none). EER reportado sobre subset de validação
-    balanceado (≈557 pares, 24 classes unseen por split).
-  </p>
-  {missing_note(exp3b_missing)}
-  <h3>Estágio 1 — Pré-treinamento (10 épocas)</h3>
-  {_chart_html(exp3b_c1)}
-  {_table_html(exp3b_t1)}
-  <h3>Estágio 2 — Efeito do Professor</h3>
-  {_chart_html(exp3b_c2)}
-  {_table_html(exp3b_t2)}
-  <h3>Melhor EER Acumulado (Estágio 1 + 2)</h3>
-  {_chart_html(exp3b_c3)}
-  {_table_html(exp3b_t3)}
-</div>""")
-
-    # --- Full Eval ---
-    sections.append(f"""
-<div class="section">
-  <h2>2. Avaliação Completa — Sprint3b (Full Eval) {partial_badge(full_eval_partial)}</h2>
-  <p class="desc">
-    Mesmas métricas do Sprint3b mas calculadas nos CSVs de validação completos
-    (sem subset). Números diretamente comparáveis com os baselines de embedding e VLM.
+    Sprint3b · Attention pooler (nq=1) · Sub-Center (s=32, k=3), inicialização aleatória.
+    EER calculado nos CSVs de validação completos (sem subset). Diretamente comparável
+    com baselines de embedding e VLM.
   </p>
   {missing_note(full_eval_missing)}
-  <h3>Estágio 1 — Fase 1 (pares completos)</h3>
+  {_runs_debug_html(full_eval_run_names, "Full Eval baseline")}
+  <h3>Fase 1 — Pré-treinamento</h3>
   {_chart_html(full_eval_c1)}
-  {_table_html(full_eval_t1)}
-  <h3>Estágio 2 — Efeito do Professor (pares completos)</h3>
+  {_split_highlight_table_html(full_eval_sr1, label_cols=["Loss"])}
+  <h3>Fase 2 — Efeito do Professor</h3>
   {_chart_html(full_eval_c2)}
-  {_table_html(full_eval_t2)}
-  <h3>Melhor EER Acumulado — Full Eval</h3>
+  {_split_highlight_table_html(full_eval_sr2, label_cols=["Loss", "Tipo"])}
+  <h3>Melhor EER Acumulado</h3>
   {_chart_html(full_eval_c3)}
-  {_table_html(full_eval_t3)}
+  {_split_highlight_table_html(full_eval_sr3, label_cols=["Loss", "Tipo"])}
 </div>""")
 
-    # --- Pooler Ablation ---
+    # --- 2. Query Ablation ---
     sections.append(f"""
 <div class="section">
-  <h2>3. Pooler Ablation — Sub-Center CosFace {partial_badge(pooler_abl_partial)}</h2>
+  <h2>2. Pooler Query Ablation — nq=1 vs nq=2 {partial_badge(query_abl_partial)}</h2>
   <p class="desc">
-    Comparação de variantes de pooler com <code>subcenter_cosface</code> (pares completos).
-    Baseline = attention pooler padrão (nq=1). Variantes testadas: attention nq=2,
-    cross-modal pooler e cross-modal com rich prompt.
+    Efeito do número de queries no attention pooler (subcenter_cosface, full pairs).
+    Melhor EER por split entre fase 1 e fase 2.
   </p>
-  {missing_note(pooler_abl_missing)}
-  <h3>Fase 1</h3>
-  {_chart_html(pooler_abl_c1)}
-  {_table_html(pooler_abl_t1)}
-  <h3>Melhor EER Acumulado (todas as fases)</h3>
-  {_chart_html(pooler_abl_cbest)}
-  {_table_html(pooler_abl_tbest)}
+  {missing_note(query_abl_missing)}
+  {_runs_debug_html(query_abl_run_names, "Query ablation")}
+  {_chart_html(query_abl_c)}
+  {_split_highlight_table_html(query_abl_sr, label_cols=["Variante"])}
 </div>""")
 
-    # --- Baselines Embedding ---
+    # --- 3. Prompt Effect Ablation ---
+    sections.append(f"""
+<div class="section">
+  <h2>3. Efeito do Prompt — P₀ vs Pᵣ por Pooler {partial_badge(prompt_abl_partial)}</h2>
+  <p class="desc">
+    Comparação do prompt padrão (P₀) com o rich prompt (Pᵣ) para três arquiteturas
+    de pooler (attention q=1, cross-modal, mean pool). subcenter_cosface · full pairs.
+    Δ = EER(Pᵣ) − EER(P₀) em pp — positivo = degradação, negativo = melhora.
+  </p>
+  {missing_note(prompt_abl_missing)}
+  {_runs_debug_html(prompt_abl_run_names, "Prompt effect ablation")}
+  {_chart_html(prompt_abl_c)}
+  {_split_highlight_table_html(prompt_abl_sr, label_cols=["Pooler", "Prompt"], extra_fmt_cols=["Δ vs P₀"])}
+</div>""")
+
+    # --- 4. Baselines Embedding ---
     sections.append(f"""
 <div class="section">
   <h2>4. Baselines — Similaridade por Embedding</h2>
   <p class="desc">
-    Pixel bruto, Jina-v4 (unadapted), InternVL3-2B e Jina-v4 finetuned (LoRA r=48, InfoNCE).
-    Validação cruzada splits 0–4.
+    Pixel bruto, Jina-v4, InternVL3-2B (camadas de entrada/saída, prompt padrão e rich)
+    e Jina-v4 finetuned (LoRA). Validação cruzada splits 0–4.
   </p>
   {_chart_html(emb_chart_cv)}
   {_table_html(emb_cv)}
 </div>""")
 
-    # --- Baselines VLM ---
+    # --- 5. Baselines VLM ---
     sections.append(f"""
 <div class="section">
   <h2>5. Baselines — VLM com Métrica Numérica</h2>
@@ -153,6 +760,10 @@ def build_final_html(
 </html>"""
 
 
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--output", default=str(DEFAULT_OUTPUT))
@@ -162,30 +773,39 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     print("Buscando runs no W&B...")
-    runs3b         = _fetch_runs(PROJECTS["exp3b"])
     runs_full_eval = _fetch_runs(PROJECTS["full_eval"])
     runs_emb       = _fetch_runs(PROJECTS["emb_baseline"])
     runs_jina_lora = _fetch_runs(PROJECTS["jina_lora"])
     runs_vlm       = _fetch_runs(PROJECTS["vlm_metric"])
 
     print("Construindo seções...")
-    exp3b_t1, exp3b_t2, exp3b_t3, exp3b_c1, exp3b_c2, exp3b_c3, exp3b_partial, exp3b_missing = \
-        _build_exp3(runs3b, run_prefix="Sprint3b_")
-    full_eval_t1, full_eval_t2, full_eval_t3, full_eval_c1, full_eval_c2, full_eval_c3, full_eval_partial, full_eval_missing = \
-        _build_full_eval(runs_full_eval)
-    pooler_abl_t1, pooler_abl_c1, pooler_abl_tbest, pooler_abl_cbest, pooler_abl_partial, pooler_abl_missing = \
-        _build_pooler_ablation(runs_full_eval)
+    # Filtra apenas Sprint3b — exclui runs antigas de Sprint3
+    runs_full_eval_3b = [r for r in runs_full_eval if (r.name or "").startswith("FullEval_Sprint3b_")]
+
+    full_eval_t1, full_eval_t2, full_eval_t3, \
+        full_eval_c1, full_eval_c2, full_eval_c3, \
+        full_eval_partial, full_eval_missing, full_eval_run_names, \
+        full_eval_sr1, full_eval_sr2, full_eval_sr3 = \
+        _build_loss_comparison(runs_full_eval_3b)
+
+    query_abl_t, query_abl_c, query_abl_partial, query_abl_missing, query_abl_run_names, \
+        query_abl_sr = _build_query_ablation(runs_full_eval_3b)
+
+    prompt_abl_t, prompt_abl_c, prompt_abl_partial, prompt_abl_missing, prompt_abl_run_names, \
+        prompt_abl_sr = _build_prompt_effect_ablation(runs_full_eval_3b)
+
     emb_cv, _, emb_chart_cv, _ = _build_baselines_embedding(runs_emb, extra_runs=runs_jina_lora)
     vlm_cv, _, vlm_chart_cv, _ = _build_baselines_vlm(runs_vlm, "Baselines VLM")
 
     html = build_final_html(
-        exp3b_t1, exp3b_t2, exp3b_t3, exp3b_c1, exp3b_c2, exp3b_c3,
-        exp3b_partial, exp3b_missing,
         full_eval_t1, full_eval_t2, full_eval_t3,
         full_eval_c1, full_eval_c2, full_eval_c3,
-        full_eval_partial, full_eval_missing,
-        pooler_abl_t1, pooler_abl_c1, pooler_abl_tbest, pooler_abl_cbest,
-        pooler_abl_partial, pooler_abl_missing,
+        full_eval_partial, full_eval_missing, full_eval_run_names,
+        full_eval_sr1, full_eval_sr2, full_eval_sr3,
+        query_abl_t, query_abl_c, query_abl_partial, query_abl_missing, query_abl_run_names,
+        query_abl_sr,
+        prompt_abl_t, prompt_abl_c, prompt_abl_partial, prompt_abl_missing, prompt_abl_run_names,
+        prompt_abl_sr,
         emb_cv, emb_chart_cv,
         vlm_cv, vlm_chart_cv,
     )
