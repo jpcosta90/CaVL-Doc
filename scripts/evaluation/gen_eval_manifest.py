@@ -91,6 +91,9 @@ def main() -> None:
                    help="Prefixo dos runs (Sprint3_ ou Sprint3b_)")
     p.add_argument("--name-filter", default=None,
                    help="Substring obrigatória no nome do diretório (ex: s32k3)")
+    p.add_argument("--variant-override", default=None,
+                   help="Força variant para todas as entradas (ex: mean). "
+                        "Útil quando o suffix do run não contém _noinit_<variant>_fase.")
     p.add_argument("--loss-filter", default=None,
                    help="Só inclui estas losses (vírgula). Ex: subcenter_arcface,triplet")
     p.add_argument("--loss-exclude", default=None,
@@ -135,14 +138,17 @@ def main() -> None:
             continue
         if loss in loss_exclude:
             continue
-        new_entries.append({
+        entry = {
             "sprint":          info["sprint"],
             "split":           info["split"],
             "loss":            info["loss"] or "unknown",
             "phase":           info["phase"] or "unknown",
             "run_name":        ckpt.parent.name,
             "checkpoint_path": ckpt_str,
-        })
+        }
+        if args.variant_override is not None:
+            entry["variant"] = args.variant_override
+        new_entries.append(entry)
 
     all_entries = existing + new_entries
     with open(output, "w") as f:

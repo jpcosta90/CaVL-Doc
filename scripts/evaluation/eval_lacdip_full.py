@@ -366,7 +366,7 @@ def _log_wandb(run_info: dict, metrics: dict,
                wandb_entity: str, wandb_project: str) -> None:
     try:
         import wandb
-        variant = _variant_tag(run_info.get("name", ""))
+        variant = run_info.get("variant") if "variant" in run_info else _variant_tag(run_info.get("name", ""))
         run_name = (
             f"FullEval_{run_info['sprint']}"
             f"_S{run_info['split']}"
@@ -561,6 +561,7 @@ def main() -> None:
                 "sprint": e["sprint"], "split": e["split"],
                 "loss": e["loss"], "phase": e["phase"],
                 "name": e.get("run_name", Path(e["checkpoint_path"]).parent.name),
+                **( {"variant": e["variant"]} if "variant" in e else {} ),
             })
             for e in entries
         ]
@@ -655,6 +656,7 @@ def main() -> None:
             "loss":            loss,
             "split":           split,
             "phase":           info["phase"],
+            "variant":         info.get("variant", _variant_tag(ckpt_path.parent.name)),
             **metrics,
         }
         _append_cache(cache_path, row)
