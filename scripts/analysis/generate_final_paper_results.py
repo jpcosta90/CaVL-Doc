@@ -240,7 +240,10 @@ def _build_loss_comparison(runs: List):
         for sp in ALL_SPLITS:
             v_ = p1_df[(p1_df["loss"] == l) & (p1_df["split"] == sp)]["eer"]
             rd[f"S{sp}"] = float(v_.iloc[0]) if not v_.empty else None
-        rd["Média"] = float(p1_df[p1_df["loss"] == l]["eer"].mean()) if not p1_df[p1_df["loss"] == l].empty else None
+        sub = p1_df[p1_df["loss"] == l]["eer"]
+        rd["Média"]   = float(sub.mean())   if not sub.empty else None
+        rd["Mediana"] = float(sub.median()) if not sub.empty else None
+        rd["Std"]     = f"{sub.std()*100:.2f} pp" if len(sub) > 1 else "—"
         split_rows_p1.append(rd)
 
     # 1B — Fase 2: two rows per loss (Com / Sem Mineração)
@@ -252,7 +255,9 @@ def _build_loss_comparison(runs: List):
                 v_ = ph_df[(ph_df["loss"] == l) & (ph_df["split"] == sp)]["eer"]
                 rd[f"S{sp}"] = float(v_.iloc[0]) if not v_.empty else None
             sub = ph_df[ph_df["loss"] == l]["eer"]
-            rd["Média"] = float(sub.mean()) if not sub.empty else None
+            rd["Média"]   = float(sub.mean())   if not sub.empty else None
+            rd["Mediana"] = float(sub.median()) if not sub.empty else None
+            rd["Std"]     = f"{sub.std()*100:.2f} pp" if len(sub) > 1 else "—"
             split_rows_p2.append(rd)
 
     # 1C — Melhor Acumulado: two rows per loss (Com / Sem Mineração)
@@ -263,13 +268,175 @@ def _build_loss_comparison(runs: List):
             val_by_sp = {int(all_splits_c[i]): float(vals[i]) for i in range(len(vals))}
             for sp in ALL_SPLITS:
                 rd[f"S{sp}"] = val_by_sp.get(sp)
-            rd["Média"] = float(np.mean(list(val_by_sp.values()))) if val_by_sp else None
+            s = pd.Series(list(val_by_sp.values()), dtype=float)
+            rd["Média"]   = float(s.mean())   if not s.empty else None
+            rd["Mediana"] = float(s.median()) if not s.empty else None
+            rd["Std"]     = f"{s.std()*100:.2f} pp" if len(s) > 1 else "—"
             split_rows_p3.append(rd)
     # -------------------------------------------------------------------------
 
     return table_p1, table_p2, table_p3, chart_p1, chart_p2, chart_p3, is_partial, missing, \
            sorted(run_infos, key=lambda x: x["name"]), \
            split_rows_p1, split_rows_p2, split_rows_p3
+
+
+# ---------------------------------------------------------------------------
+# Training progression (epoch 1 EER + epoch of best, averaged across splits)
+# ---------------------------------------------------------------------------
+
+_FASE1_TOTAL_EPOCHS = 10   # fase2 epochs are offset by this
+
+
+def _build_training_progression(training_runs: List) -> str:
+    """Returns HTML table showing, per loss:
+      - EER at epoch 1 of fase1 (average across splits)
+      - Best EER across the full 15-epoch curve (fase1 + fase2, average across splits)
+      - Which epoch (1–15) that best was reached (average across splits)
+    Uses runs from the exp3b TRAINING project (Sprint3b_* prefix), not FullEval.
+    """
+    print("  Buscando histórico por época (pode demorar alguns segundos)...")
+
+    # (loss, split) -> {"initial_eer": float|None, "best_eer": float, "best_epoch": float}
+    per_ls: dict[tuple, dict] = {}
+
+    for r in training_runs:
+        name = r.name or ""
+        nl   = name.lower()
+        if not name.startswith("Sprint3b_"):
+            continue
+        # Skip ablation variant runs (they contain _noinit_ in the name)
+        if "_noinit_" in nl:
+            continue
+
+        # Parse loss from run name
+        loss = None
+        for l in _KNOWN_LOSSES_RE:
+            if l in nl:
+                loss = l
+                break
+        if not loss:
+            continue
+
+        m_sp = re.search(r"_S(\d+)_", name)
+        split = int(m_sp.group(1)) if m_sp else None
+        if split is None:
+            continue
+
+        is_fase2  = "fase2" in nl
+        ep_offset = _FASE1_TOTAL_EPOCHS if is_fase2 else 0
+
+        try:
+            hist = r.history(keys=["val/eer", "epoch"], pandas=True)
+        except Exception as exc:
+            print(f"    Aviso: {name[:60]} — {exc}")
+            continue
+
+        if hist is None or hist.empty or "val/eer" not in hist.columns:
+            continue
+        hist = hist.dropna(subset=["val/eer"]).reset_index(drop=True)
+        if hist.empty:
+            continue
+
+        # Build epoch series (1-based), offset for fase2
+        if "epoch" in hist.columns and hist["epoch"].notna().any():
+            ep_series = hist["epoch"].fillna(method="ffill").astype(float) + ep_offset
+        else:
+            ep_series = pd.Series(
+                [ep_offset + i + 1 for i in range(len(hist))], dtype=float
+            )
+
+        best_pos  = int(hist["val/eer"].argmin())
+        best_eer  = float(hist["val/eer"].iloc[best_pos])
+        best_ep   = float(ep_series.iloc[best_pos])
+        init_eer  = float(hist["val/eer"].iloc[0]) if not is_fase2 else None
+
+        key = (loss, split)
+        if key not in per_ls:
+            per_ls[key] = {"initial_eer": None, "best_eer": float("inf"), "best_epoch": None}
+
+        # Update best across all phases
+        if best_eer < per_ls[key]["best_eer"]:
+            per_ls[key]["best_eer"]   = best_eer
+            per_ls[key]["best_epoch"] = best_ep
+        # Initial EER comes from fase1 only
+        if init_eer is not None:
+            per_ls[key]["initial_eer"] = init_eer
+
+    if not per_ls:
+        return '<p style="color:#aaa;font-style:italic;">Histórico por época não disponível.</p>'
+
+    # Aggregate across splits, per loss
+    loss_agg: dict[str, dict] = {}
+    for (loss, _split), d in per_ls.items():
+        if d["initial_eer"] is None or d["best_epoch"] is None:
+            continue
+        if loss not in loss_agg:
+            loss_agg[loss] = {"ini": [], "best": [], "ep": []}
+        loss_agg[loss]["ini"].append(d["initial_eer"])
+        loss_agg[loss]["best"].append(d["best_eer"])
+        loss_agg[loss]["ep"].append(d["best_epoch"])
+
+    if not loss_agg:
+        return '<p style="color:#aaa;font-style:italic;">Sem dados de época suficientes.</p>'
+
+    sorted_losses = sorted(loss_agg, key=lambda l: np.mean(loss_agg[l]["best"]))
+
+    # Render table
+    def th(text, align="center"):
+        return (
+            f'<th style="padding:5px 10px;text-align:{align};'
+            f'border-bottom:2px solid #ccc;white-space:nowrap;">{text}</th>'
+        )
+
+    header = (
+        th("Loss", "left")
+        + th("EER Inicial (média, época 1)")
+        + th("Melhor EER (média)")
+        + th("Melhora")
+        + th("Época do melhor (média, 1–15)")
+    )
+
+    body = ""
+    for i, loss in enumerate(sorted_losses):
+        d    = loss_agg[loss]
+        ini  = np.mean(d["ini"])
+        best = np.mean(d["best"])
+        ep   = np.mean(d["ep"])
+        impr = (ini - best) * 100
+        bg   = "#fafafa" if i % 2 == 0 else "#ffffff"
+        impr_color = "#155724" if impr > 0 else "#721c24"
+        impr_str   = f"−{impr:.2f} pp" if impr > 0 else f"+{abs(impr):.2f} pp"
+        n    = len(d["ini"])
+        body += (
+            f"<tr>"
+            f'<td style="padding:5px 10px;font-weight:bold;background:{bg};">'
+            f"{LOSS_LABELS.get(loss, loss)}</td>"
+            f'<td style="padding:5px 10px;text-align:center;background:{bg};">{_fmt_eer(ini)}</td>'
+            f'<td style="padding:5px 10px;text-align:center;background:{bg};">{_fmt_eer(best)}</td>'
+            f'<td style="padding:5px 10px;text-align:center;background:{bg};'
+            f"color:{impr_color};font-weight:bold;\">{impr_str}</td>"
+            f'<td style="padding:5px 10px;text-align:center;background:{bg};">'
+            f"{ep:.1f} <span style='color:#888;font-size:0.85em;'>({n} splits)</span></td>"
+            f"</tr>"
+        )
+
+    table = (
+        '<div style="overflow-x:auto;margin-top:12px;">'
+        '<table style="border-collapse:collapse;width:100%;font-size:0.9em;">'
+        f'<thead><tr style="background:#f0f0f0;">{header}</tr></thead>'
+        f"<tbody>{body}</tbody>"
+        "</table></div>"
+        '<p style="font-size:0.82em;color:#888;margin-top:6px;">'
+        "Fase 1 = épocas 1–10 · Fase 2 = épocas 11–15 · "
+        "Melhor = mínimo entre fase 1, fase 2 c/ prof. e fase 2 s/ prof.</p>"
+    )
+
+    return (
+        '<div style="margin-top:20px;">'
+        '<h4 style="margin-bottom:4px;">Progressão de Treino por Loss</h4>'
+        f"{table}"
+        "</div>"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +546,7 @@ def _split_highlight_table_html(
     if not rows:
         return '<p style="color:#888;font-style:italic;">Sem dados disponíveis.</p>'
     sp_list   = splits if splits is not None else list(ALL_SPLITS)
-    data_cols = [f"S{sp}" for sp in sp_list] + ["Média"]
+    data_cols = [f"S{sp}" for sp in sp_list] + ["Média", "Mediana"]
     extra     = extra_fmt_cols or []
 
     # Find best (min) row indices per data column — all ties are highlighted.
@@ -477,8 +644,10 @@ def _build_query_ablation(runs: List) -> tuple[pd.DataFrame, str, bool, list[int
         for sp in ALL_SPLITS:
             v_ = best[(best["variant"] == v) & (best["split"] == sp)]["eer"]
             rd[f"S{sp}"] = float(v_.iloc[0]) if not v_.empty else None
-        sub = best[best["variant"] == v]
-        rd["Média"] = float(sub["eer"].mean()) if not sub.empty else None
+        sub = best[best["variant"] == v]["eer"]
+        rd["Média"]   = float(sub.mean())   if not sub.empty else None
+        rd["Mediana"] = float(sub.median()) if not sub.empty else None
+        rd["Std"]     = f"{sub.std()*100:.2f} pp" if len(sub) > 1 else "—"
         split_rows.append(rd)
 
     return table, chart, bool(missing), missing, \
@@ -590,11 +759,13 @@ def _build_prompt_effect_ablation(runs: List) -> tuple[pd.DataFrame, str, bool, 
             for sp in ALL_SPLITS:
                 v_ = subset[subset["split"] == sp]["eer"]
                 rd[f"S{sp}"] = float(v_.iloc[0]) if not v_.empty else None
-            rd["Média"]   = float(subset["eer"].mean()) if not subset.empty else None
+            rd["Média"]   = float(subset["eer"].mean())   if not subset.empty else None
+            rd["Mediana"] = float(subset["eer"].median()) if not subset.empty else None
+            rd["Std"]     = f"{subset['eer'].std()*100:.2f} pp" if len(subset) > 1 else "—"
             rd["Δ vs P₀"] = "—"
             split_rows.append(rd)
 
-    # Fill Δ for rich rows
+    # Fill Δ for rich rows — based on mean (matches chart metric)
     for i in range(0, len(split_rows), 2):
         d_med = split_rows[i]["Média"]
         r_med = split_rows[i + 1]["Média"] if i + 1 < len(split_rows) else None
@@ -653,6 +824,7 @@ def build_final_html(
     full_eval_c1, full_eval_c2, full_eval_c3,
     full_eval_partial, full_eval_missing, full_eval_run_names,
     full_eval_sr1, full_eval_sr2, full_eval_sr3,
+    training_prog_html,
     query_abl_t, query_abl_c, query_abl_partial, query_abl_missing, query_abl_run_names,
     query_abl_sr,
     prompt_abl_t, prompt_abl_c, prompt_abl_partial, prompt_abl_missing, prompt_abl_run_names,
@@ -683,13 +855,14 @@ def build_final_html(
   {_runs_debug_html(full_eval_run_names, "Full Eval baseline")}
   <h3>Fase 1 — Pré-treinamento</h3>
   {_chart_html(full_eval_c1)}
-  {_split_highlight_table_html(full_eval_sr1, label_cols=["Loss"])}
+  {_split_highlight_table_html(full_eval_sr1, label_cols=["Loss"], extra_fmt_cols=["Std"])}
   <h3>Fase 2 — Efeito do Professor</h3>
   {_chart_html(full_eval_c2)}
-  {_split_highlight_table_html(full_eval_sr2, label_cols=["Loss", "Tipo"])}
+  {_split_highlight_table_html(full_eval_sr2, label_cols=["Loss", "Tipo"], extra_fmt_cols=["Std"])}
   <h3>Melhor EER Acumulado</h3>
   {_chart_html(full_eval_c3)}
-  {_split_highlight_table_html(full_eval_sr3, label_cols=["Loss", "Tipo"])}
+  {_split_highlight_table_html(full_eval_sr3, label_cols=["Loss", "Tipo"], extra_fmt_cols=["Std"])}
+  {training_prog_html}
 </div>""")
 
     # --- 2. Query Ablation ---
@@ -703,7 +876,7 @@ def build_final_html(
   {missing_note(query_abl_missing)}
   {_runs_debug_html(query_abl_run_names, "Query ablation")}
   {_chart_html(query_abl_c)}
-  {_split_highlight_table_html(query_abl_sr, label_cols=["Variante"])}
+  {_split_highlight_table_html(query_abl_sr, label_cols=["Variante"], extra_fmt_cols=["Std"])}
 </div>""")
 
     # --- 3. Prompt Effect Ablation ---
@@ -718,7 +891,7 @@ def build_final_html(
   {missing_note(prompt_abl_missing)}
   {_runs_debug_html(prompt_abl_run_names, "Prompt effect ablation")}
   {_chart_html(prompt_abl_c)}
-  {_split_highlight_table_html(prompt_abl_sr, label_cols=["Pooler", "Prompt"], extra_fmt_cols=["Δ vs P₀"])}
+  {_split_highlight_table_html(prompt_abl_sr, label_cols=["Pooler", "Prompt"], extra_fmt_cols=["Std", "Δ vs P₀"])}
 </div>""")
 
     # --- 4. Baselines Embedding ---
@@ -774,6 +947,7 @@ def main() -> None:
 
     print("Buscando runs no W&B...")
     runs_full_eval = _fetch_runs(PROJECTS["full_eval"])
+    runs_train_3b  = _fetch_runs(PROJECTS["exp3b"])
     runs_emb       = _fetch_runs(PROJECTS["emb_baseline"])
     runs_jina_lora = _fetch_runs(PROJECTS["jina_lora"])
     runs_vlm       = _fetch_runs(PROJECTS["vlm_metric"])
@@ -797,11 +971,15 @@ def main() -> None:
     emb_cv, _, emb_chart_cv, _ = _build_baselines_embedding(runs_emb, extra_runs=runs_jina_lora)
     vlm_cv, _, vlm_chart_cv, _ = _build_baselines_vlm(runs_vlm, "Baselines VLM")
 
+    print("Buscando progressão de treino por época...")
+    training_prog_html = _build_training_progression(runs_train_3b)
+
     html = build_final_html(
         full_eval_t1, full_eval_t2, full_eval_t3,
         full_eval_c1, full_eval_c2, full_eval_c3,
         full_eval_partial, full_eval_missing, full_eval_run_names,
         full_eval_sr1, full_eval_sr2, full_eval_sr3,
+        training_prog_html,
         query_abl_t, query_abl_c, query_abl_partial, query_abl_missing, query_abl_run_names,
         query_abl_sr,
         prompt_abl_t, prompt_abl_c, prompt_abl_partial, prompt_abl_missing, prompt_abl_run_names,

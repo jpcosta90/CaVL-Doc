@@ -248,6 +248,7 @@ def _grouped_bar_chart(
     title: str,
     ylabel: str = "EER (%)",
     highlight_lower: bool = True,
+    tick_rotation: int = 0,
 ) -> str:
     n_groups  = len(groups)
     n_series  = len(series)
@@ -268,7 +269,8 @@ def _grouped_bar_chart(
     ax.set_ylabel(ylabel)
     ax.set_title(title, fontsize=11)
     ax.set_xticks(x)
-    ax.set_xticklabels(groups, fontsize=9)
+    ha = "right" if tick_rotation else "center"
+    ax.set_xticklabels(groups, fontsize=9, rotation=tick_rotation, ha=ha)
     ax.legend(fontsize=8)
     ax.grid(axis="y", alpha=0.3)
     # Aumenta margem superior para não cortar labels dos valores
@@ -891,6 +893,7 @@ def _build_baselines_embedding(
         [m for m, _ in cv_means],
         {"EER médio": [v for _, v in cv_means]},
         "Baselines Embedding — EER médio (splits 0–4)",
+        tick_rotation=45,
     )
 
     # ----- Test table (split 5) -----
@@ -910,6 +913,7 @@ def _build_baselines_embedding(
         [m for m, _ in test_vals],
         {"EER": [v for _, v in test_vals]},
         "Baselines Embedding — EER Split 5 (Teste)",
+        tick_rotation=45,
     )
 
     return table_cv, table_test, chart_cv, chart_test
