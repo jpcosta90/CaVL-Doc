@@ -688,7 +688,7 @@ def main() -> None:
         else:
             print(f"GPU selecionada automaticamente: física {selected_gpu[0]} com {selected_gpu[1]} MiB livres")
 
-    gpu_env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(selected_gpu[0])}
+    gpu_env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(selected_gpu[0]), "TMPDIR": "/tmp"}
 
     print("=" * 90)
     total_epochs = args.teacher_epochs + args.student_only_epochs

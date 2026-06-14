@@ -89,12 +89,19 @@ POOLER_LABELS: dict[str, str] = {
 # Epoch offset for fase2 runs
 FASE1_TOTAL_EPOCHS = 10
 
-# Imagens originais LA-CDIP (usadas no treino/avaliação real)
-# Tenta primeiro o NAS do servidor de compute; fallback para final_split3 (augmentado, só para visualização)
-_NAS_LACDIP = Path("/mnt/nas/joaopaulo/LA-CDIP/data")
-_VAL_CSV_S3 = WORKSPACE_ROOT / "data" / "generated_splits" / "sprint3_zsl_val_3_train_excl_5" / "validation_pairs.csv"
-SPLIT3_IMAGES_DIR  = _NAS_LACDIP if _NAS_LACDIP.exists() else (WORKSPACE_ROOT / "data" / "generated_splits" / "final_split3" / "images_val")
-SPLIT3_IMAGES_ORIGINAL = _NAS_LACDIP.exists()  # True = imagens originais disponíveis
+# Imagens originais LA-CDIP — tenta em ordem: NAS (gpds2), montagem local, fallback augmentado
+_NAS_LACDIP   = Path("/mnt/nas/joaopaulo/LA-CDIP/data")
+_LOCAL_LACDIP = Path("/mnt/data/la-cdip/data")
+_VAL_CSV_S3   = WORKSPACE_ROOT / "data" / "generated_splits" / "sprint3_zsl_val_3_train_excl_5" / "validation_pairs.csv"
+
+if _NAS_LACDIP.exists():
+    SPLIT3_IMAGES_DIR = _NAS_LACDIP
+elif _LOCAL_LACDIP.exists():
+    SPLIT3_IMAGES_DIR = _LOCAL_LACDIP
+else:
+    SPLIT3_IMAGES_DIR = WORKSPACE_ROOT / "data" / "generated_splits" / "final_split3" / "images_val"
+
+SPLIT3_IMAGES_ORIGINAL = _NAS_LACDIP.exists() or _LOCAL_LACDIP.exists()
 
 PALETTE = ["#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2",
            "#B279A2", "#FF9DA6", "#9D755D", "#BAB0AC"]
@@ -446,6 +453,41 @@ def build_section2() -> str:
 # Section 3: Análise de Erros por Par de Classes
 # ---------------------------------------------------------------------------
 
+def _build_score_dist_plot(df: pd.DataFrame, eer_thr: float, method: str) -> str:
+    """Retorna base64 do gráfico de distribuição de scores pos/neg com threshold e zonas de erro."""
+    pos_scores = df[df["is_equal"] == 1]["similarity_score"].values
+    neg_scores = df[df["is_equal"] == 0]["similarity_score"].values
+
+    fig, ax = plt.subplots(figsize=(9, 3.8))
+
+    bins = np.linspace(
+        min(pos_scores.min(), neg_scores.min()) - 1,
+        max(pos_scores.max(), neg_scores.max()) + 1,
+        50,
+    )
+
+    ax.hist(neg_scores, bins=bins, alpha=0.55, color="#e74c3c", label="Classes diferentes (negativo)", density=True)
+    ax.hist(pos_scores, bins=bins, alpha=0.55, color="#2980b9", label="Mesma classe (positivo)", density=True)
+
+    ymax = ax.get_ylim()[1]
+    # Zona de FP: negativos acima do threshold
+    ax.axvspan(eer_thr, bins[-1], alpha=0.12, color="#e74c3c", label="Zona FP (diz igual, é diferente)")
+    # Zona de FN: positivos abaixo do threshold
+    ax.axvspan(bins[0], eer_thr, alpha=0.12, color="#2980b9", label="Zona FN (diz diferente, é igual)")
+    ax.axvline(eer_thr, color="#e67e22", linewidth=2, linestyle="--", label=f"Threshold EER ({eer_thr:.1f})")
+
+    ax.set_xlabel("Similarity Score", fontsize=11)
+    ax.set_ylabel("Densidade", fontsize=11)
+    ax.set_title(f"{method} — Distribuição de Scores (Split 3)", fontsize=12)
+    ax.legend(fontsize=8.5, loc="upper left")
+    ax.set_xlim(bins[0], bins[-1])
+    fig.tight_layout()
+
+    b64 = _b64_png(fig)
+    plt.close(fig)
+    return b64
+
+
 def build_section3() -> str:
     print("[Sec 3] Analisando erros por par de classes no split 3...")
 
@@ -454,22 +496,62 @@ def build_section3() -> str:
         ("vlm_metric", "qwen3vl-8b"),
     ]
 
-    # Pre-load thumbnails for all LA-CDIP split-3 classes
+    # Thumbnails só quando imagens originais estão disponíveis
     if SPLIT3_IMAGES_ORIGINAL and _VAL_CSV_S3.exists():
-        # On compute server: get class list from validation CSV to avoid iterating the whole NAS
         _val_df = pd.read_csv(_VAL_CSV_S3)
         all_classes = sorted(set(_val_df["class_a_name"].tolist() + _val_df["class_b_name"].tolist()))
-    elif SPLIT3_IMAGES_DIR.exists():
-        all_classes = sorted(d.name for d in SPLIT3_IMAGES_DIR.iterdir() if d.is_dir())
+        thumbnails: dict[str, str | None] = {c: _class_thumbnail_b64(c, size=(90, 120)) for c in all_classes}
     else:
-        all_classes = []
-    thumbnails: dict[str, str | None] = {c: _class_thumbnail_b64(c, size=(90, 120)) for c in all_classes}
+        thumbnails = {}
+
+    def _thumb(b64: str | None, label: str) -> str:
+        clean = label.replace("_", " ")
+        if b64:
+            return (f'<div style="text-align:center;width:110px">'
+                    f'<img src="data:image/png;base64,{b64}" '
+                    f'style="width:100px;height:auto;border:1px solid #ddd" />'
+                    f'<div style="font-size:0.62em;color:#555;margin-top:3px;'
+                    f'word-break:break-word;line-height:1.2">{clean}</div></div>')
+        return (f'<div style="width:100px;min-height:60px;background:#eee;display:flex;'
+                f'align-items:center;justify-content:center;font-size:0.62em;padding:4px;'
+                f'text-align:center;color:#555;border-radius:3px">{clean}</div>')
+
+    def _error_cards(pair_stats: pd.DataFrame, label_fp: bool) -> str:
+        html = ""
+        for _, row in pair_stats.iterrows():
+            ca, cb = row["pair_key"]
+            n_err = int(row["n_errors"])
+            n_tot = int(row["n_pairs"])
+            avg_sc = float(row["avg_score"])
+            pct = n_err / n_tot * 100 if n_tot else 0
+            b64a = thumbnails.get(ca)
+            b64b = thumbnails.get(cb)
+            err_color = "#c0392b" if pct > 50 else ("#e67e22" if pct > 20 else "#f39c12")
+            badge_color = "#e74c3c" if label_fp else "#2980b9"
+            badge_text = "FP" if label_fp else "FN"
+            html += f"""
+            <div style="display:flex;align-items:center;gap:12px;padding:9px 13px;
+                        border:1px solid #e0e0e0;border-radius:6px;background:#fafafa;
+                        margin-bottom:7px;flex-wrap:wrap">
+              <span style="background:{badge_color};color:#fff;font-size:0.7em;
+                           font-weight:bold;padding:2px 7px;border-radius:3px">{badge_text}</span>
+              {_thumb(b64a, ca)}
+              <div style="font-size:1.3em;color:#aaa">↔</div>
+              {_thumb(b64b, cb)}
+              <div style="margin-left:auto;text-align:center;min-width:110px">
+                <div style="font-size:1.5em;font-weight:bold;color:{err_color}">{n_err}</div>
+                <div style="font-size:0.78em;color:#666">de {n_tot} pares</div>
+                <div style="font-size:0.72em;color:#888;margin-top:2px">
+                  {pct:.0f}% | score médio {avg_sc:.1f}
+                </div>
+              </div>
+            </div>"""
+        return html
 
     jina_note = """
     <div class="note" style="margin-bottom:16px">
       <strong>Nota:</strong> Jina-v4 LA-CDIP EER no split 3 = <strong>6,29%</strong>
-      (via W&amp;B / <code>emb_baseline_lacdip</code>). Sem CSV de pares LA-CDIP disponível —
-      análise por classe feita apenas para os dois VLMs abaixo.
+      (via W&amp;B). Sem CSV de pares disponível — análise por classe apenas para os VLMs abaixo.
     </div>
     """
     sections_html = jina_note
@@ -481,7 +563,6 @@ def build_section3() -> str:
             sections_html += f"<p class='note'>{method}: dados não disponíveis.</p>"
             continue
 
-        # Global EER threshold for this method
         all_labels = df["is_equal"].tolist()
         all_scores = df["similarity_score"].tolist()
         try:
@@ -491,81 +572,83 @@ def build_section3() -> str:
         except Exception:
             eer_thr = float(np.median(all_scores))
 
-        # Count FP errors per inter-class pair (negative pairs above EER threshold)
+        global_eer = _eer_pct(all_labels, all_scores)
+
+        # Distribuição de scores
+        dist_b64 = _build_score_dist_plot(df, eer_thr, method)
+
+        # --- FP: pares de classes DIFERENTES com score >= threshold ---
         neg_df = df[df["is_equal"] == 0].copy()
         neg_df["is_error"] = neg_df["similarity_score"] >= eer_thr
-
-        # Group by (class_a, class_b) — normalise order so (A,B) == (B,A)
         neg_df["pair_key"] = neg_df.apply(
             lambda r: tuple(sorted([r["class_a"], r["class_b"]])), axis=1
         )
-        pair_stats = (
+        fp_stats = (
             neg_df.groupby("pair_key")
             .agg(n_errors=("is_error", "sum"), n_pairs=("is_error", "count"),
                  avg_score=("similarity_score", "mean"))
             .reset_index()
         )
-        pair_stats = pair_stats[pair_stats["n_errors"] > 0].copy()
-        pair_stats = pair_stats.sort_values("n_errors", ascending=False).reset_index(drop=True)
+        fp_stats = fp_stats[fp_stats["n_errors"] > 0].sort_values("n_errors", ascending=False).reset_index(drop=True)
 
-        # Build error cards
-        cards_html = ""
-        for _, row in pair_stats.iterrows():
-            ca, cb = row["pair_key"]
-            n_err  = int(row["n_errors"])
-            n_tot  = int(row["n_pairs"])
-            avg_sc = float(row["avg_score"])
-            pct    = n_err / n_tot * 100 if n_tot else 0
+        # --- FN: pares da MESMA classe com score < threshold ---
+        pos_df = df[df["is_equal"] == 1].copy()
+        pos_df["is_error"] = pos_df["similarity_score"] < eer_thr
+        # Para pares positivos: class_a == class_b, normaliza como (class_a, class_a)
+        pos_df["pair_key"] = pos_df["class_a"].apply(lambda c: (c, c))
+        fn_stats = (
+            pos_df.groupby("pair_key")
+            .agg(n_errors=("is_error", "sum"), n_pairs=("is_error", "count"),
+                 avg_score=("similarity_score", "mean"))
+            .reset_index()
+        )
+        fn_stats = fn_stats[fn_stats["n_errors"] > 0].sort_values("n_errors", ascending=False).reset_index(drop=True)
 
-            b64a = thumbnails.get(ca)
-            b64b = thumbnails.get(cb)
-            label_a = ca.replace("_", " ")
-            label_b = cb.replace("_", " ")
+        n_fp = int(fp_stats["n_errors"].sum()) if not fp_stats.empty else 0
+        n_fn = int(fn_stats["n_errors"].sum()) if not fn_stats.empty else 0
 
-            def _thumb(b64: str | None, label: str) -> str:
-                if b64:
-                    return (f'<div style="text-align:center;width:110px">'
-                            f'<img src="data:image/png;base64,{b64}" '
-                            f'style="width:100px;height:auto;border:1px solid #ddd" />'
-                            f'<div style="font-size:0.65em;color:#555;margin-top:3px;'
-                            f'word-break:break-word;line-height:1.2">{label}</div></div>')
-                return (f'<div style="width:100px;height:130px;background:#eee;display:flex;'
-                        f'align-items:center;justify-content:center;font-size:0.65em;'
-                        f'text-align:center;color:#666">{label[:30]}</div>')
+        fp_html = _error_cards(fp_stats, label_fp=True)
+        fn_html  = _error_cards(fn_stats, label_fp=False)
 
-            err_color = "#c0392b" if pct > 50 else ("#e67e22" if pct > 20 else "#f39c12")
-            cards_html += f"""
-            <div style="display:flex;align-items:center;gap:14px;padding:10px 14px;
-                        border:1px solid #e0e0e0;border-radius:6px;background:#fafafa;
-                        margin-bottom:8px;flex-wrap:wrap">
-              {_thumb(b64a, label_a)}
-              <div style="font-size:1.5em;color:#aaa">↔</div>
-              {_thumb(b64b, label_b)}
-              <div style="margin-left:auto;text-align:center;min-width:120px">
-                <div style="font-size:1.6em;font-weight:bold;color:{err_color}">{n_err}</div>
-                <div style="font-size:0.8em;color:#666">erros de {n_tot} pares</div>
-                <div style="font-size:0.75em;color:#888;margin-top:2px">({pct:.0f}% | score médio {avg_sc:.1f})</div>
-              </div>
-            </div>"""
+        legend_box = """
+        <div style="display:flex;gap:16px;margin-bottom:12px;font-size:0.85em;flex-wrap:wrap">
+          <div><span style="background:#e74c3c;color:#fff;padding:1px 7px;border-radius:3px;font-weight:bold">FP</span>
+               &nbsp;Falso Positivo — classes <strong>diferentes</strong>, score <strong>acima</strong> do threshold
+               → modelo disse "são iguais" (errado)</div>
+          <div><span style="background:#2980b9;color:#fff;padding:1px 7px;border-radius:3px;font-weight:bold">FN</span>
+               &nbsp;Falso Negativo — <strong>mesma</strong> classe, score <strong>abaixo</strong> do threshold
+               → modelo disse "são diferentes" (errado)</div>
+        </div>"""
 
-        total_errors = int(pair_stats["n_errors"].sum()) if not pair_stats.empty else 0
-        global_eer = _eer_pct(all_labels, all_scores)
         sections_html += f"""
-        <h3>{method} — EER global split 3: {global_eer:.2f}% (threshold: {eer_thr:.1f})</h3>
-        <p style="font-size:0.9em;color:#555">
-          {len(pair_stats)} pares de classes com pelo menos 1 erro (FP acima do limiar EER).
-          Total de erros: {total_errors}.
-        </p>
-        <div style="max-width:700px">{cards_html if cards_html else "<p class='note'>Nenhum erro encontrado.</p>"}</div>
+        <h3>{method} — EER global split 3: {global_eer:.2f}% &nbsp;|&nbsp; threshold: {eer_thr:.1f}</h3>
+        {legend_box}
+        {_img_tag(dist_b64, "max-width:860px;display:block;margin:10px 0 18px 0;")}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;max-width:900px">
+          <div>
+            <h4 style="margin:0 0 8px 0;color:#c0392b">
+              Falsos Positivos ({n_fp} erros em {len(fp_stats)} pares de classes distintas)
+            </h4>
+            {fp_html if fp_html else "<p class='note'>Nenhum FP.</p>"}
+          </div>
+          <div>
+            <h4 style="margin:0 0 8px 0;color:#2980b9">
+              Falsos Negativos ({n_fn} erros em {len(fn_stats)} classes)
+            </h4>
+            {fn_html if fn_html else "<p class='note'>Nenhum FN.</p>"}
+          </div>
+        </div>
         """
 
     return f"""
     <div class="section">
-      <h2>3. Erros por Par de Classes — Split 3</h2>
-      <p>Para cada par de classes LA-CDIP com pelo menos um erro de falso positivo
-         (pares negativos com score ≥ limiar EER global), mostramos as imagens de
-         exemplo das duas classes e a contagem de erros, ordenadas do mais confuso
-         ao menos confuso.</p>
+      <h2>3. Análise de Erros por Classe — Split 3</h2>
+      <p style="font-size:0.92em;color:#444;max-width:820px">
+        Distribuição de similarity scores para pares positivos (mesma classe) e negativos
+        (classes diferentes). A linha tracejada laranja é o threshold do EER.
+        À esquerda do threshold: erros FN (positivos mal classificados como diferentes).
+        À direita: erros FP (negativos mal classificados como iguais).
+      </p>
       {sections_html}
     </div>
     """
