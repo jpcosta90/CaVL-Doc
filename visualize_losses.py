@@ -83,7 +83,7 @@ def scatter_tokens(ax, pts, alpha=0.72, size=18):
 def formula_box(ax, text):
     ax.text2D(0.50, -0.04, text,
               transform=ax.transAxes, ha='center', va='top',
-              fontsize=11, color=FG,
+              fontsize=13, color=FG,
               bbox=dict(boxstyle='round,pad=0.45', facecolor='white',
                         edgecolor='#aaaaaa', linewidth=0.9))
 

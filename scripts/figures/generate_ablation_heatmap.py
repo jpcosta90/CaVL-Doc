@@ -65,18 +65,28 @@ _raw = {
 losses = ["Sub-Center CosFace", "Sub-Center ArcFace", "Triplet", "Contrastive"]
 
 
-def cum_best(d):
-    # For each teacher strategy, cumulative best = min(Phase1, Phase2)
+def cum_best_with_phase(d):
+    """Returns (values, phase_labels, teacher_strategy)."""
     on_vals  = [min(d["p1"][i], d["p2_on"][i])  for i in range(5)]
     off_vals = [min(d["p1"][i], d["p2_off"][i]) for i in range(5)]
-    # Pick the strategy with the better mean — consistent with HTML's
-    # "Melhor EER Acumulado" which evaluates each teacher strategy separately
     if float(np.mean(on_vals)) <= float(np.mean(off_vals)):
-        return on_vals
-    return off_vals
+        vals, strategy = on_vals, "on"
+    else:
+        vals, strategy = off_vals, "off"
+    # Phase label per split
+    labels = []
+    for i in range(5):
+        p2 = d["p2_on"][i] if strategy == "on" else d["p2_off"][i]
+        if d["p1"][i] <= p2:
+            labels.append("P1")
+        else:
+            labels.append("P2+M" if strategy == "on" else "P2")
+    return vals, labels
 
 
-per_split = {l: cum_best(_raw[l]) for l in losses}
+per_split_data = {l: cum_best_with_phase(_raw[l]) for l in losses}
+per_split = {l: per_split_data[l][0] for l in losses}
+phase_labels = {l: per_split_data[l][1] for l in losses}
 means     = {l: float(np.mean(per_split[l])) for l in losses}
 
 # 2-D array: rows = losses, cols = split0..4 + mean
@@ -106,16 +116,26 @@ im = ax.imshow(mat_norm, cmap=cmap, vmin=0, vmax=1, aspect="auto")
 # Row with best mean EER — entire row gets bold text
 best_row = int(np.argmin([means[l] for l in losses]))
 
-# Annotate every cell
+# Annotate every cell: EER value + phase label (P1 / P2+T)
+phase_color_p1 = "#555555"
+phase_color_p2 = "#1a6b2e"   # dark green for Phase 2 + Teacher
 for i in range(n_rows):
+    loss = losses[i]
     for j in range(n_cols):
         val = mat[i, j]
         norm_val = mat_norm[i, j]
-        bg_rgb = np.array(cmap(norm_val)[:3])
         txt_color = "#1a1a1a"
         weight = "bold" if j == n_cols - 1 else "normal"
-        ax.text(j, i, f"{val:.2f}", ha="center", va="center",
-                fontsize=9.5, color=txt_color, fontweight=weight)
+        if j < n_cols - 1:   # split columns only, not Mean
+            phase = phase_labels[loss][j]
+            p_color = phase_color_p2 if "P2" in phase else phase_color_p1
+            ax.text(j, i - 0.17, f"{val:.2f}", ha="center", va="center",
+                    fontsize=9.5, color=txt_color, fontweight=weight)
+            ax.text(j, i + 0.26, phase, ha="center", va="center",
+                    fontsize=6.5, color=p_color, fontstyle="italic")
+        else:
+            ax.text(j, i, f"{val:.2f}", ha="center", va="center",
+                    fontsize=9.5, color=txt_color, fontweight=weight)
 
 # Dark border on the best (min EER) cell per column
 for j in range(n_cols):
@@ -158,6 +178,13 @@ ax.text(
     0.99, -0.04, "lower is better",
     transform=ax.transAxes, fontsize=8.5, color="#888888",
     ha="right", va="top",
+)
+ax.text(
+    0.01, -0.04,
+    r"$\it{P1}$ = best in Phase 1 (epochs 1–10)   "
+    r"$\it{P2{+}M}$ / $\it{P2}$ = best in Phase 2 (epochs 11–15), w/ mining / w/o mining",
+    transform=ax.transAxes, fontsize=7.5, color="#555555",
+    ha="left", va="top",
 )
 
 fig.tight_layout()
