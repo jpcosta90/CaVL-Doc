@@ -134,9 +134,9 @@ ax.spines["right"].set_visible(False)
 
 # Legend — upper left, where Mean Pool boxes are small, well away from data
 patch_p0 = mpatches.Patch(facecolor=C_P0, alpha=0.55, edgecolor=C_P0,
-                           label=r"Base prompt $\mathcal{P}_0$ (5 tokens)")
+                           label=r"Base prompt $\mathcal{P}_0$ (4 tokens)")
 patch_pr = mpatches.Patch(facecolor=C_PR, alpha=0.55, edgecolor=C_PR,
-                           label=r"Rich prompt $\mathcal{P}_r$ (63 tokens)")
+                           label=r"Rich prompt $\mathcal{P}_r$ (77 tokens)")
 ax.legend(handles=[patch_p0, patch_pr],
           loc="upper left", frameon=True, framealpha=0.93,
           fontsize=9, borderpad=0.6)

@@ -42,10 +42,75 @@ import matplotlib.gridspec as gridspec
 import matplotlib.lines
 import numpy as np
 import torch
+import torchvision.transforms as T
+from torchvision.transforms.functional import InterpolationMode
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "src"))
+OUTPUT_DIR = ROOT / "docs" / "assets"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# InternVL preprocessing — inline (no cavl_doc dependency)
+# ---------------------------------------------------------------------------
+IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_STD  = (0.229, 0.224, 0.225)
+
+def _find_closest_aspect_ratio(aspect_ratio, target_ratios, width, height, image_size):
+    best_ratio_diff, best_ratio, area = float("inf"), (1, 1), width * height
+    for ratio in target_ratios:
+        diff = abs(aspect_ratio - ratio[0] / ratio[1])
+        if diff < best_ratio_diff:
+            best_ratio_diff, best_ratio = diff, ratio
+        elif diff == best_ratio_diff:
+            if area > 0.5 * image_size * image_size * ratio[0] * ratio[1]:
+                best_ratio = ratio
+    return best_ratio
+
+def _build_transform(input_size=448):
+    return T.Compose([
+        T.Lambda(lambda img: img.convert("RGB") if img.mode != "RGB" else img),
+        T.Resize((input_size, input_size), interpolation=InterpolationMode.BICUBIC),
+        T.ToTensor(),
+        T.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
+    ])
+
+def _dynamic_preprocess(image, min_num=1, max_num=12, image_size=448, use_thumbnail=False):
+    w, h = image.size
+    target_ratios = sorted(
+        {(i, j) for n in range(min_num, max_num + 1)
+         for i in range(1, n + 1) for j in range(1, n + 1)
+         if min_num <= i * j <= max_num},
+        key=lambda r: r[0] * r[1],
+    )
+    cols, rows = _find_closest_aspect_ratio(w / h, target_ratios, w, h, image_size)
+    tw, th = image_size * cols, image_size * rows
+    resized = image.resize((tw, th))
+    tiles = [
+        resized.crop((
+            (i % cols) * image_size, (i // cols) * image_size,
+            ((i % cols) + 1) * image_size, ((i // cols) + 1) * image_size,
+        ))
+        for i in range(cols * rows)
+    ]
+    if use_thumbnail and len(tiles) != 1:
+        tiles.append(image.resize((image_size, image_size)))
+    return tiles, rows, cols
+
+def _prepare_inputs(model, tokenizer, pixel_values, prompt):
+    device = model.device
+    if "<image>" not in prompt:
+        prompt = "<image>\n" + prompt
+    n_patches   = pixel_values.shape[0]
+    img_tokens  = "<img>" + ("<IMG_CONTEXT>" * model.num_image_token * n_patches) + "</img>"
+    prompt      = prompt.replace("<image>", img_tokens, 1)
+    inputs      = tokenizer(prompt, return_tensors="pt").to(device)
+    return {
+        "input_ids":      inputs["input_ids"],
+        "attention_mask": inputs["attention_mask"],
+        "pixel_values":   pixel_values.to(device),
+        "image_flags":    torch.ones(n_patches, dtype=torch.long).to(device),
+    }
 
 MAX_NUM  = 12
 IMG_SIZE = 448
@@ -105,25 +170,14 @@ def load_model(device: str):
 # ---------------------------------------------------------------------------
 
 def prepare_inputs(model, tokenizer, image: Image.Image, prompt: str):
-    from cavl_doc.data.transforms import dynamic_preprocess, build_transform, find_closest_aspect_ratio
-    from cavl_doc.utils.embedding_utils import prepare_inputs_for_multimodal_embedding
-
-    transform = build_transform(IMG_SIZE)
-    blocks    = dynamic_preprocess(
+    transform  = _build_transform(IMG_SIZE)
+    tiles, rows, cols = _dynamic_preprocess(
         image, max_num=MAX_NUM, image_size=IMG_SIZE, use_thumbnail=True
     )
-    pv = torch.stack([transform(b) for b in blocks]).to(torch.bfloat16).to(
+    pv = torch.stack([transform(t) for t in tiles]).to(torch.bfloat16).to(
         next(model.parameters()).device
     )
-    w, h = image.size
-    ratios = sorted(
-        {(i, j) for n in range(1, MAX_NUM + 1)
-         for i in range(1, n + 1) for j in range(1, n + 1)
-         if 1 <= i * j <= MAX_NUM},
-        key=lambda r: r[0] * r[1],
-    )
-    cols, rows = find_closest_aspect_ratio(w / h, ratios, w, h, IMG_SIZE)
-    inp        = prepare_inputs_for_multimodal_embedding(model, tokenizer, pv, prompt)
+    inp        = _prepare_inputs(model, tokenizer, pv, prompt)
     img_ctx_id = tokenizer.convert_tokens_to_ids("<IMG_CONTEXT>")
     seq        = inp["input_ids"][0].cpu()
     img_pos    = (seq == img_ctx_id).nonzero(as_tuple=True)[0]
