@@ -55,8 +55,8 @@ vals = {
     },
 }
 
-C_P0   = "#4C78A8"   # steel blue
-C_PR   = "#F58518"   # orange
+C_P0   = "#6B8EB8"   # muted slate blue
+C_PR   = "#C4904A"   # muted amber
 C_PT   = 0.25        # box fill alpha
 
 # x positions: two boxes per group, with gap between groups
@@ -91,10 +91,10 @@ def draw_box(ax, pos, data, color, width=WIDTH):
     rng = np.random.default_rng(42)
     jitter = rng.uniform(-0.07, 0.07, size=len(data))
     ax.scatter([pos + j for j in jitter], data,
-               color=color, s=28, zorder=4, alpha=0.85, linewidths=0)
+               color=color, s=14, zorder=4, alpha=0.85, linewidths=0)
     # Mean marker (diamond)
     ax.scatter([pos], [np.mean(data)],
-               marker="D", s=38, color=color, zorder=5,
+               marker="D", s=26, color=color, zorder=5,
                edgecolors="white", linewidths=0.8)
     return bp
 
@@ -109,7 +109,7 @@ for i, key in enumerate(POOLER_KEYS):
         f"Δ −{abs(delta):.2f} pp",
         xy=(group_centers[i], top),
         ha="center", va="bottom", fontsize=8.5,
-        color="#2d6a2d", fontweight="bold",
+        color="#4A8040", fontweight="bold",
     )
 
 # Group labels on x-axis

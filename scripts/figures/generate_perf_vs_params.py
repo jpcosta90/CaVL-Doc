@@ -54,10 +54,10 @@ methods = [
 ]
 
 family_style = {
-    "ours":   dict(color="#54A24B", marker="*", s=320, zorder=5),
-    "vlm":    dict(color="#4C78A8", marker="o", s=90,  zorder=4),
-    "ft_emb": dict(color="#E45756", marker="D", s=80,  zorder=4),
-    "emb":    dict(color="#F58518", marker="s", s=90,  zorder=4),
+    "ours":   dict(color="#5A9050", marker="*", s=110, zorder=5),
+    "vlm":    dict(color="#6B8EB8", marker="o", s=36,  zorder=4),
+    "ft_emb": dict(color="#B87070", marker="D", s=30,  zorder=4),
+    "emb":    dict(color="#C4904A", marker="s", s=36,  zorder=4),
 }
 
 legend_labels = {
@@ -93,7 +93,7 @@ vlm_log_e = np.log([e for p, e in trend_pts])
 coeffs    = np.polyfit(vlm_log_p, vlm_log_e, 1)
 trend_x   = np.linspace(1.2, 16, 100)
 trend_y   = np.exp(np.polyval(coeffs, np.log(trend_x)))
-ax.plot(trend_x, trend_y, "--", color="#4C78A8", linewidth=0.9,
+ax.plot(trend_x, trend_y, "--", color="#6B8EB8", linewidth=0.9,
         alpha=0.45, zorder=2, label="VLM scaling trend")
 
 ax.set_xscale("log")
