@@ -21,11 +21,12 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 plt.rcParams.update({
     "font.family": "serif",
-    "font.size": 11,
+    "font.size": 10,
     "axes.titlesize": 11,
-    "axes.labelsize": 11,
-    "xtick.labelsize": 11,
+    "axes.labelsize": 10,
+    "xtick.labelsize": 10,
     "ytick.labelsize": 10,
+    "mathtext.fontset": "cm",
 })
 
 # ── Data (EER % per split, Sub-Center CosFace, cumulative best) ──────────────
@@ -73,7 +74,7 @@ for i in range(3):
 group_centers = [(p0 + pr) / 2 for p0, pr in zip(pos_p0, pos_pr)]
 
 # ── Figure ───────────────────────────────────────────────────────────────────
-fig, ax = plt.subplots(figsize=(8.5, 4.2))
+fig, ax = plt.subplots(figsize=(4.0, 3.5))
 
 def draw_box(ax, pos, data, color, width=WIDTH):
     bp = ax.boxplot(
@@ -107,23 +108,18 @@ for i, key in enumerate(POOLER_KEYS):
     ax.annotate(
         f"Δ −{abs(delta):.2f} pp",
         xy=(group_centers[i], top),
-        ha="center", va="bottom", fontsize=9,
+        ha="center", va="bottom", fontsize=8.5,
         color="#2d6a2d", fontweight="bold",
     )
 
 # Group labels on x-axis
 ax.set_xticks(group_centers)
-ax.set_xticklabels(POOLER_LABELS, fontsize=11)
+ax.set_xticklabels(POOLER_LABELS, fontsize=9.5)
 ax.tick_params(axis="x", length=0)
 
 ax.set_xlim(pos_p0[0] - 0.7, pos_pr[-1] + 0.7)
-ax.set_ylim(-0.05, 4.3)
+ax.set_ylim(-0.05, 4.5)
 ax.set_ylabel("EER (%) — splits 0–4")
-ax.set_title(
-    r"Prompt Conditioning over Pooling Architecture — LA-CDIP"
-    "\n(Sub-Center CosFace; ◆ = mean, line = median, points = splits)",
-    pad=6,
-)
 
 # Subtle vertical separators between groups
 for i in range(len(POOLER_KEYS) - 1):
@@ -135,9 +131,6 @@ ax.set_axisbelow(True)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
 
-ax.text(-0.055, 0.5, "lower is better",
-        transform=ax.transAxes, fontsize=8.5, color="gray",
-        rotation=90, ha="right", va="center")
 
 # Legend — upper left, where Mean Pool boxes are small, well away from data
 patch_p0 = mpatches.Patch(facecolor=C_P0, alpha=0.55, edgecolor=C_P0,
@@ -146,7 +139,7 @@ patch_pr = mpatches.Patch(facecolor=C_PR, alpha=0.55, edgecolor=C_PR,
                            label=r"Rich prompt $\mathcal{P}_r$ (63 tokens)")
 ax.legend(handles=[patch_p0, patch_pr],
           loc="upper left", frameon=True, framealpha=0.93,
-          fontsize=10, borderpad=0.7)
+          fontsize=9, borderpad=0.6)
 
 fig.tight_layout()
 for ext, kw in [("pdf", {}), ("png", {"dpi": 300})]:

@@ -142,11 +142,6 @@ ax.set_yticks(range(n_rows))
 ax.set_yticklabels(losses, fontsize=10)
 ax.tick_params(axis="y", which="both", length=0, pad=6)
 
-ax.set_title(
-    "Per-Split Cumulative Best EER (%) — Loss Function Ablation on LA-CDIP\n"
-    r"Config: Attention Pooler (MQAP, $n_q{=}1$), base prompt — best across Teacher ON/OFF",
-    pad=16, fontsize=11,
-)
 
 # Colour bar — relative rank per split (not absolute EER)
 cbar = fig.colorbar(im, ax=ax, shrink=0.85, pad=0.018, aspect=20)

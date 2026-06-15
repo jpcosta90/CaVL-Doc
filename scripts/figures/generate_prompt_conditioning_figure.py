@@ -217,8 +217,8 @@ def _add_class_headers(fig, gs, class_labels: list[str], n_docs_per_class: int,
         mid_x   = (pos_l.x0 + pos_r.x1) / 2
         fig.text(mid_x, 1.0 - top_m * 0.32 / fig_h,
                  cls_label,
-                 ha="center", va="top", fontsize=8.5,
-                 fontweight="bold", style="italic",
+                 ha="center", va="top", fontsize=7.5,
+                 fontweight="normal", style="italic", color="#666666",
                  transform=fig.transFigure)
         fig.add_artist(matplotlib.lines.Line2D(
             [pos_l.x0, pos_r.x1],
@@ -444,7 +444,7 @@ def main():
         tifs    = sorted(cls_dir.glob("*.tif"))[: cls["n_docs"]]
         if not tifs:
             tifs = sorted(cls_dir.glob("*.jpg"))[: cls["n_docs"]]
-        class_labels.append(cls["label"])
+        class_labels.append(f"Class {len(class_labels) + 1}")
         print(f"\n=== {cls['label']} ===")
 
         for tif in tifs:

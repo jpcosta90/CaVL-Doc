@@ -24,12 +24,13 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 plt.rcParams.update({
     "font.family": "serif",
-    "font.size": 11,
-    "axes.titlesize": 12,
-    "axes.labelsize": 11,
-    "xtick.labelsize": 10,
-    "ytick.labelsize": 10,
-    "legend.fontsize": 9,
+    "font.size": 10,
+    "axes.titlesize": 11,
+    "axes.labelsize": 10,
+    "xtick.labelsize": 9.5,
+    "ytick.labelsize": 9.5,
+    "legend.fontsize": 8,
+    "mathtext.fontset": "cm",
 })
 
 # (params_B, avg_eer, display_label, family, (dx_pts, dy_pts), in_trend)
@@ -39,17 +40,17 @@ methods = [
     # Ours
     (2.0,  0.91,  "ArcDoc (ours)",         "ours",   ( 8,  10), False),
     # Zero-shot VLM
-    (8.0,  1.12,  "Qwen3-VL-8B",          "vlm",    ( 6,   6), True),
-    (14.0, 1.30,  "InternVL-3-14B",       "vlm",    ( 6,   0), True),
+    (8.0,  1.12,  "Qwen3-VL-8B",          "vlm",    ( 6,   8), True),
+    (14.0, 1.30,  "InternVL-3-14B",       "vlm",    (-6,  -8), True),
     (8.0,  2.13,  "InternVL-3-8B",        "vlm",    ( 6,  -8), True),
     (4.0,  2.67,  "Qwen3-VL-4B",          "vlm",    ( 6,  -8), True),
-    (2.0,  29.99, "InternVL-3-2B",        "vlm",    (-8,   0), False),
+    (2.0,  29.99, "InternVL-3-2B",        "vlm",    ( 6,   6), False),
     # Fine-tuned embedding
-    (4.0,  2.23,  "Jina-v4 (LoRA)",       "ft_emb", ( 6,  14), False),
+    (4.0,  2.23,  "Jina-v4 (LoRA)",       "ft_emb", ( 6,  12), False),
     # Embedding baselines (unadapted)
-    (4.0,  3.08,  "Jina-v4",              "emb",    (-6,  -8), False),
-    (2.0,  4.78,  "InternVL3 (out)",      "emb",    (-8,   0), False),
-    (2.0,  7.62,  "InternVL3 (in)",       "emb",    (-8,   0), False),
+    (4.0,  3.08,  "Jina-v4",              "emb",    (-6, -10), False),
+    (2.0,  4.78,  "InternVL3 (out)",      "emb",    ( 6,  -6), False),
+    (2.0,  7.62,  "InternVL3 (in)",       "emb",    ( 6,   6), False),
 ]
 
 family_style = {
@@ -66,7 +67,7 @@ legend_labels = {
     "emb":    "Embedding (unadapted)",
 }
 
-fig, ax = plt.subplots(figsize=(8, 5))
+fig, ax = plt.subplots(figsize=(4.0, 3.5))
 
 legend_done = set()
 for params, eer, label, fam, (dx, dy), _ in methods:
@@ -80,7 +81,7 @@ for params, eer, label, fam, (dx, dy), _ in methods:
     ax.annotate(
         label, xy=(params, eer),
         xytext=(dx, dy), textcoords="offset points",
-        fontsize=8, ha=ha, va="center",
+        fontsize=6.5, ha=ha, va="center",
         color=family_style[fam]["color"],
     )
 
@@ -92,32 +93,34 @@ vlm_log_e = np.log([e for p, e in trend_pts])
 coeffs    = np.polyfit(vlm_log_p, vlm_log_e, 1)
 trend_x   = np.linspace(1.2, 16, 100)
 trend_y   = np.exp(np.polyval(coeffs, np.log(trend_x)))
-ax.plot(trend_x, trend_y, "--", color="#4C78A8", linewidth=1.0,
-        alpha=0.50, zorder=2, label="VLM scaling trend")
+ax.plot(trend_x, trend_y, "--", color="#4C78A8", linewidth=0.9,
+        alpha=0.45, zorder=2, label="VLM scaling trend")
 
 ax.set_xscale("log")
 ax.set_yscale("log")
 
 ax.set_xlabel("Active Parameters (B)")
 ax.set_ylabel("Average EER (%)")
-ax.set_title("Performance vs. Model Size on LA-CDIP (Avg. EER, Splits 0–4)")
 
 ax.set_xticks([2, 4, 8, 14])
 ax.get_xaxis().set_major_formatter(ticker.ScalarFormatter())
-ax.set_yticks([0.5, 1, 2, 5, 10, 30])
-ax.get_yaxis().set_major_formatter(ticker.ScalarFormatter())
+ax.set_yticks([1, 2, 5, 10, 30])
+ax.get_yaxis().set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{int(x)}"))
 
 ax.set_xlim(1.2, 20)
 ax.set_ylim(0.50, 60)
 
-ax.text(0.99, 0.99, "lower-left is better",
-        transform=ax.transAxes, fontsize=9, color="gray",
-        ha="right", va="top")
+ax.text(0.01, 0.01, "lower-left is better",
+        transform=ax.transAxes, fontsize=7.5, color="#888888",
+        ha="left", va="bottom", style="italic")
 
-ax.legend(loc="upper right", frameon=True, framealpha=0.9)
+ax.legend(loc="upper right", frameon=True, framealpha=0.92,
+          edgecolor="#cccccc", handlelength=1.4, handletextpad=0.5)
 ax.spines["top"].set_visible(False)
 ax.spines["right"].set_visible(False)
-ax.grid(True, which="both", linestyle="--", alpha=0.25)
+ax.spines["left"].set_linewidth(0.7)
+ax.spines["bottom"].set_linewidth(0.7)
+ax.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.25)
 
 fig.tight_layout()
 fig.savefig(OUTPUT_DIR / "perf_vs_params.pdf", bbox_inches="tight", pad_inches=0.05)

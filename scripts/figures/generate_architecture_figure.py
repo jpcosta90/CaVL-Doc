@@ -34,7 +34,7 @@ plt.rcParams.update({
 
 # ── Academic colour palette ───────────────────────────────────────────────────
 C_TOK    = "#D3E8F5"; B_TOK    = "#4A8AB8"   # pale / border blue
-C_BACK   = "#4E7FA8"; B_BACK   = "#2C5470"   # steel blue (white text)
+C_BACK   = "#B8D4E8"; B_BACK   = "#5B8DB8"   # muted light blue
 C_POOL   = "#C8E6D0"; B_POOL   = "#3A7A50"   # sage green
 C_PROJ   = "#F5E3CB"; B_PROJ   = "#A86830"   # warm peach
 C_LOSS   = "#F5D3CC"; B_LOSS   = "#A03828"   # coral
@@ -177,8 +177,7 @@ ax.text(x_back, y_prom - 0.22,
 block(ax, x_back, y_mid, 3.0, back_h,
       "LVLM Backbone\n(InternVL3-2B)", C_BACK, B_BACK,
       subtitle="frozen — no gradient",
-      lw=1.5, title_fs=11, sub_fs=8.5,
-      text_color="white", sub_color="#C8DCEE")
+      lw=1.5, title_fs=11, sub_fs=8.5)
 
 # ── Cross-Modal Attention pooler ───────────────────────────────────────────────
 for y_s in (y_top, y_bot):
