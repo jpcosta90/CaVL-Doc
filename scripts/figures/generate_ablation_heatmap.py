@@ -29,8 +29,9 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 plt.rcParams.update({
     "font.family": "serif",
-    "font.size": 11,
-    "axes.titlesize": 12,
+    "font.size": 10,
+    "axes.titlesize": 11,
+    "mathtext.fontset": "cm",
 })
 
 # Full-evaluation per-split EER (%) — FullEval_Sprint3b runs
@@ -84,42 +85,51 @@ mat = np.array([[*per_split[l], means[l]] for l in losses])
 col_labels = ["Split 0", "Split 1", "Split 2", "Split 3", "Split 4", "Mean"]
 n_rows, n_cols = mat.shape
 
-# Colour map: low EER (good) = ArcDoc green; high EER = orange
+# Grayscale: medium gray (best) → very light (worst) — dark text readable throughout
 cmap = mcolors.LinearSegmentedColormap.from_list(
-    "eer", ["#54A24B", "#F7F7F7", "#F58518"], N=256
+    "eer_gray", ["#888888", "#F2F2F2"], N=256
 )
 
 fig, ax = plt.subplots(figsize=(10.5, 2.8))
 ax.set_aspect("auto")
 
-vmin, vmax = 0.0, 4.0
-im = ax.imshow(mat, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto")
+# Per-column ordinal normalisation: 1st/2nd/3rd/4th place get equal visual spacing
+# regardless of how close the actual EER values are.
+mat_norm = np.zeros_like(mat)
+for j in range(n_cols):
+    col = mat[:, j]
+    ranks = np.argsort(np.argsort(col)).astype(float)   # 0 = best (lowest EER)
+    mat_norm[:, j] = ranks / (len(col) - 1)             # normalise to [0, 1]
+
+im = ax.imshow(mat_norm, cmap=cmap, vmin=0, vmax=1, aspect="auto")
+
+# Row with best mean EER — entire row gets bold text
+best_row = int(np.argmin([means[l] for l in losses]))
 
 # Annotate every cell
 for i in range(n_rows):
     for j in range(n_cols):
         val = mat[i, j]
-        norm_val = (val - vmin) / (vmax - vmin)
+        norm_val = mat_norm[i, j]
         bg_rgb = np.array(cmap(norm_val)[:3])
-        luminance = 0.299 * bg_rgb[0] + 0.587 * bg_rgb[1] + 0.114 * bg_rgb[2]
-        txt_color = "white" if luminance < 0.45 else "#1a1a1a"
+        txt_color = "#1a1a1a"
         weight = "bold" if j == n_cols - 1 else "normal"
         ax.text(j, i, f"{val:.2f}", ha="center", va="center",
-                fontsize=10, color=txt_color, fontweight=weight)
+                fontsize=9.5, color=txt_color, fontweight=weight)
 
-# Black border on best (min) loss per column
+# Dark border on the best (min EER) cell per column
 for j in range(n_cols):
     best_i = int(np.argmin(mat[:, j]))
     rect = mpatches.FancyBboxPatch(
         (j - 0.495, best_i - 0.495), 0.99, 0.99,
-        linewidth=2.2, edgecolor="black", facecolor="none",
+        linewidth=1.5, edgecolor="#111111", facecolor="none",
         boxstyle="square,pad=0", clip_on=False,
     )
     ax.add_patch(rect)
 
 # Dashed separator before the Mean column
-ax.axvline(n_cols - 1 - 0.5, color="black", linewidth=1.2,
-           linestyle="--", alpha=0.55)
+ax.axvline(n_cols - 1 - 0.5, color="#555555", linewidth=0.9,
+           linestyle="--", alpha=0.60)
 
 # Column labels on top
 ax.set_xticks(range(n_cols))
@@ -130,26 +140,28 @@ ax.tick_params(axis="x", which="both", length=0, pad=4)
 
 ax.set_yticks(range(n_rows))
 ax.set_yticklabels(losses, fontsize=10)
-ax.tick_params(axis="y", which="both", length=0, pad=4)
+ax.tick_params(axis="y", which="both", length=0, pad=6)
 
 ax.set_title(
     "Per-Split Cumulative Best EER (%) — Loss Function Ablation on LA-CDIP\n"
     r"Config: Attention Pooler (MQAP, $n_q{=}1$), base prompt — best across Teacher ON/OFF",
-    pad=14, fontsize=11,
+    pad=16, fontsize=11,
 )
 
-# Colour bar
-cbar = fig.colorbar(im, ax=ax, shrink=0.88, pad=0.015, aspect=18)
-cbar.set_label("EER (%)", fontsize=9)
-cbar.ax.tick_params(labelsize=8)
-cbar.set_ticks([0, 1, 2, 3, 4])
+# Colour bar — relative rank per split (not absolute EER)
+cbar = fig.colorbar(im, ax=ax, shrink=0.85, pad=0.018, aspect=20)
+cbar.set_ticks([0, 1])
+cbar.set_ticklabels(["best", "worst"], fontsize=8)
+cbar.set_label("rank\n(per split)", fontsize=8, labelpad=4)
+cbar.ax.tick_params(length=2)
+cbar.outline.set_linewidth(0.6)
 
 for spine in ax.spines.values():
     spine.set_visible(False)
 
 ax.text(
-    1.065, -0.06, "lower is better",
-    transform=ax.transAxes, fontsize=8, color="gray",
+    0.99, -0.04, "lower is better",
+    transform=ax.transAxes, fontsize=8.5, color="#888888",
     ha="right", va="top",
 )
 

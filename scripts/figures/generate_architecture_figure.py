@@ -3,11 +3,14 @@
 Generates architecture_with_teacher.pdf/png for the ArcDoc paper (Figure 1).
 
 Final ArcDoc configuration:
-  - Rich prompt P_r conditioning the frozen LVLM backbone
+  - Rich prompt P_r conditioning the frozen LVLM backbone (from above)
   - Bidirectional Cross-Modal Attention pooler
   - Residual MLP projection head
-  - Sub-Center CosFace loss  (k=3 sub-centres)
+  - Sub-Center CosFace loss (k=3 sub-centres)
   - RL Teacher agent (Phase 2, optional)
+
+Style mirrors the other paper figures: serif/CM math, muted academic palette,
+thin coordinated borders, no nested sub-boxes.
 
 Adapted from analysis/paper_figures.ipynb (Cell 4).
 
@@ -19,228 +22,229 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
 from pathlib import Path
-import os
 
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / "docs" / "assets"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-plt.rcParams["font.family"] = "serif"
-plt.rcParams["font.size"] = 14
+plt.rcParams.update({
+    "font.family": "serif",
+    "font.size": 11,
+    "mathtext.fontset": "cm",
+})
 
-# ── Colours ──────────────────────────────────────────────────────────────────
-C_TOK    = "#cce5ff"
-C_BACK   = "#a3c2e0"
-C_POOL   = "#C8E6C9";  C_POOL2  = "#A5D6A7"
-C_PROJ   = "#ffdbcc";  C_PROJ2  = "#ffbf80"
-C_LOSS   = "#F8D7DA";  C_LOSS2  = "#f5b7b1"
-C_TEACH  = "#ffcccc";  C_POLICY = "#ff9999"
-C_PROM   = "#FFF3CD"
-C_TRAIN  = "#fdfdfd"
+# ── Academic colour palette ───────────────────────────────────────────────────
+C_TOK    = "#D3E8F5"; B_TOK    = "#4A8AB8"   # pale / border blue
+C_BACK   = "#4E7FA8"; B_BACK   = "#2C5470"   # steel blue (white text)
+C_POOL   = "#C8E6D0"; B_POOL   = "#3A7A50"   # sage green
+C_PROJ   = "#F5E3CB"; B_PROJ   = "#A86830"   # warm peach
+C_LOSS   = "#F5D3CC"; B_LOSS   = "#A03828"   # coral
+C_TEACH  = "#EDE0F5"; B_TEACH  = "#7040A8"   # lavender
+C_PROM   = "#FFF8D6"; B_PROM   = "#B89000"   # amber
 
+C_ARROW  = "#404040"  # arrow colour
+C_TRAIN  = "#F5F5F5"  # trainable-region fill
 
-def draw_doc_icon(ax, xy, width=1.0, height=1.3, label_top="", label_bot=""):
-    doc = FancyBboxPatch(
-        (xy[0] - width / 2, xy[1] - height / 2), width, height,
-        boxstyle="round,pad=0.05,rounding_size=0.1",
-        ec="black", fc="#f8f9fa", lw=1.5, zorder=10,
+# ── Drawing helpers ───────────────────────────────────────────────────────────
+
+def block(ax, cx, cy, w, h,
+          title, fill, border,
+          subtitle=None,
+          lw=1.2, ls="-",
+          title_color="#1a1a1a", sub_color="#555555",
+          title_fs=10.5, sub_fs=8.5,
+          text_color=None):
+    """Single-layer rounded block — title + optional italic subtitle."""
+    rect = FancyBboxPatch(
+        (cx - w / 2, cy - h / 2), w, h,
+        boxstyle="round,pad=0.07,rounding_size=0.18",
+        facecolor=fill, edgecolor=border, linewidth=lw, linestyle=ls, zorder=15,
     )
-    ax.add_patch(doc)
-    line_w = width * 0.6
-    start_y = xy[1] + height * 0.25
+    ax.add_patch(rect)
+    tc = text_color or title_color
+    y_off = 0.18 if subtitle else 0
+    ax.text(cx, cy + y_off, title,
+            ha="center", va="center",
+            fontsize=title_fs, fontweight="bold", color=tc, zorder=16)
+    if subtitle:
+        ax.text(cx, cy - 0.22, subtitle,
+                ha="center", va="center",
+                fontsize=sub_fs, style="italic", color=sub_color, zorder=16)
+
+
+def doc_icon(ax, cx, cy, label_top="", label_bot="", w=0.95, h=1.25):
+    """Vectorial document icon (white card with ruled lines)."""
+    card = FancyBboxPatch(
+        (cx - w / 2, cy - h / 2), w, h,
+        boxstyle="round,pad=0.04,rounding_size=0.08",
+        facecolor="#F9F9F9", edgecolor="#555555", linewidth=1.1, zorder=10,
+    )
+    ax.add_patch(card)
+    ly0 = cy + h * 0.22
     for i in range(3):
-        ly = start_y - i * height * 0.2
-        lw_i = line_w * 0.7 if i == 0 else line_w
-        ax.plot([xy[0] - lw_i / 2, xy[0] + lw_i / 2], [ly, ly],
-                color="#a0a0a0", lw=1.5, zorder=11)
+        lw_i = w * 0.45 if i == 0 else w * 0.58
+        ax.plot([cx - lw_i / 2, cx + lw_i / 2],
+                [ly0 - i * h * 0.18, ly0 - i * h * 0.18],
+                color="#AAAAAA", lw=1.3, zorder=11)
     if label_top:
-        ax.text(xy[0], xy[1] + height / 2 + 0.25, label_top,
-                ha="center", va="bottom", fontweight="bold", fontsize=12)
+        ax.text(cx, cy + h / 2 + 0.20, label_top,
+                ha="center", va="bottom", fontsize=10, fontweight="bold")
     if label_bot:
-        ax.text(xy[0], xy[1] - height / 2 - 0.25, label_bot,
-                ha="center", va="top", fontsize=11, style="italic")
+        ax.text(cx, cy - h / 2 - 0.20, label_bot,
+                ha="center", va="top", fontsize=9, style="italic", color="#555")
 
 
-def draw_functional_block(ax, xy, w, h, title, color, sub_text=None, sub_color="white"):
-    box = FancyBboxPatch(
-        (xy[0] - w / 2, xy[1] - h / 2), w, h,
-        boxstyle="round,pad=0.1,rounding_size=0.2",
-        ec="black", fc=color, lw=1.5, zorder=15,
-    )
-    ax.add_patch(box)
-    y_off = h / 4 if sub_text else 0
-    ax.text(xy[0], xy[1] + y_off, title,
-            ha="center", va="center", fontweight="bold", fontsize=12, zorder=16)
-    if sub_text:
-        sh, sw = h * 0.4, w * 0.85
-        sub_box = FancyBboxPatch(
-            (xy[0] - sw / 2, xy[1] - h / 3.5 - sh / 2), sw, sh,
-            boxstyle="round,pad=0.05,rounding_size=0.1",
-            ec="black", fc=sub_color, lw=1, zorder=16,
-        )
-        ax.add_patch(sub_box)
-        ax.text(xy[0], xy[1] - h / 3.5, sub_text,
-                ha="center", va="center", fontsize=10, fontweight="bold", zorder=17)
-
-
-def draw_arrow(ax, p1, p2, style="->", lw=1.5, connectionstyle="arc3", color="black"):
-    ax.annotate("", xy=p2, xytext=p1,
+def arrow(ax, x0, y0, x1, y1, cs="arc3", lw=1.3, color=C_ARROW,
+          style="->", shrink=5):
+    ax.annotate("", xy=(x1, y1), xytext=(x0, y0),
                 arrowprops=dict(arrowstyle=style, lw=lw, color=color,
-                                shrinkA=5, shrinkB=5,
-                                connectionstyle=connectionstyle),
-                zorder=5)
+                                shrinkA=shrink, shrinkB=shrink,
+                                connectionstyle=cs),
+                zorder=6)
 
 
-def plot_architecture_with_teacher():
-    fig, ax = plt.subplots(figsize=(22, 10))
-    ax.set_xlim(0, 20)
-    ax.set_ylim(0, 11.5)
-    ax.axis("off")
+# ── Figure setup ──────────────────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(22, 10))
+ax.set_xlim(0, 20)
+ax.set_ylim(0, 11.5)
+ax.axis("off")
 
-    # ── Layout ────────────────────────────────────────────────────────────────
-    y_top, y_bot, y_mid = 6.0, 2.0, 4.0
-    y_teacher = 10.3
-    y_prom    = 8.4   # rich prompt badge — above backbone, below teacher
+# ── Coordinate grid ───────────────────────────────────────────────────────────
+y_top, y_bot, y_mid = 6.0, 2.0, 4.0
+y_teacher = 10.3
+y_prom    = 8.5   # rich prompt — above backbone, below teacher
 
-    x_doc     = 1.0
-    x_tok     = 3.2
-    x_back    = 7.5
-    x_pool    = 11.0
-    x_proj    = 14.2
-    x_loss    = 17.8
-    x_teacher = 11.5  # centred above pipeline
+x_doc  = 1.1
+x_tok  = 3.2
+x_back = 7.5
+x_pool = 11.0
+x_proj = 14.4
+x_loss = 17.8
+x_tchr = 11.5   # teacher centred above pipeline
 
-    # ── Trainable region (pooler + head) ──────────────────────────────────────
-    tr_x0 = x_back + 1.2
-    tr_x1 = x_proj + 1.5
-    tr_y0 = y_bot - 1.8
-    tr_y1 = y_top + 2.2
-    train_frame = FancyBboxPatch(
-        (tr_x0, tr_y0), tr_x1 - tr_x0, tr_y1 - tr_y0,
-        boxstyle="round,pad=0.1,rounding_size=0.3",
-        ec="#555555", fc=C_TRAIN, lw=2, ls="--", zorder=1,
-    )
-    ax.add_patch(train_frame)
-    ax.text((tr_x0 + tr_x1) / 2, tr_y1 - 0.3, "Trainable Architecture",
-            ha="center", va="top", fontsize=14, fontweight="bold",
-            color="#444444", zorder=2)
+back_h = y_top - y_bot + 2.2   # height of backbone block
 
-    # ── Teacher block ──────────────────────────────────────────────────────────
-    draw_functional_block(
-        ax, (x_teacher, y_teacher), 4.2, 1.8,
-        'The "Teacher"\n(RL Agent)', C_TEACH,
-        "Policy π(Action|Loss)", C_POLICY,
-    )
+# ── Trainable region (subtle dotted outline) ──────────────────────────────────
+tr_x0 = x_back + 1.2
+tr_x1 = x_proj + 1.55
+tr_rect = FancyBboxPatch(
+    (tr_x0, y_bot - 1.5), tr_x1 - tr_x0, y_top + 1.5 - (y_bot - 1.5),
+    boxstyle="round,pad=0.1,rounding_size=0.3",
+    facecolor=C_TRAIN, edgecolor="#999999", linewidth=1.0, linestyle=":",
+    zorder=1,
+)
+ax.add_patch(tr_rect)
+ax.text((tr_x0 + tr_x1) / 2, y_top + 1.25, "Trainable Architecture",
+        ha="center", va="center",
+        fontsize=9.5, color="#666666", style="italic", zorder=2)
 
-    # ── Document icons ─────────────────────────────────────────────────────────
-    draw_doc_icon(ax, (x_doc, y_top), label_top="Image A", label_bot="(Support)")
-    draw_doc_icon(ax, (x_doc, y_bot), label_top="Image B", label_bot="(Query)")
+# ── Teacher block ─────────────────────────────────────────────────────────────
+block(ax, x_tchr, y_teacher, 5.0, 1.5,
+      r'The "Teacher"  (RL Agent)',
+      subtitle=r"Policy $\pi(\text{Action}|\text{Loss})$",
+      fill=C_TEACH, border=B_TEACH,
+      lw=1.4, ls="--",
+      title_fs=11, sub_fs=9)
 
-    # ── Tokens blocks ──────────────────────────────────────────────────────────
-    draw_functional_block(ax, (x_tok, y_top), 1.7, 1.2, "Tokens\n(Image Patches)", C_TOK)
-    draw_functional_block(ax, (x_tok, y_bot), 1.7, 1.2, "Tokens\n(Image Patches)", C_TOK)
+# ── Document icons ─────────────────────────────────────────────────────────────
+doc_icon(ax, x_doc, y_top, label_top="Image A", label_bot="(Support)")
+doc_icon(ax, x_doc, y_bot, label_top="Image B", label_bot="(Query)")
 
-    # ── Rich Prompt P_r badge (shared, enters backbone from above) ────────────
-    badge = FancyBboxPatch(
-        (x_back - 1.5, y_prom - 0.55), 3.0, 1.1,
-        boxstyle="round,pad=0.08,rounding_size=0.15",
-        ec="#BB8800", fc=C_PROM, lw=1.8, zorder=15,
-    )
-    ax.add_patch(badge)
-    ax.text(x_back, y_prom + 0.15, r"Rich Prompt  $\mathcal{P}_r$",
-            ha="center", va="center", fontsize=13, color="#885500",
-            fontweight="bold", zorder=16)
-    ax.text(x_back, y_prom - 0.22, "(63 tokens — conditions backbone attention)",
-            ha="center", va="center", fontsize=9, color="#885500",
-            style="italic", zorder=16)
+# ── Tokens blocks ─────────────────────────────────────────────────────────────
+block(ax, x_tok, y_top, 1.8, 1.1,
+      "Tokens", C_TOK, B_TOK,
+      subtitle="(Image Patches)", sub_fs=8)
+block(ax, x_tok, y_bot, 1.8, 1.1,
+      "Tokens", C_TOK, B_TOK,
+      subtitle="(Image Patches)", sub_fs=8)
 
-    # ── Frozen backbone (spans both streams) ───────────────────────────────────
-    back_h = y_top - y_bot + 2.0  # referenced also in Prompt arrow below
-    draw_functional_block(ax, (x_back, y_mid), 2.8, back_h, "LVLM Backbone", C_BACK)
-    ax.text(x_back, y_mid - back_h / 2 + 0.5, "(frozen)",
-            ha="center", va="center", fontsize=10, color="#336699",
-            style="italic", zorder=17)
+# ── Rich Prompt badge (enters backbone from above) ────────────────────────────
+prom_rect = FancyBboxPatch(
+    (x_back - 1.65, y_prom - 0.55), 3.3, 1.1,
+    boxstyle="round,pad=0.08,rounding_size=0.18",
+    facecolor=C_PROM, edgecolor=B_PROM, linewidth=1.4, linestyle="--", zorder=15,
+)
+ax.add_patch(prom_rect)
+ax.text(x_back, y_prom + 0.12,
+        r"Rich Prompt $\mathcal{P}_r$",
+        ha="center", va="center",
+        fontsize=11, fontweight="bold", color="#7A6000", zorder=16)
+ax.text(x_back, y_prom - 0.22,
+        r"63 tokens — conditions backbone attention",
+        ha="center", va="center",
+        fontsize=8, style="italic", color="#9A8020", zorder=16)
 
-    # ── Cross-Modal Attention pooler ───────────────────────────────────────────
-    draw_functional_block(
-        ax, (x_pool, y_top), 2.5, 1.6,
-        "Cross-Modal\nAttn Pooler", C_POOL,
-        sub_text="qv  x  qt  .  alpha", sub_color=C_POOL2,
-    )
-    draw_functional_block(
-        ax, (x_pool, y_bot), 2.5, 1.6,
-        "Cross-Modal\nAttn Pooler", C_POOL,
-        sub_text="qv  x  qt  .  alpha", sub_color=C_POOL2,
-    )
+# ── Frozen backbone (spans both streams) ──────────────────────────────────────
+block(ax, x_back, y_mid, 3.0, back_h,
+      "LVLM Backbone\n(InternVL3-2B)", C_BACK, B_BACK,
+      subtitle="frozen — no gradient",
+      lw=1.5, title_fs=11, sub_fs=8.5,
+      text_color="white", sub_color="#C8DCEE")
 
-    # ── Projection head ────────────────────────────────────────────────────────
-    draw_functional_block(
-        ax, (x_proj, y_top), 2.5, 1.6,
-        "Projection\nHead", C_PROJ,
-        sub_text="MLP  (D->d, L2)", sub_color=C_PROJ2,
-    )
-    draw_functional_block(
-        ax, (x_proj, y_bot), 2.5, 1.6,
-        "Projection\nHead", C_PROJ,
-        sub_text="MLP  (D->d, L2)", sub_color=C_PROJ2,
-    )
+# ── Cross-Modal Attention pooler ───────────────────────────────────────────────
+for y_s in (y_top, y_bot):
+    block(ax, x_pool, y_s, 2.6, 1.55,
+          "Cross-Modal\nAttn Pooler", C_POOL, B_POOL,
+          subtitle=r"$q_V \!\times\! q_T \cdot \alpha$",
+          title_fs=10, sub_fs=9)
 
-    # ── Sub-Center CosFace loss ────────────────────────────────────────────────
-    draw_functional_block(
-        ax, (x_loss, y_mid), 2.5, 2.0,
-        "Sub-Center\nCosFace", C_LOSS,
-        sub_text="k=3 sub-centres", sub_color=C_LOSS2,
-    )
+# ── Projection head ────────────────────────────────────────────────────────────
+for y_s in (y_top, y_bot):
+    block(ax, x_proj, y_s, 2.6, 1.55,
+          "Projection Head", C_PROJ, B_PROJ,
+          subtitle=r"MLP $(D{\to}d)$,  $\ell_2$-norm",
+          title_fs=10, sub_fs=9)
 
-    # ── Data-flow arrows ───────────────────────────────────────────────────────
-    # Doc → Tokens
-    for y_s in (y_top, y_bot):
-        draw_arrow(ax, (x_doc + 0.6, y_s), (x_tok - 0.85, y_s))
+# ── Sub-Center CosFace loss ────────────────────────────────────────────────────
+block(ax, x_loss, y_mid, 2.6, 2.1,
+      "Sub-Center\nCosFace",
+      C_LOSS, B_LOSS,
+      subtitle=r"$k{=}3$ sub-centres",
+      lw=1.5, title_fs=11, sub_fs=9)
 
-    # Tokens → Backbone (direct)
-    for y_s in (y_top, y_bot):
-        draw_arrow(ax, (x_tok + 0.85, y_s), (x_back - 1.4, y_s))
+# ── Arrows: main data flow ─────────────────────────────────────────────────────
+# Doc → Tokens
+for y_s in (y_top, y_bot):
+    arrow(ax, x_doc + 0.55, y_s, x_tok - 0.9, y_s)
 
-    # Prompt → Backbone (from above)
-    draw_arrow(ax, (x_back, y_prom - 0.55), (x_back, y_mid + back_h / 2))
+# Tokens → Backbone
+for y_s in (y_top, y_bot):
+    arrow(ax, x_tok + 0.9, y_s, x_back - 1.5, y_s)
 
-    # Backbone → Pooler
-    draw_arrow(ax, (x_back + 1.4, y_top), (x_pool - 1.25, y_top))
-    draw_arrow(ax, (x_back + 1.4, y_bot), (x_pool - 1.25, y_bot))
+# Prompt → Backbone top (dashed amber arrow)
+arrow(ax, x_back, y_prom - 0.55, x_back, y_mid + back_h / 2,
+      color=B_PROM, lw=1.2)
 
-    # Pooler → Head
-    draw_arrow(ax, (x_pool + 1.25, y_top), (x_proj - 1.25, y_top))
-    draw_arrow(ax, (x_pool + 1.25, y_bot), (x_proj - 1.25, y_bot))
+# Backbone → Pooler
+arrow(ax, x_back + 1.5, y_top, x_pool - 1.3, y_top)
+arrow(ax, x_back + 1.5, y_bot, x_pool - 1.3, y_bot)
 
-    # Head → Loss (converging)
-    draw_arrow(ax, (x_proj + 1.25, y_top), (x_loss - 1.25, y_mid + 0.3),
-               connectionstyle="arc3,rad=0.1")
-    draw_arrow(ax, (x_proj + 1.25, y_bot), (x_loss - 1.25, y_mid - 0.3),
-               connectionstyle="arc3,rad=-0.1")
+# Pooler → Head
+arrow(ax, x_pool + 1.3, y_top, x_proj - 1.3, y_top)
+arrow(ax, x_pool + 1.3, y_bot, x_proj - 1.3, y_bot)
 
-    # ── Teacher connections ────────────────────────────────────────────────────
-    # Loss → Teacher (state/reward) — right-angle path
-    draw_arrow(ax, (x_loss, y_mid + 1.1),
-               (x_teacher + 2.1, y_teacher),
-               connectionstyle="angle,angleA=90,angleB=0")
-    ax.text(16.5, 9.55, "Loss Feedback\n(State/Reward)",
-            ha="center", fontsize=11, fontweight="bold", color="#555555")
+# Head → Loss (converging arcs)
+arrow(ax, x_proj + 1.3, y_top, x_loss - 1.3, y_mid + 0.4,
+      cs="arc3,rad=0.12")
+arrow(ax, x_proj + 1.3, y_bot, x_loss - 1.3, y_mid - 0.4,
+      cs="arc3,rad=-0.12")
 
-    # Teacher → Input (hard negative selection) — right-angle path
-    draw_arrow(ax, (x_teacher - 2.1, y_teacher),
-               (x_doc, y_top + 0.8),
-               connectionstyle="angle,angleA=180,angleB=90")
-    ax.text(4.2, 9.55, "Hard Negative\nSelection",
-            ha="center", fontsize=11, fontweight="bold", color="#555555")
+# ── Arrows: Teacher loop ────────────────────────────────────────────────────────
+# Loss → Teacher (state/reward), right-angle
+arrow(ax, x_loss, y_mid + 1.15, x_tchr + 2.5, y_teacher,
+      cs="angle,angleA=90,angleB=0", color=B_TEACH, lw=1.1)
+ax.text(16.8, 9.8, "Loss Feedback\n(State / Reward)",
+        ha="center", fontsize=9, color="#5A3A88")
 
-    # ── Save ──────────────────────────────────────────────────────────────────
-    plt.tight_layout()
-    fname = "architecture_with_teacher"
-    for ext, kw in [("pdf", {}), ("png", {"dpi": 300})]:
-        p = OUTPUT_DIR / f"{fname}.{ext}"
-        plt.savefig(p, bbox_inches="tight", pad_inches=0.05, **kw)
-        print(f"saved → {p}")
-    plt.close()
+# Teacher → Doc input (hard negative selection), right-angle
+arrow(ax, x_tchr - 2.5, y_teacher, x_doc, y_top + 0.75,
+      cs="angle,angleA=180,angleB=90", color=B_TEACH, lw=1.1)
+ax.text(4.0, 9.8, "Hard Negative\nSelection",
+        ha="center", fontsize=9, color="#5A3A88")
 
-
-if __name__ == "__main__":
-    plot_architecture_with_teacher()
+# ── Save ────────────────────────────────────────────────────────────────────────
+fig.tight_layout()
+for ext, kw in [("pdf", {}), ("png", {"dpi": 300})]:
+    p = OUTPUT_DIR / f"architecture_with_teacher.{ext}"
+    fig.savefig(p, bbox_inches="tight", pad_inches=0.1, **kw)
+    print(f"saved → {p}")
+plt.close()
