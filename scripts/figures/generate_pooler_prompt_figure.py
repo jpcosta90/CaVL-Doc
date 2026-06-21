@@ -61,9 +61,9 @@ C_PT   = 0.25        # box fill alpha
 
 # x positions: two boxes per group, with gap between groups
 #   Mean Pool: 1.0, 1.7   MQAP: 3.3, 4.0   Cross-Modal: 5.6, 6.3
-GAP_INTRA = 0.7   # between P0 and Pr within a group
-GAP_INTER = 1.6   # gap between groups (extra space)
-WIDTH     = 0.55
+GAP_INTRA = 0.75  # between P0 and Pr within a group
+GAP_INTER = 0.9   # gap between groups (extra space)
+WIDTH     = 0.65
 
 pos_p0, pos_pr = [], []
 for i in range(3):
@@ -102,12 +102,11 @@ for i, key in enumerate(POOLER_KEYS):
     draw_box(ax, pos_p0[i], vals[key]["P0"], C_P0)
     draw_box(ax, pos_pr[i], vals[key]["Pr"], C_PR)
 
-    # Δ annotation above the pair
+    # Δ annotation fixed at EER = 2.0
     delta = vals[key]["delta"]
-    top = max(max(vals[key]["P0"]), max(vals[key]["Pr"])) + 0.18
     ax.annotate(
         f"Δ −{abs(delta):.2f} pp",
-        xy=(group_centers[i], top),
+        xy=(group_centers[i], 2.0),
         ha="center", va="bottom", fontsize=8.5,
         color="#4A8040", fontweight="bold",
     )
@@ -118,7 +117,7 @@ ax.set_xticklabels(POOLER_LABELS, fontsize=9.5)
 ax.tick_params(axis="x", length=0)
 
 ax.set_xlim(pos_p0[0] - 0.7, pos_pr[-1] + 0.7)
-ax.set_ylim(-0.05, 4.5)
+ax.set_ylim(0, 3.8)
 ax.set_ylabel("EER (%) — splits 0–4")
 
 # Subtle vertical separators between groups
@@ -139,7 +138,8 @@ patch_pr = mpatches.Patch(facecolor=C_PR, alpha=0.55, edgecolor=C_PR,
                            label=r"Rich prompt $\mathcal{P}_r$ (77 tokens)")
 ax.legend(handles=[patch_p0, patch_pr],
           loc="upper left", frameon=True, framealpha=0.93,
-          fontsize=9, borderpad=0.6)
+          fontsize=9, borderpad=0.6,
+          bbox_to_anchor=(pos_p0[0] - 0.7, 3.8), bbox_transform=ax.transData)
 
 fig.tight_layout()
 for ext, kw in [("pdf", {}), ("png", {"dpi": 300})]:
