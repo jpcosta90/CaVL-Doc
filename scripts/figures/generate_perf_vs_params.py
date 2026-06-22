@@ -38,7 +38,7 @@ plt.rcParams.update({
 # InternVL-3-2B excluded from trend — ~30% EER reflects prompting failure, not scale.
 methods = [
     # Ours
-    (2.0,  0.91,  "ArcDoc (ours)",         "ours",   ( 8,  10), False),
+    (2.0,  0.63,  "ArcDoc (ours)",         "ours",   ( 8,  10), False),
     # Zero-shot VLM
     (8.0,  1.12,  "Qwen3-VL-8B",          "vlm",    ( 6,   8), True),
     (14.0, 1.30,  "InternVL-3-14B",       "vlm",    (-6,  -8), True),
