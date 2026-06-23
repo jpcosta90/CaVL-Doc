@@ -28,7 +28,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 plt.rcParams.update({
     "font.family": "serif",
-    "font.size": 11,
+    "font.size": 20,
     "mathtext.fontset": "cm",
 })
 
@@ -51,7 +51,7 @@ def block(ax, cx, cy, w, h,
           subtitle=None,
           lw=1.2, ls="-",
           title_color="#1a1a1a", sub_color="#555555",
-          title_fs=10.5, sub_fs=8.5,
+          title_fs=19, sub_fs=17,
           text_color=None):
     """Single-layer rounded block — title + optional italic subtitle."""
     rect = FancyBboxPatch(
@@ -61,12 +61,14 @@ def block(ax, cx, cy, w, h,
     )
     ax.add_patch(rect)
     tc = text_color or title_color
-    y_off = 0.18 if subtitle else 0
+    multiline = "\n" in title
+    y_off   = 0.32 if (subtitle and multiline) else (0.18 if subtitle else 0)
+    sub_off = -0.42 if multiline else -0.22
     ax.text(cx, cy + y_off, title,
             ha="center", va="center",
             fontsize=title_fs, fontweight="bold", color=tc, zorder=16)
     if subtitle:
-        ax.text(cx, cy - 0.22, subtitle,
+        ax.text(cx, cy + sub_off, subtitle,
                 ha="center", va="center",
                 fontsize=sub_fs, style="italic", color=sub_color, zorder=16)
 
@@ -87,10 +89,10 @@ def doc_icon(ax, cx, cy, label_top="", label_bot="", w=0.95, h=1.25):
                 color="#AAAAAA", lw=1.3, zorder=11)
     if label_top:
         ax.text(cx, cy + h / 2 + 0.20, label_top,
-                ha="center", va="bottom", fontsize=10, fontweight="bold")
+                ha="center", va="bottom", fontsize=18, fontweight="bold")
     if label_bot:
         ax.text(cx, cy - h / 2 - 0.20, label_bot,
-                ha="center", va="top", fontsize=9, style="italic", color="#555")
+                ha="center", va="top", fontsize=18, style="italic", color="#555")
 
 
 def arrow(ax, x0, y0, x1, y1, cs="arc3", lw=1.3, color=C_ARROW,
@@ -135,7 +137,7 @@ tr_rect = FancyBboxPatch(
 ax.add_patch(tr_rect)
 ax.text((tr_x0 + tr_x1) / 2, y_top + 1.25, "Trainable Architecture",
         ha="center", va="center",
-        fontsize=9.5, color="#666666", style="italic", zorder=2)
+        fontsize=19, color="#666666", style="italic", zorder=2)
 
 # ── Teacher block ─────────────────────────────────────────────────────────────
 block(ax, x_tchr, y_teacher, 5.0, 1.5,
@@ -143,7 +145,7 @@ block(ax, x_tchr, y_teacher, 5.0, 1.5,
       subtitle=r"Policy $\pi(\text{Action}|\text{Loss})$",
       fill=C_TEACH, border=B_TEACH,
       lw=1.4, ls="--",
-      title_fs=11, sub_fs=9)
+      title_fs=20, sub_fs=16)
 
 # ── Document icons ─────────────────────────────────────────────────────────────
 doc_icon(ax, x_doc, y_top, label_top="Image A", label_bot="(Support)")
@@ -152,10 +154,10 @@ doc_icon(ax, x_doc, y_bot, label_top="Image B", label_bot="(Query)")
 # ── Tokens blocks ─────────────────────────────────────────────────────────────
 block(ax, x_tok, y_top, 1.8, 1.1,
       "Tokens", C_TOK, B_TOK,
-      subtitle="(Image Patches)", sub_fs=8)
+      subtitle="(Image Patches)", sub_fs=16)
 block(ax, x_tok, y_bot, 1.8, 1.1,
       "Tokens", C_TOK, B_TOK,
-      subtitle="(Image Patches)", sub_fs=8)
+      subtitle="(Image Patches)", sub_fs=16)
 
 # ── Rich Prompt badge (enters backbone from above) ────────────────────────────
 prom_rect = FancyBboxPatch(
@@ -167,38 +169,38 @@ ax.add_patch(prom_rect)
 ax.text(x_back, y_prom + 0.12,
         r"Rich Prompt $\mathcal{P}_r$",
         ha="center", va="center",
-        fontsize=11, fontweight="bold", color="#7A6000", zorder=16)
+        fontsize=20, fontweight="bold", color="#7A6000", zorder=16)
 ax.text(x_back, y_prom - 0.22,
-        r"63 tokens — conditions backbone attention",
+        r"63 tokens — conditions attn.",
         ha="center", va="center",
-        fontsize=8, style="italic", color="#9A8020", zorder=16)
+        fontsize=15, style="italic", color="#9A8020", zorder=16)
 
 # ── Frozen backbone (spans both streams) ──────────────────────────────────────
 block(ax, x_back, y_mid, 3.0, back_h,
       "LVLM Backbone\n(InternVL3-2B)", C_BACK, B_BACK,
       subtitle="frozen — no gradient",
-      lw=1.5, title_fs=11, sub_fs=8.5)
+      lw=1.5, title_fs=20, sub_fs=17)
 
 # ── Cross-Modal Attention pooler ───────────────────────────────────────────────
 for y_s in (y_top, y_bot):
     block(ax, x_pool, y_s, 2.6, 1.55,
           "Cross-Modal\nAttn Pooler", C_POOL, B_POOL,
           subtitle=r"$q_V \!\times\! q_T \cdot \alpha$",
-          title_fs=10, sub_fs=9)
+          title_fs=18, sub_fs=16)
 
 # ── Projection head ────────────────────────────────────────────────────────────
 for y_s in (y_top, y_bot):
     block(ax, x_proj, y_s, 2.6, 1.55,
           "Projection Head", C_PROJ, B_PROJ,
           subtitle=r"MLP $(D{\to}d)$,  $\ell_2$-norm",
-          title_fs=10, sub_fs=9)
+          title_fs=18, sub_fs=16)
 
 # ── Sub-Center CosFace loss ────────────────────────────────────────────────────
 block(ax, x_loss, y_mid, 2.6, 2.1,
       "Sub-Center\nCosFace",
       C_LOSS, B_LOSS,
       subtitle=r"$k{=}3$ sub-centres",
-      lw=1.5, title_fs=11, sub_fs=9)
+      lw=1.5, title_fs=20, sub_fs=16)
 
 # ── Arrows: main data flow ─────────────────────────────────────────────────────
 # Doc → Tokens
@@ -231,14 +233,14 @@ arrow(ax, x_proj + 1.3, y_bot, x_loss - 1.3, y_mid - 0.4,
 # Loss → Teacher (state/reward), right-angle
 arrow(ax, x_loss, y_mid + 1.15, x_tchr + 2.5, y_teacher,
       cs="angle,angleA=90,angleB=0", color=B_TEACH, lw=1.1)
-ax.text(16.8, 9.8, "Loss Feedback\n(State / Reward)",
-        ha="center", fontsize=9, color="#5A3A88")
+ax.text(16.8, 9.2, "Loss Feedback\n(State / Reward)",
+        ha="center", fontsize=18, color="#5A3A88")
 
 # Teacher → Doc input (hard negative selection), right-angle
 arrow(ax, x_tchr - 2.5, y_teacher, x_doc, y_top + 0.75,
       cs="angle,angleA=180,angleB=90", color=B_TEACH, lw=1.1)
-ax.text(4.0, 9.8, "Hard Negative\nSelection",
-        ha="center", fontsize=9, color="#5A3A88")
+ax.text(4.0, 9.2, "Hard Negative\nSelection",
+        ha="center", fontsize=18, color="#5A3A88")
 
 # ── Save ────────────────────────────────────────────────────────────────────────
 fig.tight_layout()

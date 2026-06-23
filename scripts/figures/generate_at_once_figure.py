@@ -22,7 +22,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 plt.rcParams.update({
     "font.family": "serif",
-    "font.size": 10,
+    "font.size": 20,
     "mathtext.fontset": "cm",
 })
 
@@ -37,7 +37,7 @@ C_A_BG  = "#FEFAF9"; C_A_BD  = "#C8B0A8"   # Panel A: very pale warm
 C_B_BG  = "#F8FBF8"; C_B_BD  = "#90B8A0"   # Panel B: very pale cool
 C_ARR   = "#444444"                          # arrow colour
 
-FS      = 10    # base font size
+FS      = 15    # base font size
 
 # ── Drawing helpers ───────────────────────────────────────────────────────────
 
@@ -115,27 +115,27 @@ ax1.add_patch(FancyBboxPatch(
     boxstyle="round,pad=0.08,rounding_size=0.2",
     lw=0.9, edgecolor=C_A_BD, facecolor=C_A_BG, zorder=0,
 ))
-ax1.text(0.38, 3.05, "(A)", fontsize=11, fontweight="bold", color="#552222")
-ax1.text(0.72, 3.05,
+ax1.text(0.30, 3.05, "(A)", fontsize=22, fontweight="bold", color="#552222")
+ax1.text(1.00, 3.05,
          r"Generative Model — Autoregressive Decoding",
-         fontsize=11, fontweight="bold", color="#333333")
+         fontsize=22, fontweight="bold", color="#333333")
 
 doc_stack(ax1, X_START, YC - 0.6)
 arr(ax1, x_doc_right + 0.05, YC, x_model_left - 0.05, YC)
 fbox(ax1, x_model_left, YC - 0.70, W_MODEL, 1.40, C_LLM,
-     "Multimodal LLM", sub="(autoregressive decoder)")
+     "Multimodal LLM", sub="autoregressive\ndecoder")
 arr(ax1, x_model_right + 0.05, YC, X_OUT - 0.05, YC)
 
 # Sequential tokens with chain arrows (down)
 for i, tok in enumerate(TOKS):
-    fbox(ax1, X_OUT, TOK_Y[i], TOK_W, TOK_H, C_TOK, tok, fs=FS)
+    fbox(ax1, X_OUT, TOK_Y[i], TOK_W, TOK_H, C_TOK, tok, fs=FS, zo=7)
     if i < len(TOKS) - 1:
         arr(ax1, X_OUT + TOK_W / 2, TOK_Y[i],
                  X_OUT + TOK_W / 2, TOK_Y[i + 1] + TOK_H, lw=1.0)
 
 ax1.text(X_OUT + TOK_W + 0.28, YC,
          "one token\nat a time",
-         ha="left", va="center", fontsize=9, style="italic", color="#774444")
+         ha="left", va="center", fontsize=16, style="italic", color="#774444")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -146,15 +146,15 @@ ax2.add_patch(FancyBboxPatch(
     boxstyle="round,pad=0.08,rounding_size=0.2",
     lw=0.9, edgecolor=C_B_BD, facecolor=C_B_BG, zorder=0,
 ))
-ax2.text(0.38, 3.05, "(B)", fontsize=11, fontweight="bold", color="#224422")
-ax2.text(0.72, 3.05,
+ax2.text(0.30, 3.05, "(B)", fontsize=22, fontweight="bold", color="#224422")
+ax2.text(1.00, 3.05,
          r"ArcDoc — At-Once Aggregation",
-         fontsize=11, fontweight="bold", color="#333333")
+         fontsize=22, fontweight="bold", color="#333333")
 
 doc_stack(ax2, X_START, YC - 0.6)
 arr(ax2, x_doc_right + 0.05, YC, x_model_left - 0.05, YC)
 fbox(ax2, x_model_left, YC - 0.70, W_MODEL, 1.40, C_ENC,
-     "LVLM Encoder", sub="(single forward pass, frozen)")
+     "LVLM Encoder", sub="single forward pass,\nfrozen")
 arr(ax2, x_model_right + 0.05, YC, X_OUT - 0.12, YC)
 
 # "At-once" dashed group box
@@ -180,22 +180,24 @@ for tok in zip(TOKS, TOK_Y):
 # Label above group box
 ax2.text(BOX_CX, BOX_Y + BOX_H + 0.06,
          r"$\leftarrow$  simultaneously  $\rightarrow$",
-         ha="center", va="bottom", fontsize=8.5,
+         ha="center", va="bottom", fontsize=16,
          style="italic", color=C_ENC["edge"], zorder=5)
 
 # Arrow: group box → Pooler
-POOL_X, POOL_W, POOL_H = BOX_RIGHT + 0.35, 1.10, 0.70
+POOL_X, POOL_W, POOL_H = BOX_RIGHT + 0.35, 1.40, 0.70
 arr(ax2, BOX_RIGHT, YC, POOL_X - 0.05, YC)
 fbox(ax2, POOL_X, YC - POOL_H / 2, POOL_W, POOL_H, C_POOL, "Pooler")
 
 # Arrow: Pooler → embedding
 EMBD_X, EMBD_W, EMBD_H = POOL_X + POOL_W + 0.30, 0.80, 0.55
 arr(ax2, POOL_X + POOL_W, YC, EMBD_X - 0.05, YC)
-fbox(ax2, EMBD_X, YC - EMBD_H / 2, EMBD_W, EMBD_H, C_EMBD, r"$e$", fs=12)
+fbox(ax2, EMBD_X, YC - EMBD_H / 2, EMBD_W, EMBD_H, C_EMBD, r"$e$", fs=FS + 2)
 
-ax2.text(EMBD_X + EMBD_W / 2, YC - EMBD_H / 2 - 0.20,
+# Label centred between Pooler and right edge — stays within xlim=12
+_label_cx = (POOL_X + EMBD_X + EMBD_W) / 2
+ax2.text(_label_cx, YC - EMBD_H / 2 - 0.18,
          r"metric embedding  $\in \mathbb{R}^{d}$",
-         ha="center", va="top", fontsize=8.5, color="#555555")
+         ha="center", va="top", fontsize=13, color="#555555")
 
 
 # ── Save ─────────────────────────────────────────────────────────────────────
