@@ -24,7 +24,7 @@ ORANGE = '#e07b00'
 plt.rcParams.update({
     'font.family'      : 'serif',
     'mathtext.fontset' : 'dejavuserif',
-    'font.size'        : 13,
+    'font.size'        : 16,
 })
 
 # ── Synthetic token embeddings ────────────────────────────────────────────────
@@ -51,18 +51,18 @@ SPH = (np.outer(np.cos(u), np.sin(v)),
        np.outer(np.ones_like(u), np.cos(v)))
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-VIEW = (22, -55)   # consistent viewpoint for all panels
+VIEW = (22, -45)   # azimuth -45 keeps h3 more recessed, reduces right overflow
 
 def style_ax(ax, lim=None):
     ax.view_init(*VIEW)
     for axis in [ax.xaxis, ax.yaxis, ax.zaxis]:
         axis.pane.fill = False
         axis.pane.set_edgecolor(GRID)
-    ax.tick_params(colors=FG, labelsize=8, pad=1)
+    ax.tick_params(colors=FG, labelsize=11, pad=1)
     ax.grid(True, color=GRID, alpha=0.45, linewidth=0.5)
-    ax.set_xlabel(r'$h_1$', fontsize=11, labelpad=-2)
-    ax.set_ylabel(r'$h_2$', fontsize=11, labelpad=-2)
-    ax.set_zlabel(r'$h_3$', fontsize=11, labelpad=-2)
+    ax.set_xlabel(r'$h_1$', fontsize=15, labelpad=-2)
+    ax.set_ylabel(r'$h_2$', fontsize=15, labelpad=-2)
+    ax.set_zlabel(r'$h_3$', fontsize=15, labelpad=-2)
     if lim:
         if isinstance(lim, (list, tuple)):
             ax.set_xlim(lim[0], lim[1])
@@ -83,26 +83,37 @@ def scatter_tokens(ax, pts, alpha=0.72, size=18):
 def formula_box(ax, text):
     ax.text2D(0.50, -0.04, text,
               transform=ax.transAxes, ha='center', va='top',
-              fontsize=13, color=FG,
+              fontsize=14, color=FG,
               bbox=dict(boxstyle='round,pad=0.45', facecolor='white',
                         edgecolor='#aaaaaa', linewidth=0.9))
 
 def norm_label(ax):
     ax.text2D(0.03, 0.94, r'$\|\mathbf{h}_t\|=1$',
-              transform=ax.transAxes, fontsize=11, color=FG,
+              transform=ax.transAxes, fontsize=15, color=FG,
               bbox=dict(boxstyle='round,pad=0.30', facecolor='white',
                         edgecolor='#bbbbbb', linewidth=0.7))
 
 # ════════════════════════════════════════════════════════════════════════════
-# 1×4 horizontal layout. 3D axes have ~17% internal padding on each side, so
+# 2×2 grid layout. 3D axes have ~17% internal padding on each side, so
 # bounding boxes overlap intentionally; visible content stays evenly spaced.
-W, H = 0.32, 0.72
-DX   = 0.25   # horizontal step between panel origins
-BOT  = 0.28   # bottom of each axes bbox (space for legend + formula boxes below)
-fig = plt.figure(figsize=(16, 5.5), facecolor=BG)
+# BOT_TOP/BOT_BOT: extra vertical space around bottom row accommodates
+# formula boxes and legend without overlap.
+# 3D axes have ~22% internal padding each side → visible = 56% of bbox.
+# W=0.86: left_x=-0.19 → visible 0.01–0.53; right_x=0.28 → visible 0.48–1.00
+# Gap between panels ~5%, matching legend column gaps.
+# Padding interno 3D ≈ 23% de W em cada lado → conteúdo = 54% do bbox.
+# L = -p*W  → conteúdo esquerdo inicia em x=0 (flush left)
+# R = 1-(1-p)*W → conteúdo direito termina em x=1 (flush right)
+# Gap entre painéis = 1 - 2*(1-2p)*W ≈ 5% com W=0.88
+W, H = 0.82, 0.33
+L = -0.23 * W          # ≈ -0.189  — flush left
+R = 1.0 - 0.77 * W    # ≈  0.369  — flush right
+BOT_TOP = 0.62
+BOT_BOT = 0.18
+fig = plt.figure(figsize=(8, 12), facecolor=BG)
 
 # ── (a) Contrastive Loss ──────────────────────────────────────────────────────
-ax1 = fig.add_axes([-0.04, BOT, W, H], projection='3d', facecolor=PANEL)
+ax1 = fig.add_axes([L, BOT_TOP, W, H], projection='3d', facecolor=PANEL)
 scatter_tokens(ax1, raw_pts)
 
 rng = np.random.default_rng(1)
@@ -124,15 +135,15 @@ for c0, c1 in [(0, 1), (1, 2), (0, 2)]:
 for j, idx in enumerate([0, 4, 9]):
     p = raw_pts[lbls == 0][idx]
     ax1.text(p[0]+0.06, p[1]+0.03, p[2]+0.06,
-             rf'$h_{{t_{j+1}}}$', color=CLS_C[0], fontsize=7)
+             rf'$h_{{t_{j+1}}}$', color=CLS_C[0], fontsize=12)
 
-ax1.set_title('(a) Contrastive Loss', fontsize=13, fontweight='bold',
+ax1.set_title('(a) Contrastive Loss', fontsize=17, fontweight='bold',
               color=FG, pad=10, loc='center')
 formula_box(ax1, r'$\mathcal{L} = \frac{1}{2}\left[y\,d^2 + (1-y)\max(m-d,0)^2\right]$')
 style_ax(ax1, lim=(-1.3, 2.0))
 
 # ── (b) Triplet Loss ──────────────────────────────────────────────────────────
-ax2 = fig.add_axes([-0.04 + DX, BOT, W, H], projection='3d', facecolor=PANEL)
+ax2 = fig.add_axes([R, BOT_TOP, W, H], projection='3d', facecolor=PANEL)
 scatter_tokens(ax2, raw_pts, alpha=0.15, size=12)
 
 anchor   = raw_pts[lbls == 0][0]
@@ -152,21 +163,21 @@ def midpt(a, b, off=(0, 0, 0)):
     return (a + b) / 2 + np.array(off)
 
 ax2.text(*midpt(anchor, positive, [0.0, 0.12, 0.10]),
-         r'$d_+$', color=GREEN, fontsize=9, fontweight='bold')
+         r'$d_+$', color=GREEN, fontsize=13, fontweight='bold')
 ax2.text(*midpt(anchor, negative, [0.05, 0.0, 0.12]),
-         r'$d_-$', color=RED,   fontsize=9, fontweight='bold')
+         r'$d_-$', color=RED,   fontsize=13, fontweight='bold')
 
-ax2.text(*(anchor   + [-0.14, -0.06,  0.14]), r'$\mathbf{h}^{(a)}$', color='black',   fontsize=8.5)
-ax2.text(*(positive + [ 0.09,  0.00,  0.00]), r'$\mathbf{h}^{(p)}$', color=CLS_C[0], fontsize=8.5)
-ax2.text(*(negative + [ 0.09,  0.00,  0.00]), r'$\mathbf{h}^{(n)}$', color=CLS_C[1], fontsize=8.5)
+ax2.text(*(anchor   + [-0.14, -0.06,  0.14]), r'$\mathbf{h}^{(a)}$', color='black',   fontsize=13)
+ax2.text(*(positive + [ 0.09,  0.00,  0.00]), r'$\mathbf{h}^{(p)}$', color=CLS_C[0], fontsize=13)
+ax2.text(*(negative + [ 0.09,  0.00,  0.00]), r'$\mathbf{h}^{(n)}$', color=CLS_C[1], fontsize=13)
 
-ax2.set_title('(b) Triplet Loss', fontsize=13, fontweight='bold',
+ax2.set_title('(b) Triplet Loss', fontsize=17, fontweight='bold',
               color=FG, pad=10, loc='center')
 formula_box(ax2, r'$\mathcal{L} = \max(d_+ - d_- + m,\; 0)$')
 style_ax(ax2, lim=(-1.3, 2.0))
 
 # ── (c) ArcFace — Angular Margin ─────────────────────────────────────────────
-ax3 = fig.add_axes([-0.04 + 2*DX, BOT, W, H], projection='3d', facecolor=PANEL)
+ax3 = fig.add_axes([L, BOT_BOT, W, H], projection='3d', facecolor=PANEL)
 ax3.plot_wireframe(*SPH, color=GRID, alpha=0.18, linewidth=0.25)
 scatter_tokens(ax3, norm_pts)
 
@@ -174,7 +185,7 @@ for i, (c, col) in enumerate(zip(norm_c, CLS_C)):
     ax3.quiver(0, 0, 0, c[0], c[1], c[2],
                color=col, linewidth=2.1, arrow_length_ratio=0.13, zorder=5)
     ax3.text(c[0]*1.21, c[1]*1.21, c[2]*1.21,
-             rf'$\mathbf{{W}}_{i+1}$', color=col, fontsize=9.5, fontweight='bold')
+             rf'$\mathbf{{W}}_{i+1}$', color=col, fontsize=14, fontweight='bold')
 
 # Great-circle arc = angular margin between prototypes 0 and 1
 t   = np.linspace(0.04, 0.96, 70)
@@ -182,17 +193,17 @@ arc = normalize(np.outer(1 - t, norm_c[0]) + np.outer(t, norm_c[1]))
 ax3.plot(arc[:,0], arc[:,1], arc[:,2], color=ORANGE, lw=2.0, linestyle=':', alpha=0.9)
 mid = arc[len(arc) // 2]
 ax3.text(mid[0]*1.14, mid[1]*1.14, mid[2]*1.08,
-         r'$\theta_y + m$', color=ORANGE, fontsize=8.5)
+         r'$\theta_y + m$', color=ORANGE, fontsize=13)
 
 norm_label(ax3)
-ax3.set_title('(c) ArcFace', fontsize=13, fontweight='bold',
+ax3.set_title('(c) ArcFace', fontsize=17, fontweight='bold',
               color=FG, pad=10, loc='center')
 formula_box(ax3,
     r'$\mathcal{L} = -\log\frac{e^{s\cos(\theta_y+m)}}{e^{s\cos(\theta_y+m)}+\sum_{j\neq y}e^{s\cos\theta_j}}$')
 style_ax(ax3, lim=1.35)
 
 # ── (d) CosFace — Cosine Margin ───────────────────────────────────────────────
-ax4 = fig.add_axes([-0.04 + 3*DX, BOT, W, H], projection='3d', facecolor=PANEL)
+ax4 = fig.add_axes([R, BOT_BOT, W, H], projection='3d', facecolor=PANEL)
 ax4.plot_wireframe(*SPH, color=GRID, alpha=0.18, linewidth=0.25)
 scatter_tokens(ax4, norm_pts)
 
@@ -200,7 +211,7 @@ for i, (c, col) in enumerate(zip(norm_c, CLS_C)):
     ax4.quiver(0, 0, 0, c[0], c[1], c[2],
                color=col, linewidth=2.1, arrow_length_ratio=0.13, zorder=5)
     ax4.text(c[0]*1.21, c[1]*1.21, c[2]*1.21,
-             rf'$\mathbf{{W}}_{i+1}$', color=col, fontsize=9.5, fontweight='bold')
+             rf'$\mathbf{{W}}_{i+1}$', color=col, fontsize=14, fontweight='bold')
 
 for c_vec, col in zip(norm_c, CLS_C):
     perp1 = np.cross(c_vec, [0, 0, 1])
@@ -225,10 +236,10 @@ th    = np.linspace(0, 2 * np.pi, 90)
 ring0 = normalize(c0v + 0.19 * (np.outer(np.cos(th), perp1) +
                                   np.outer(np.sin(th), perp2)))
 ax4.text(ring0[10, 0], ring0[10, 1], ring0[10, 2] + 0.10,
-         r'$\cos\theta_y - m$', color=ORANGE, fontsize=8.5)
+         r'$\cos\theta_y - m$', color=ORANGE, fontsize=13)
 
 norm_label(ax4)
-ax4.set_title('(d) CosFace', fontsize=13, fontweight='bold',
+ax4.set_title('(d) CosFace', fontsize=17, fontweight='bold',
               color=FG, pad=10, loc='center')
 formula_box(ax4,
     r'$\mathcal{L} = -\log\frac{e^{s(\cos\theta_y - m)}}{e^{s(\cos\theta_y-m)}+\sum_{j\neq y}e^{s\cos\theta_j}}$')
@@ -251,12 +262,20 @@ handles = [
     Line2D([0], [0], color='gray', lw=0, marker=r'$\mathbf{W}$', markersize=12,
            label=r'Class prototypes $\mathbf{W}_j$ (unit sphere)'),
 ]
-fig.legend(handles=handles, loc='lower center', ncol=4,
-           facecolor='white', labelcolor=FG, fontsize=12,
+fig.legend(handles=handles, loc='lower left', ncol=2,
+           facecolor='white', labelcolor=FG, fontsize=16,
            framealpha=1.0, edgecolor='#aaaaaa',
-           bbox_to_anchor=(0.5, 0.0))
+           columnspacing=1.5, handlelength=1.2, labelspacing=0.3,
+           bbox_to_anchor=(0.0, -0.035, 1.0, 0.10))
 
-out = 'docs/assets/losses_embedding_space.png'
-plt.savefig(out, dpi=250, bbox_inches='tight', facecolor=BG)
-print(f'Saved: {out}')
+from matplotlib.transforms import Bbox as MplBbox
+_bbox = MplBbox([[-0.18, -0.65], [9.30, 12.18]])
+
+# PDF — vector format for paper (bbox_inches='tight' works cleanly for vector)
+plt.savefig('docs/assets/losses_embedding_space.pdf', bbox_inches='tight',
+            pad_inches=0.05, facecolor=BG)
+# PNG — raster preview with asymmetric bbox for correct axis/legend capture
+plt.savefig('docs/assets/losses_embedding_space.png', dpi=250,
+            facecolor=BG, bbox_inches=_bbox)
+print('Saved: docs/assets/losses_embedding_space.pdf + .png')
 plt.show()

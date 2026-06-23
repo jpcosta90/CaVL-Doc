@@ -129,10 +129,10 @@ for i in range(n_rows):
         if j < n_cols - 1:   # split columns only, not Mean
             phase = phase_labels[loss][j]
             p_color = phase_color_p2 if "P2" in phase else phase_color_p1
-            ax.text(j, i - 0.17, f"{val:.2f}", ha="center", va="center",
+            ax.text(j, i - 0.20, f"{val:.2f}", ha="center", va="center",
                     fontsize=9.5, color=txt_color, fontweight=weight)
-            ax.text(j, i + 0.26, phase, ha="center", va="center",
-                    fontsize=6.5, color=p_color, fontstyle="italic")
+            ax.text(j, i + 0.24, phase, ha="center", va="center",
+                    fontsize=8.5, color=p_color, fontstyle="italic")
         else:
             ax.text(j, i, f"{val:.2f}", ha="center", va="center",
                     fontsize=9.5, color=txt_color, fontweight=weight)
